@@ -3,7 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 /** The two public values from Supabase → Project Settings → API (safe in the browser: Row Level Security protects the data). */
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-export const configured = !!(url && key);
+/** The secret key must never be in the website (it would bypass every privacy rule). */
+export const secretKey = !!key && (key.startsWith('sb_secret_') || /service_role/.test((() => { try { return atob(key.split('.')[1] ?? ''); } catch { return ''; } })()));
+export const configured = !!(url && key) && !secretKey;
 export const supabase = createClient(url || 'https://example.supabase.co', key || 'missing', {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
 });
