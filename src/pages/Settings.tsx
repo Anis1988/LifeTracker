@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, siteUrl, supabase } from '../lib/supabase';
+import { openPlaid } from '../lib/plaidLink';
+import { BankCard } from '../components/Bank';
 import { Field, Fold, Toggle, errText, toast } from '../components/ui';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
 
@@ -41,8 +43,19 @@ export function Settings() {
     toast('ok', `Bank connected. ${r.log.steps.join(' · ')}`);
     await Promise.all([st.reload(), st.reloadStatus()]);
   });
-  const disconnect = (kind: 'simplefin' | 'google') => run(kind, async () => {
-    if (!confirm(kind === 'google' ? 'Disconnect Google? The LifeTracker calendar stays in Google; delete it there if you like.' : 'Disconnect your bank? Transactions already read stay.')) return;
+  // 🏦 Plaid: open Plaid's window, then the server keeps a read-only link and reads the transactions.
+  const plaid = (reconnect?: string) => run('plaid', async () => {
+    const { linkToken } = await api<{ linkToken: string }>('plaid-link', reconnect ? { reconnect } : {});
+    const r = await openPlaid(linkToken);
+    if (!r) return;
+    if (reconnect) { toast('ok', `${r.institution}: logged in again.`); await sync(); return; }
+    const out = await api<{ log: { steps: string[]; errors: string[] } }>('plaid-exchange', { publicToken: r.publicToken, institution: r.institution });
+    const plaidLine = out.log.steps.find((x) => x.startsWith('Plaid')) ?? '';
+    toast('ok', `${r.institution} connected. ${plaidLine || 'Transactions can take a few minutes the first time: they come with the next sync.'}`);
+    await Promise.all([st.reload(), st.reloadStatus()]);
+  });
+  const disconnect = (kind: string) => run(kind, async () => {
+    if (!confirm(kind === 'google' ? 'Disconnect Google? The LifeTracker calendar stays in Google; delete it there if you like.' : 'Disconnect this bank? Transactions already read stay.')) return;
     await api('disconnect', { kind });
     await st.reloadStatus();
   });
@@ -80,7 +93,17 @@ export function Settings() {
       <h1 className="text-2xl font-semibold">Settings</h1>
       {st.statusErr && <p className="card text-sm text-amber-800 dark:text-amber-200">The server didn’t answer: {st.statusErr}</p>}
 
-      <Fold icon="🏦" title="Bank & cards" subtitle={status?.bank.connected ? `Connected · read ${status.bank.lastSync ? new Date(status.bank.lastSync).toLocaleString() : 'not yet'}` : 'Not connected: finds subscriptions and bills by itself'}>
+      <Fold icon="🏦" title="Bank & cards" subtitle={status?.plaid?.length || status?.bank.connected ? `${(status?.plaid?.length ?? 0) + (status?.bank.connected ? 1 : 0)} bank(s) connected` : 'Not connected: finds subscriptions and bills by itself'}>
+        <p className="text-sm text-stone-700 dark:text-slate-300">Connect each bank or card through <b>Plaid</b> (free, up to 10 bank logins). You log in on Plaid’s own window: your bank password never reaches LifeTracker.</p>
+        {!status?.keys.plaid && <p className="text-sm text-amber-800 dark:text-amber-200">Plaid isn’t set up on the server yet: add PLAID_CLIENT_ID and PLAID_SECRET in Supabase → Edge Functions → Secrets (see Guide → Linking your bank).</p>}
+        {(status?.plaid ?? []).map((p) => <BankCard key={p.kind} p={p} busy={!!busy} onLogin={() => void plaid(p.kind)} onDisconnect={() => void disconnect(p.kind)} />)}
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-primary" disabled={!!busy || !status?.keys.plaid} onClick={() => void plaid()}>{busy === 'plaid' ? <><span className="spinner" /> Working…</> : `🏦 Connect ${status?.plaid?.length ? 'another' : 'a'} bank`}</button>
+          {(!!status?.plaid?.length || status?.bank.connected) && <button className="btn" disabled={!!busy} onClick={() => void sync()}>{busy === 'sync' ? <span className="spinner" /> : 'Read now'}</button>}
+        </div>
+        <details className="pt-1">
+          <summary className="cursor-pointer text-sm text-stone-600 dark:text-slate-300">Other option: SimpleFIN (paid, about $15/year)</summary>
+          <div className="space-y-2 pt-2">
         {status?.bank.connected ? (
           <>
             <ul className="space-y-1 text-sm">
@@ -104,6 +127,8 @@ export function Settings() {
             <button className="btn-primary" disabled={!!busy || token.trim().length < 20} onClick={() => void bank()}>{busy === 'bank' ? <><span className="spinner" /> Connecting and reading a year of transactions…</> : 'Connect'}</button>
           </>
         )}
+          </div>
+        </details>
         <p className="text-xs text-stone-500">Read-only: nothing can be paid or moved. Read every morning. No link? Import a bank CSV in Inbox.</p>
       </Fold>
 
@@ -179,6 +204,7 @@ export function Settings() {
         {status && (
           <div className="flex flex-wrap gap-1.5">
             <Ready ok={status.keys.secret} label="Secret key" />
+            <Ready ok={status.keys.plaid} label="Plaid" />
             <Ready ok={status.keys.gemini} label="Gemini" />
             <Ready ok={status.keys.groq} label="Groq" />
             <Ready ok={status.keys.claude} label="Claude" />

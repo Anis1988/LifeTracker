@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Fold } from '../components/ui';
 import { ItemRow, LoanCalc, Totals, Upcoming } from '../components/Items';
 import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
+import { BankCard } from '../components/Bank';
 import type { Alert, Doc, Item, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
@@ -66,8 +67,12 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🏦" title="Linking your bank">
-        <P>LifeTracker uses <b>SimpleFIN Bridge</b> (about $15 a year), a service made for personal money apps. You connect your banks and cards on their website, then paste a one-time <b>setup token</b> in Settings → Bank & cards. It is <b>read-only</b>: nothing can be paid or moved.</P>
-        <P>The first time it reads about a year of transactions, then every morning. No bank link? Download your transactions as a <b>CSV</b> from your bank and use <b>Import a bank CSV</b> in Inbox.</P>
+        <P>Settings → Bank & cards → <b>Connect a bank</b>. Plaid’s own window opens: pick your bank and log in there (your bank password goes to Plaid, never to LifeTracker). It is <b>read-only</b>: nothing can be paid or moved. Free for up to 10 bank logins; one login covers all your accounts at that bank.</P>
+        <P>The first time it reads up to 2 years of transactions (it can take a few minutes to arrive), then every morning. If a bank asks you to log in again, a <b>Log in again</b> button appears. <b>Disconnect</b> removes the link at Plaid too.</P>
+        <Example caption="Made-up example of a connected bank in Settings.">
+          <BankCard p={{ kind: 'x', institution: 'Example Bank', lastSync: new Date().toISOString(), accounts: [{ name: 'Example Bank Checking …1234', balance: 2840.12, currency: 'USD' }, { name: 'Example Bank Card …9876', balance: 412.5, currency: 'USD' }], error: null, needsLogin: false }} />
+        </Example>
+        <P>No bank link? Download your transactions as a <b>CSV</b> from your bank and use <b>Import a bank CSV</b> in Inbox. SimpleFIN (paid) is still offered as another option.</P>
       </Fold>
 
       <Fold icon="📅" title="Google Calendar">
@@ -103,7 +108,7 @@ export function Guide() {
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-stone-700 dark:text-slate-300">
           <li><b>Supabase</b>: the project is linked to GitHub; pushing to <code>main</code> updates the database, the server functions and the website (see README).</li>
           <li><b>Sign-in</b>: Supabase → Authentication → URL configuration: Site URL = the website address. For “Continue with Google”, turn on the Google provider with the same Google client.</li>
-          <li><b>Server secrets</b> (Supabase → Edge Functions → Secrets): <code>LT_SECRET_KEY</code> (long random text), <code>CRON_SECRET</code>, <code>SITE_URL</code>, <code>LT_ALLOWED_EMAILS</code> (your email: only you can use the automatic parts), <code>GEMINI_API_KEY</code> (free), optional <code>GROQ_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code>, <code>RESEND_API_KEY</code>.</li>
+          <li><b>Server secrets</b> (Supabase → Edge Functions → Secrets): <code>LT_SECRET_KEY</code> (long random text), <code>CRON_SECRET</code>, <code>SITE_URL</code>, <code>LT_ALLOWED_EMAILS</code> (your email: only you can use the automatic parts), <code>PLAID_CLIENT_ID</code> and <code>PLAID_SECRET</code> (free Trial at dashboard.plaid.com), <code>GEMINI_API_KEY</code> (free), optional <code>GROQ_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code>, <code>RESEND_API_KEY</code>.</li>
           <li><b>Google Cloud</b>: enable the Calendar and Gmail APIs, make an OAuth “Web” client with the redirect <code>https://&lt;project&gt;.supabase.co/functions/v1/google-callback</code>, add yourself as a test user, then publish the app (otherwise Google signs you out every 7 days).</li>
           <li><b>Morning run</b>: Supabase → Vault: add <code>lt_project_url</code> and <code>lt_cron_secret</code> (same as CRON_SECRET).</li>
           <li><b>iPhone / Android</b>: open the website and “Add to Home Screen”.</li>

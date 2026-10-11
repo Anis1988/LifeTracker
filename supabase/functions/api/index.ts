@@ -1,6 +1,7 @@
 import { z } from 'npm:zod@4.1.12';
-import { admin, connection, cors, env, HttpError, json, saveConnection, settingsOf, sign, userOf } from '../_shared/server.ts';
+import { admin, connection, cors, env, HttpError, json, open, plaidConnections, saveConnection, settingsOf, sign, userOf } from '../_shared/server.ts';
 import { claimSetupToken } from '../_shared/simplefin.ts';
+import { exchange as plaidExchange, linkToken, plaidReady, removeItem } from '../_shared/plaid.ts';
 import { authUrl, has, type Want } from '../_shared/google.ts';
 import { readWithAi } from '../_shared/ai.ts';
 import { applyExtracted, syncUser } from '../_shared/sync.ts';
@@ -15,7 +16,9 @@ import type { Item } from '../_shared/model.ts';
 const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status') }),
   z.object({ action: z.literal('bank-connect'), setupToken: z.string().min(20).max(2000) }),
-  z.object({ action: z.literal('disconnect'), kind: z.enum(['simplefin', 'google']) }),
+  z.object({ action: z.literal('disconnect'), kind: z.union([z.enum(['simplefin', 'google']), z.string().regex(/^plaid:[\w-]{1,100}$/)]) }),
+  z.object({ action: z.literal('plaid-link'), reconnect: z.string().regex(/^plaid:[\w-]{1,100}$/).optional() }),
+  z.object({ action: z.literal('plaid-exchange'), publicToken: z.string().min(10).max(500), institution: z.string().max(120).optional() }),
   z.object({ action: z.literal('google-start'), want: z.array(z.enum(['calendar', 'gmail'])).min(1).max(2), back: z.string().url().max(300) }),
   z.object({ action: z.literal('sync'), full: z.boolean().optional() }),
   z.object({ action: z.literal('read-doc'), id: z.string().uuid() }),
@@ -30,15 +33,16 @@ Deno.serve(async (req) => {
     const db = admin();
     switch (body.action) {
       case 'status': {
-        const [bank, google, status] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status')]);
+        const [bank, google, status, plaid] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), plaidConnections(db, user.id)]);
         const { data: usage } = await db.from('ai_usage').select('provider, n').eq('user_id', user.id).eq('day', new Date().toISOString().slice(0, 10));
         return json({
           bank: bank ? { connected: true, lastSync: bank.meta.lastSync ?? null, accounts: bank.meta.accounts ?? [], errors: bank.meta.errors ?? [] } : { connected: false },
+          plaid: plaid.map((c) => ({ kind: c.kind, institution: c.meta.institution ?? 'Bank', lastSync: c.meta.lastSync ?? null, accounts: c.meta.accounts ?? [], error: c.meta.error ?? null, needsLogin: c.meta.errorCode === 'ITEM_LOGIN_REQUIRED' })),
           google: google ? { connected: true, email: google.meta.email ?? null, calendar: has(google.meta.scope as string, 'calendar'), gmail: has(google.meta.scope as string, 'gmail'), lastGmail: google.meta.gmailScanned ?? null } : { connected: false },
           lastRun: status?.meta ?? null,
           aiUsed: Object.fromEntries((usage ?? []).map((u) => [u.provider, u.n])),
           keys: {
-            gemini: !!env('GEMINI_API_KEY'), groq: !!env('GROQ_API_KEY'), openrouter: !!env('OPENROUTER_API_KEY'), claude: !!env('ANTHROPIC_API_KEY'),
+            plaid: plaidReady(), gemini: !!env('GEMINI_API_KEY'), groq: !!env('GROQ_API_KEY'), openrouter: !!env('OPENROUTER_API_KEY'), claude: !!env('ANTHROPIC_API_KEY'),
             google: !!(env('GOOGLE_CLIENT_ID') && env('GOOGLE_CLIENT_SECRET')), email: !!env('RESEND_API_KEY'), secret: env('LT_SECRET_KEY').length >= 16,
           },
           email: user.email,
@@ -52,8 +56,22 @@ Deno.serve(async (req) => {
         return json({ ok: true, log });
       }
       case 'disconnect': {
+        // Plaid: also tell Plaid to forget the bank login.
+        if (body.kind.startsWith('plaid:')) { const c = await connection(db, user.id, body.kind); if (c) await removeItem(await open(c.secret)); }
         await db.from('connections').delete().eq('user_id', user.id).eq('kind', body.kind);
         return json({ ok: true });
+      }
+      case 'plaid-link': {
+        if (!plaidReady()) throw new HttpError('Plaid isn’t set up yet: add PLAID_CLIENT_ID and PLAID_SECRET in Supabase → Edge Functions → Secrets.', 503);
+        const again = body.reconnect ? await connection(db, user.id, body.reconnect) : null;
+        return json({ linkToken: await linkToken(user.id, undefined, again ? await open(again.secret) : undefined) });
+      }
+      case 'plaid-exchange': {
+        const { accessToken, itemId } = await plaidExchange(body.publicToken);
+        await saveConnection(db, user.id, `plaid:${itemId}`, accessToken, { institution: body.institution ?? 'Bank', connectedAt: new Date().toISOString(), cursor: null });
+        // Read what Plaid has right away (it can take a few minutes the first time: the rest comes with the next sync).
+        const log = await syncUser(db, user.id, user.email);
+        return json({ ok: true, log });
       }
       case 'google-start': {
         if (!env('GOOGLE_CLIENT_ID')) throw new HttpError('Google isn’t set up yet: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (see the Guide → Setting it up).', 503);

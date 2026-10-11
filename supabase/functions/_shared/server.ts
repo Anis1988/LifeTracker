@@ -62,12 +62,13 @@ export async function open(sealed: string): Promise<string> {
   return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, await key(), unb64(ct)));
 }
 
-export interface Connection { user_id: string; kind: 'simplefin' | 'google' | 'status'; secret: string; meta: Record<string, unknown>; updated_at: string }
-export async function connection(db: SupabaseClient, userId: string, kind: Connection['kind']): Promise<Connection | null> {
+export interface Connection { user_id: string; kind: string; secret: string; meta: Record<string, unknown>; updated_at: string }
+/** kind: simplefin | google | status | plaid:<item id> (one per bank login). */
+export async function connection(db: SupabaseClient, userId: string, kind: string): Promise<Connection | null> {
   const { data } = await db.from('connections').select('*').eq('user_id', userId).eq('kind', kind).maybeSingle();
   return (data as Connection | null) ?? null;
 }
-export async function saveConnection(db: SupabaseClient, userId: string, kind: Connection['kind'], secret: string | null, meta: Record<string, unknown>) {
+export async function saveConnection(db: SupabaseClient, userId: string, kind: string, secret: string | null, meta: Record<string, unknown>) {
   const cur = await connection(db, userId, kind);
   const row = { user_id: userId, kind, secret: secret === null ? cur?.secret ?? '' : await seal(secret), meta: { ...(cur?.meta ?? {}), ...meta }, updated_at: new Date().toISOString() };
   const { error } = await db.from('connections').upsert(row);
@@ -79,4 +80,10 @@ export async function sign(value: string): Promise<string> {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(env('LT_SECRET_KEY')), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(value)));
   return b64(sig).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' }[c]!));
+}
+
+/** Every bank login connected through Plaid. */
+export async function plaidConnections(db: SupabaseClient, userId: string): Promise<Connection[]> {
+  const { data } = await db.from('connections').select('*').eq('user_id', userId).like('kind', 'plaid:%');
+  return (data as Connection[] | null) ?? [];
 }

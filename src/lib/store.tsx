@@ -5,11 +5,12 @@ import { withDefaults, type Alert, type Doc, type Item, type Settings, type Sugg
 
 /** What the server reports (bank, Google, AI use today, last automatic run, which keys are set). */
 export interface Status {
+  plaid?: { kind: string; institution: string; lastSync: string | null; accounts: { name: string; balance: number; currency: string }[]; error: string | null; needsLogin: boolean }[];
   bank: { connected: boolean; lastSync?: string | null; accounts?: { name: string; balance: number; currency: string }[]; errors?: string[] };
   google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null };
   lastRun: { lastRun?: string; steps?: string[]; errors?: string[] } | null;
   aiUsed: Record<string, number>;
-  keys: Record<'gemini' | 'groq' | 'openrouter' | 'claude' | 'google' | 'email' | 'secret', boolean>;
+  keys: Record<'plaid' | 'gemini' | 'groq' | 'openrouter' | 'claude' | 'google' | 'email' | 'secret', boolean>;
   email?: string;
 }
 
