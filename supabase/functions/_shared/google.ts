@@ -36,12 +36,32 @@ export const exchange = (code: string) => token({ code, grant_type: 'authorizati
 export const refresh = async (refreshToken: string) => (await token({ refresh_token: refreshToken, grant_type: 'refresh_token' })).access_token!;
 export const has = (scope: string | undefined, w: Want) => !!scope?.split(' ').includes(SCOPES[w]);
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Google's "too fast" answers (per-minute limits): wait and try again. */
+export const isRateLimit = (e: unknown) => /quota exceeded|rate limit|too many requests|HTTP 429/i.test(e instanceof Error ? e.message : String(e));
+
 async function g<T>(at: string, url: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) }, signal: AbortSignal.timeout(30_000) });
-  if (res.status === 204) return undefined as T;
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Google: ${(j as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`}`);
-  return j as T;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) }, signal: AbortSignal.timeout(30_000) });
+    if (res.status === 204) return undefined as T;
+    const j = await res.json().catch(() => ({}));
+    if (res.ok) return j as T;
+    const msg = `Google: ${(j as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`}`;
+    if ((res.status === 429 || res.status === 403) && isRateLimit(msg) && attempt < 4) {
+      const wait = Number(res.headers.get('retry-after')) * 1000 || 2000 * 2 ** attempt; // 2, 4, 8, 16 s
+      await sleep(Math.min(wait, 20_000));
+      continue;
+    }
+    throw new Error(msg);
+  }
+}
+
+/** Gmail allows a limited number of reads per minute: keep a steady pace (about 4 emails a second). */
+let lastRead = 0;
+async function pace() {
+  const wait = lastRead + 250 - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastRead = Date.now();
 }
 
 // ---------- 📅 Calendar ----------
@@ -142,6 +162,7 @@ const stripHtml = (h: string) => h.replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' 
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#36;|&dollar;/g, '$').replace(/&[a-z]+;/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
 
 export async function readEmail(at: string, id: string): Promise<Mail> {
+  await pace();
   const m = await g<{ id: string; payload: Part; internalDate: string }>(at, `${GM}/messages/${id}?format=full`);
   const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
   const t = textOf(m.payload);

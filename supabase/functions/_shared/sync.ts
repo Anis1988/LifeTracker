@@ -3,7 +3,7 @@ import type { Alert, Extracted, Item, Settings } from './model.ts';
 import { daysBetween, iso, money, nextDue, perYear, today } from './money.ts';
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
-import { ensureCalendar, findAlertEmails, findBillEmails, has, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
+import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
 import { readWithAi } from './ai.ts';
 import { connection, env, open, saveConnection, settingsOf } from './server.ts';
 import { ALERT_QUERY, parseBankAlert } from './alerts.ts';
@@ -79,13 +79,19 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings): Promi
   if (!c || !s.bank.alerts || !has(c.meta.scope as string, 'gmail')) return;
   const at = await refresh(await open(c.secret));
   const seen = new Set((c.meta.seenAlerts as string[] | undefined) ?? []);
-  // First time: the last 400 days (as far back as your alerts go); then the last week.
-  const ids = (await findAlertEmails(at, c.meta.alertsScanned ? 7 : s.bank.lookbackDays, ALERT_QUERY, c.meta.alertsScanned ? 200 : 2000)).filter((id) => !seen.has(id));
+  // First time: as far back as your alerts go (400 days), spread over several runs so Gmail's per-minute limit isn't hit; then the last week.
+  const done = !!c.meta.alertsDone;
+  const all = (await findAlertEmails(at, done ? 7 : s.bank.lookbackDays, ALERT_QUERY, done ? 200 : 2000)).filter((id) => !seen.has(id));
+  const ids = all.slice(0, PER_RUN);
   const rows: Record<string, unknown>[] = [];
-  let skipped = 0;
+  let skipped = 0, stopped = '';
   const banks = new Set<string>();
   for (const id of ids) {
-    const m = await readEmail(at, id);
+    let m;
+    try { m = await readEmail(at, id); } catch (e) {
+      if (!isRateLimit(e)) throw e;
+      stopped = 'Gmail asked to slow down: the rest next time'; break;
+    }
     seen.add(id);
     const tx = parseBankAlert(m);
     if (!tx) { skipped++; continue; }
@@ -96,12 +102,14 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings): Promi
     const { error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
     if (error) throw new Error(error.message);
   }
+  const left = all.filter((id) => !seen.has(id)).length;
   await saveConnection(db, userId, 'google', null, {
-    seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(),
+    seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(), alertsDone: done || left === 0,
     alertsRead: ((c.meta.alertsRead as number) ?? 0) + rows.length, alertBanks: [...new Set([...((c.meta.alertBanks as string[]) ?? []), ...banks])],
   });
-  if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}`;
+  if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}${left ? `; ${left} older ones next time` : ''}${stopped ? `. ${stopped}` : ''}`;
 }
+const PER_RUN = 300; // alert emails read per run (about 75 seconds)
 
 // ---------- 🔁 recurring bills in the transactions ----------
 async function detectStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[]): Promise<string | void> {
@@ -161,7 +169,11 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   let read = 0, bills = 0, skipped = 0;
   let stopped = '';
   for (const id of ids) {
-    const m = await readEmail(at, id);
+    let m;
+    try { m = await readEmail(at, id); } catch (e) {
+      if (!isRateLimit(e)) throw e;
+      stopped = 'Gmail asked to slow down: the rest next time'; break;
+    }
     if (!looksLikeBill(m) || !s.ai.readEmails) { seen.add(id); skipped++; continue; }
     if (read >= s.ai.maxPerRun) break; // the rest next time
     let x: Extracted;
