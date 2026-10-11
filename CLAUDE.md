@@ -1,0 +1,12 @@
+# Working on this repo
+
+- **Keep the Guide tab up to date.** Every change that adds or changes a user-visible feature must also update `src/pages/Guide.tsx` in the same commit: plain everyday words, and a live example built from the app's own components (made-up data, no working buttons).
+- Push directly to `main` (`.github/workflows/deploy.yml` deploys Supabase migrations + Edge Functions, and the website to GitHub Pages: Supabase can't host websites).
+- Do not add automated tests unless asked.
+- New features: describe them and get the owner's OK before building. Bug fixes can go straight in.
+- Phone-friendly is required: check a 390px-wide layout for any UI change (tabs at the bottom on phones). Light and dark (follows the phone, `darkMode: 'media'`): give colours a `dark:` version.
+- Just for the owner for now, built for many later: every table has `user_id` + Row Level Security (`supabase/migrations`); never bypass it from the app. Server-only data (`connections`: bank link and Google sign-in, AES-GCM with `LT_SECRET_KEY`; `ai_usage`) has no policies. `LT_ALLOWED_EMAILS` limits who may use the bank/Google/AI parts.
+- Nothing is added, paid or cancelled without the owner: automatic finds go to `suggestions` (Inbox) for an OK. Bank access is read-only (SimpleFIN).
+- 🤖 AI (owner's rule): free AIs first in Settings order (Gemini, Groq, OpenRouter), **Claude (paid) last**, only when the free ones are over their daily limit, not set up, can't read the file, or fail (`readWithAi` in `supabase/functions/_shared/ai.ts`). Each AI has its own daily limit (`take_ai()`, atomic). Free rules first: bank recurring detection uses no AI; emails pass `looksLikeBill` before any AI.
+- Shared code: `supabase/functions/_shared/{model,money,recurring}.ts` are plain TS imported by both the app and the Deno functions (keep them free of Deno/browser APIs). Server functions: `api` (signed-in), `google-callback` and `cron` (no JWT: signed state / `CRON_SECRET`). Daily run: pg_cron → `cron` → `syncUser` (`_shared/sync.ts`: bank → recurring → Gmail → roll due dates → Calendar → heads-ups → email).
+- Google Calendar uses the narrow `calendar.app.created` scope (one "LifeTracker" calendar, events tagged `app=lifetracker`); Gmail is read-only and optional; forwarding = `you+lifetracker@gmail.com` picked up by the Gmail scan.

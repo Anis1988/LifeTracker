@@ -1,0 +1,13 @@
+# Supabase project settings used by the CLI (supabase db push / functions deploy).
+project_id = "lifetracker"
+
+[functions.api]
+verify_jwt = true
+
+# Google sends the browser back here (no sign-in header); the request carries a signed "state" instead.
+[functions.google-callback]
+verify_jwt = false
+
+# Called by pg_cron every morning; protected by the CRON_SECRET header instead.
+[functions.cron]
+verify_jwt = false
