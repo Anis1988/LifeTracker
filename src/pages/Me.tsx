@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { Fold, Sheet, errText, toast } from '../components/ui';
+import { AboutMe } from '../components/AboutMe';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperForm, PaperRow, PasswordCheck, SenderRow, WeekCard, senderFilter, type SenderView } from '../components/Me';
 import { weekSummary } from '../../supabase/functions/_shared/week.ts';
 import type { Paper, Sender } from '../../supabase/functions/_shared/model.ts';
@@ -13,7 +14,7 @@ const ago = (iso?: string | null) => {
 };
 
 /** 👤 Everything about you: your name online, people-search sites, breaches, mailing lists, documents, credit. */
-export function Me({ go }: { go: (tab: string) => void }) {
+export function Me(_: { go: (tab: string) => void }) {
   const st = useStore();
   const s = st.settings;
   const [busy, setBusy] = useState('');
@@ -63,13 +64,10 @@ export function Me({ go }: { go: (tab: string) => void }) {
   return (
     <div className="mx-auto max-w-2xl space-y-3">
       <h1 className="text-2xl font-semibold">Me</h1>
-      {!hasProfile && (
-        <button className="card flex w-full items-center gap-3 text-left !border-emerald-300 dark:!border-emerald-800" onClick={() => go('settings')}>
-          <span className="text-2xl" aria-hidden="true">👤</span>
-          <span className="flex-1 text-sm">Add your name, emails and city in <b>Settings → About me</b> so LifeTracker can look for you online.</span>
-          <span aria-hidden="true">→</span>
-        </button>
-      )}
+      <Fold icon="👤" title="About me" subtitle={hasProfile ? [s.me.names[0], s.me.places[0]].filter(Boolean).join(' · ') : 'Add your name so LifeTracker can look for you online'} open={!hasProfile}>
+        <p className="text-sm text-stone-600 dark:text-slate-300">Private: only you can see it. Sent to the free Gemini only to run the searches.</p>
+        <AboutMe me={s.me} onSave={(me) => st.saveSettings({ ...s, me })} onCheck={() => void run('online', 'Your name online')} />
+      </Fold>
       <WeekCard lines={lines} />
 
       <Fold icon="🕵️" title="Your name online" subtitle={`${newWeb.length ? `${newWeb.length} new` : 'Nothing new'} · checked ${ago(st.status?.me?.lastOnline)}`} open={newWeb.some((f) => f.verdict === 'worrying')}>

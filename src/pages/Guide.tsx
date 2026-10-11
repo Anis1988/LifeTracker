@@ -3,6 +3,7 @@ import { Fold } from '../components/ui';
 import { ItemRow, LoanCalc, Totals, Upcoming } from '../components/Items';
 import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
 import { AlertBanks } from '../components/Bank';
+import { AboutMe } from '../components/AboutMe';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
 import type { Alert, Doc, Finding, Item, Paper, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
@@ -114,8 +115,11 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🕵️" title="Your name online">
-        <P>Fill in <b>Settings → About me</b>: your name (and other spellings), your city, emails, phone numbers and usernames. Every 7 days (you can change it) the free Gemini searches Google for them and sorts each page: your own profile, news, a people-search site, or <b>worrying</b> (a fake profile using your name, a scam, leaked documents or passwords, harassment).</P>
+        <P>Fill in <b>About me</b> (at the top of Me, or in Settings): your name (and other spellings), your city, emails, phone numbers and usernames. Type each one (＋ adds another), then tap <b>Save</b>: a pop-up confirms what was saved, with a button to look for you right away. “Not saved yet” means you still need to tap Save. Every 7 days (you can change it) the free Gemini searches Google for them and sorts each page: your own profile, news, a people-search site, or <b>worrying</b> (a fake profile using your name, a scam, leaked documents or passwords, harassment).</P>
         <P>Only pages that really came back from the search are kept, so nothing is made up. New ones show in <b>Me</b>; worrying ones also as a heads-up. Tap <b>It’s fine</b> or <b>Not me</b> to clear them. For a worrying page: report it to the site, and ask Google to hide it with “Results about you”.</P>
+        <Example caption="Made-up About me (Save does nothing here).">
+          <AboutMe me={{ names: ['Jordan Example'], places: ['Example City'], emails: ['jordan@example.com'], phones: [], usernames: ['jordan_ex'] }} example />
+        </Example>
         <Example caption="Made-up examples: your own page, and a worrying one.">
           <div className="space-y-2">{WEB.map((f) => <FindingRow key={f.id} f={f} />)}</div>
         </Example>

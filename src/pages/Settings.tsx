@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
-import { Field, Fold, ListInput, Toggle, errText, toast } from '../components/ui';
+import { Field, Fold, Toggle, errText, toast } from '../components/ui';
+import { AboutMe } from '../components/AboutMe';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -85,16 +86,7 @@ export function Settings() {
 
       <Fold icon="👤" title="About me" subtitle={s.me.names.length ? `${s.me.names[0]}${s.me.places[0] ? ` · ${s.me.places[0]}` : ''}` : 'What to look for online (private to you)'}>
         <p className="text-sm text-stone-600 dark:text-slate-300">Used to look for you online (Me → Your name online). Private: only you can see it. It is sent to the free Gemini only to run the searches.</p>
-        <p className="text-sm font-medium">Your name (and other spellings)</p>
-        <ListInput values={s.me.names} onChange={(v) => save({ me: { ...s.me, names: v } })} placeholder="First Last" label="name" max={4} />
-        <p className="text-sm font-medium">City or town</p>
-        <ListInput values={s.me.places} onChange={(v) => save({ me: { ...s.me, places: v } })} placeholder="e.g. Orlando FL" label="place" max={3} />
-        <p className="text-sm font-medium">Emails</p>
-        <ListInput values={s.me.emails} onChange={(v) => save({ me: { ...s.me, emails: v } })} placeholder="you@example.com" type="email" label="email" />
-        <p className="text-sm font-medium">Phone numbers</p>
-        <ListInput values={s.me.phones} onChange={(v) => save({ me: { ...s.me, phones: v } })} placeholder="(555) 123-4567" type="tel" label="phone" max={3} />
-        <p className="text-sm font-medium">Usernames (social media, games…)</p>
-        <ListInput values={s.me.usernames} onChange={(v) => save({ me: { ...s.me, usernames: v } })} placeholder="username" label="username" />
+        <AboutMe me={s.me} onSave={(me) => st.saveSettings({ ...s, me })} onCheck={() => { location.hash = '#/me'; window.scrollTo(0, 0); void api('run', { part: 'online' }).then(() => Promise.all([st.reload(), st.reloadStatus()])).catch((e) => toast('err', errText(e))); toast('info', 'Searching for you online… results appear in Me in a minute.'); }} />
         <Field label="Look for me online" hint="Free (Gemini with Google Search), a few searches each time.">
           <Toggle on={s.online.on} onChange={(v) => save({ online: { ...s.online, on: v } })} label="Look for me online" />
         </Field>
