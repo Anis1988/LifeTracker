@@ -63,7 +63,7 @@ export async function open(sealed: string): Promise<string> {
 }
 
 export interface Connection { user_id: string; kind: string; secret: string; meta: Record<string, unknown>; updated_at: string }
-/** kind: simplefin | google | status | plaid:<item id> (one per bank login). */
+/** kind: simplefin | google | status. */
 export async function connection(db: SupabaseClient, userId: string, kind: string): Promise<Connection | null> {
   const { data } = await db.from('connections').select('*').eq('user_id', userId).eq('kind', kind).maybeSingle();
   return (data as Connection | null) ?? null;
@@ -82,8 +82,3 @@ export async function sign(value: string): Promise<string> {
   return b64(sig).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' }[c]!));
 }
 
-/** Every bank login connected through Plaid. */
-export async function plaidConnections(db: SupabaseClient, userId: string): Promise<Connection[]> {
-  const { data } = await db.from('connections').select('*').eq('user_id', userId).like('kind', 'plaid:%');
-  return (data as Connection[] | null) ?? [];
-}

@@ -165,7 +165,7 @@ export interface Settings {
     readEmails: boolean; // let the AI read receipt emails found in Gmail
     maxPerRun: number; // most emails/documents read by the AI in one automatic run
   };
-  bank: { lookbackDays: number; minCharges: number }; // recurring = seen at least this many times
+  bank: { lookbackDays: number; minCharges: number; alerts: boolean }; // recurring = seen at least this many times; alerts = read bank alert emails
   calendar: { on: boolean; remindDays: number; renewals: boolean; trials: boolean };
   gmail: { on: boolean; plusTag: string }; // forwarding: you+lifetracker@gmail.com
   notify: { email: boolean; dueDays: number; renewalDays: number };
@@ -184,7 +184,7 @@ export const DEFAULT_SETTINGS: Settings = {
     readEmails: true,
     maxPerRun: 15,
   },
-  bank: { lookbackDays: 400, minCharges: 2 },
+  bank: { lookbackDays: 400, minCharges: 2, alerts: true },
   calendar: { on: true, remindDays: 2, renewals: true, trials: true },
   gmail: { on: true, plusTag: 'lifetracker' },
   notify: { email: true, dueDays: 3, renewalDays: 30 },

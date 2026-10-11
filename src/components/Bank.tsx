@@ -1,25 +1,49 @@
-import type { Status } from '../lib/store';
+import { useState } from 'react';
 
-type PlaidBank = NonNullable<Status['plaid']>[number];
+/** How to turn on purchase-alert emails at each bank (menus can move a little; the words to look for stay). */
+export const BANK_STEPS: { bank: string; steps: string[] }[] = [
+  { bank: 'Bank of America', steps: [
+    'Open the Bank of America app (or bankofamerica.com) → Menu → Security & Alerts (or “Alerts”) → Settings.',
+    'Pick each credit and debit card → turn on the “Purchase” / “Transaction” alert (card purchases).',
+    'Set the amount to $0.01 (so every purchase is sent) and choose Email as the delivery.',
+  ] },
+  { bank: 'SoFi', steps: [
+    'Open the SoFi app → your profile (top) → Settings → Notifications (or “Alerts”).',
+    'Turn on purchase / transaction alerts for your SoFi debit and credit card.',
+    'Choose Email (keep push if you like), for any amount.',
+  ] },
+  { bank: 'Capital One', steps: [
+    'Open the Capital One app → pick your card → Profile → Settings → Alerts (or “Manage alerts” on capitalone.com).',
+    'Turn on “Transaction alerts” / “Purchase made”, amount $0 or $0.01.',
+    'Choose Email as the delivery. Do it for each card.',
+  ] },
+];
 
-/** One bank connected through Plaid: its accounts, last read, and any problem. Also drawn in the Guide (no buttons). */
-export function BankCard({ p, busy, onLogin, onDisconnect }: { p: PlaidBank; busy?: boolean; onLogin?: () => void; onDisconnect?: () => void }) {
+/** Settings: the bank alert emails part (also drawn in the Guide with made-up numbers). */
+export function AlertBanks({ gmail, read, banks, last, onConnect }: { gmail: boolean; read: number; banks: string[]; last?: string | null; onConnect?: () => void }) {
+  const [open, setOpen] = useState<string | null>(null);
   return (
-    <div className="panel space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <b>{p.institution}</b>
-        <span className="text-xs text-stone-500">{p.lastSync ? `read ${new Date(p.lastSync).toLocaleString()}` : 'not read yet'}</span>
+    <div className="space-y-2">
+      <div className={`panel text-sm ${gmail ? '' : '!border-amber-300 dark:!border-amber-700'}`}>
+        {gmail ? (
+          <p>📧 <b>{read}</b> purchase{read === 1 ? '' : 's'} read from alert emails{banks.length ? ` (${banks.join(', ')})` : ''}.{last ? ` Last checked ${new Date(last).toLocaleString()}.` : ' Checked every morning.'}</p>
+        ) : (
+          <div className="space-y-2">
+            <p>To read your bank’s alert emails, connect Gmail first (read-only).</p>
+            {onConnect && <button className="btn-primary" onClick={onConnect}>✉️ Connect Gmail</button>}
+          </div>
+        )}
       </div>
-      <ul className="space-y-0.5 text-sm">
-        {p.accounts.map((a) => <li key={a.name} className="flex justify-between gap-2"><span className="truncate">{a.name}</span><span className="num">{a.balance.toLocaleString('en-US', { style: 'currency', currency: a.currency || 'USD' })}</span></li>)}
-      </ul>
-      {p.error && <p className="text-xs text-amber-800 dark:text-amber-200">⚠ {p.error}</p>}
-      {(onLogin || onDisconnect) && (
-        <div className="flex flex-wrap gap-2">
-          {p.needsLogin && onLogin && <button className="btn-primary" disabled={busy} onClick={onLogin}>Log in again</button>}
-          {onDisconnect && <button className="btn text-red-700 dark:text-red-300" disabled={busy} onClick={onDisconnect}>Disconnect</button>}
+      <p className="text-sm font-medium">Turn on purchase alerts by email, once per bank:</p>
+      {BANK_STEPS.map((b) => (
+        <div key={b.bank} className="panel !p-0">
+          <button className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium" aria-expanded={open === b.bank} onClick={() => setOpen(open === b.bank ? null : b.bank)}>
+            <span>{banks.includes(b.bank) ? '✅' : '🏦'} {b.bank}</span><span aria-hidden="true" className="text-stone-400">{open === b.bank ? '⌃' : '⌄'}</span>
+          </button>
+          {open === b.bank && <ol className="list-decimal space-y-1 px-3 pb-3 pl-8 text-sm text-stone-700 dark:text-slate-300">{b.steps.map((s) => <li key={s}>{s}</li>)}</ol>}
         </div>
-      )}
+      ))}
+      <p className="text-xs text-stone-500">Other banks work too if they email you for each purchase. Only purchases are read (deposits, payments and statements are skipped), with free patterns: no AI, nothing paid. A ✅ shows a bank whose alerts were read.</p>
     </div>
   );
 }

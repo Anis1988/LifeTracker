@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Fold } from '../components/ui';
 import { ItemRow, LoanCalc, Totals, Upcoming } from '../components/Items';
 import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
-import { BankCard } from '../components/Bank';
+import { AlertBanks } from '../components/Bank';
 import type { Alert, Doc, Item, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
@@ -40,7 +40,7 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works by itself as much as possible: every morning it reads your bank (read-only), your Gmail receipts, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you.</P>
+        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you.</P>
         <Example caption="Made-up example of Home: the total, by category, and what’s coming up.">
           <div className="space-y-2"><Totals items={EX} /><Upcoming items={EX} days={30} /></div>
         </Example>
@@ -66,13 +66,14 @@ export function Guide() {
         <Example caption="Made-up heads-ups."><AlertList alerts={ALERTS} /></Example>
       </Fold>
 
-      <Fold icon="🏦" title="Linking your bank">
-        <P>Settings → Bank & cards → <b>Connect a bank</b>. Plaid’s own window opens: pick your bank and log in there (your bank password goes to Plaid, never to LifeTracker). It is <b>read-only</b>: nothing can be paid or moved. Free for up to 10 bank logins; one login covers all your accounts at that bank.</P>
-        <P>The first time it reads up to 2 years of transactions (it can take a few minutes to arrive), then every morning. If a bank asks you to log in again, a <b>Log in again</b> button appears. <b>Disconnect</b> removes the link at Plaid too.</P>
-        <Example caption="Made-up example of a connected bank in Settings.">
-          <BankCard p={{ kind: 'x', institution: 'Example Bank', lastSync: new Date().toISOString(), accounts: [{ name: 'Example Bank Checking …1234', balance: 2840.12, currency: 'USD' }, { name: 'Example Bank Card …9876', balance: 412.5, currency: 'USD' }], error: null, needsLogin: false }} />
+      <Fold icon="🏦" title="Your bank (free, by email)">
+        <P>LifeTracker reads your bank the free way: your banks <b>email you each purchase</b>, and every morning LifeTracker finds those alert emails in your Gmail and reads the amount, the shop and the date. No bank password, no bank login, nothing paid, and no AI (free patterns). It only reads: nothing can be paid or moved.</P>
+        <P>Once per bank: in its app, turn on <b>purchase / transaction alerts by email</b> for every card, for any amount ($0.01). Settings → Bank & cards shows the steps for Bank of America, SoFi and Capital One. Gmail must be connected (Settings → Google).</P>
+        <P>Deposits, payments to your card and statements are skipped. The purchases go into the same bill finder: the same company charging about the same amount every month (or year) shows up in Inbox, and price rises are flagged. The first time it looks back over your old alert emails too.</P>
+        <Example caption="Made-up example of Settings → Bank & cards.">
+          <AlertBanks gmail read={128} banks={['Bank of America', 'Capital One']} />
         </Example>
-        <P>No bank link? Download your transactions as a <b>CSV</b> from your bank and use <b>Import a bank CSV</b> in Inbox. SimpleFIN (paid) is still offered as another option.</P>
+        <P>No alerts yet? Download your transactions as a <b>CSV</b> from your bank and use <b>Import a bank CSV</b> in Inbox. A paid direct bank link (SimpleFIN) is also in Settings.</P>
       </Fold>
 
       <Fold icon="📅" title="Google Calendar">
@@ -108,7 +109,7 @@ export function Guide() {
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-stone-700 dark:text-slate-300">
           <li><b>Supabase</b>: the project is linked to GitHub; pushing to <code>main</code> updates the database, the server functions and the website (see README).</li>
           <li><b>Sign-in</b>: Supabase → Authentication → URL configuration: Site URL = the website address. For “Continue with Google”, turn on the Google provider with the same Google client.</li>
-          <li><b>Server secrets</b> (Supabase → Edge Functions → Secrets): <code>LT_SECRET_KEY</code> (long random text), <code>CRON_SECRET</code>, <code>SITE_URL</code>, <code>LT_ALLOWED_EMAILS</code> (your email: only you can use the automatic parts), <code>PLAID_CLIENT_ID</code> and <code>PLAID_SECRET</code> (free Trial at dashboard.plaid.com), <code>GEMINI_API_KEY</code> (free), optional <code>GROQ_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code>, <code>RESEND_API_KEY</code>.</li>
+          <li><b>Server secrets</b> (Supabase → Edge Functions → Secrets): <code>LT_SECRET_KEY</code> (long random text), <code>CRON_SECRET</code>, <code>SITE_URL</code>, <code>LT_ALLOWED_EMAILS</code> (your email: only you can use the automatic parts), <code>GEMINI_API_KEY</code> (free), optional <code>GROQ_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code>, <code>RESEND_API_KEY</code>.</li>
           <li><b>Google Cloud</b>: enable the Calendar and Gmail APIs, make an OAuth “Web” client with the redirect <code>https://&lt;project&gt;.supabase.co/functions/v1/google-callback</code>, add yourself as a test user, then publish the app (otherwise Google signs you out every 7 days).</li>
           <li><b>Morning run</b>: Supabase → Vault: add <code>lt_project_url</code> and <code>lt_cron_secret</code> (same as CRON_SECRET).</li>
           <li><b>iPhone / Android</b>: open the website and “Add to Home Screen”.</li>

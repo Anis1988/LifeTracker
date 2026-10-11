@@ -30,8 +30,6 @@ recurring bills, warns you about price rises, trials ending and renewals, and fi
 | `CRON_SECRET` | another random text (protects the morning run) |
 | `SITE_URL` | the website address |
 | `LT_ALLOWED_EMAILS` | your email: only listed people can use the bank, Google and AI parts |
-| `PLAID_CLIENT_ID`, `PLAID_SECRET` | bank link: dashboard.plaid.com → sign up → free **Trial** → Developers → Keys (use the Production secret) |
-| `PLAID_ENV` | optional: `sandbox` to try with Plaid's test banks (default: production) |
 | `GEMINI_API_KEY` | free, aistudio.google.com |
 | `GROQ_API_KEY` | optional, free, console.groq.com |
 | `OPENROUTER_API_KEY` | optional, free models |
@@ -48,7 +46,7 @@ Supabase → **Vault** → add two secrets: `lt_project_url` = `https://<ref>.su
 The database runs it every day at 11:15 UTC (see `supabase/migrations/…_storage_cron.sql`).
 
 ### 6. Bank
-In the app: Settings → Bank & cards → **Connect a bank** (Plaid, free Trial: up to 10 bank logins, read-only). SimpleFIN (paid) is still there as another option.
+Free: turn on **purchase alerts by email** in each bank's app (Settings → Bank & cards shows the steps for Bank of America, SoFi, Capital One) and connect Gmail; the alert emails are read every morning with free patterns. Paid alternative: SimpleFIN (direct bank link).
 
 ## Develop
 ```

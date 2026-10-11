@@ -156,3 +156,16 @@ export function looksLikeBill(m: Mail): boolean {
   const noise = /(shipped|out for delivery|tracking number|order has been delivered|unsubscribe from this newsletter)/.test(all) && !/subscription|renew|premium|policy/.test(all);
   return money && word && !noise;
 }
+
+/** 📧 Bank purchase-alert emails from the last `days` days (ids only). */
+export async function findAlertEmails(at: string, days: number, query: string, max = 200): Promise<string[]> {
+  const ids: string[] = [];
+  let page: string | undefined;
+  do {
+    const q = new URLSearchParams({ q: `newer_than:${days}d (${query})`, maxResults: '100', ...(page ? { pageToken: page } : {}) });
+    const r = await g<{ messages?: { id: string }[]; nextPageToken?: string }>(at, `${GM}/messages?${q}`);
+    ids.push(...(r.messages ?? []).map((m) => m.id));
+    page = r.nextPageToken;
+  } while (page && ids.length < max);
+  return ids.slice(0, max);
+}

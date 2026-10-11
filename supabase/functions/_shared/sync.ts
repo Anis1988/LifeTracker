@@ -3,10 +3,10 @@ import type { Alert, Extracted, Item, Settings } from './model.ts';
 import { daysBetween, iso, money, nextDue, perYear, today } from './money.ts';
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
-import { ensureCalendar, findBillEmails, has, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
+import { ensureCalendar, findAlertEmails, findBillEmails, has, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
 import { readWithAi } from './ai.ts';
-import { connection, env, open, plaidConnections, saveConnection, settingsOf } from './server.ts';
-import { accounts as plaidAccounts, PlaidError, syncTransactions } from './plaid.ts';
+import { connection, env, open, saveConnection, settingsOf } from './server.ts';
+import { ALERT_QUERY, parseBankAlert } from './alerts.ts';
 
 /**
  * 🔄 One automatic run for one person (every morning, or "Sync now"):
@@ -32,7 +32,7 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
   };
 
   await step('Bank', () => bankStep(db, userId, s, opts.full));
-  await step('Plaid', () => plaidStep(db, userId));
+  await step('Bank alerts', () => alertStep(db, userId, s));
   await step('Recurring', () => detectStep(db, userId, s, alerts));
   await step('Gmail', () => gmailStep(db, userId, s, alerts));
   await step('Due dates', () => rollStep(db, userId));
@@ -73,42 +73,34 @@ async function bankStep(db: SupabaseClient, userId: string, s: Settings, full?: 
   return `${rows.length} transactions from ${accounts.length} account(s)${errors.length ? ` (bank says: ${errors.join('; ')})` : ''}`;
 }
 
-// ---------- 🏦 Plaid (one connection per bank login) ----------
-export async function plaidStep(db: SupabaseClient, userId: string): Promise<string | void> {
-  const items = await plaidConnections(db, userId);
-  if (!items.length) return;
-  const out: string[] = [], errs: string[] = [];
-  for (const c of items) {
-    const bank = (c.meta.institution as string) || 'Bank';
-    try {
-      const token = await open(c.secret);
-      const accts = await plaidAccounts(token);
-      const name = new Map(accts.map((a) => [a.account_id, `${bank} ${a.name}${a.mask ? ` …${a.mask}` : ''}`.slice(0, 80)]));
-      const r = await syncTransactions(token, c.meta.cursor as string | undefined);
-      const rows = [...r.added, ...r.modified].filter((t) => !t.pending).map((t) => {
-        const description = (t.merchant_name || t.name || '').slice(0, 200);
-        // Plaid: positive = money out. The app: negative = money out.
-        return { user_id: userId, external_id: `plaid:${t.transaction_id}`, account: name.get(t.account_id) ?? bank, posted: t.date, amount: -t.amount, description, merchant: merchantKey(description) };
-      });
-      for (let i = 0; i < rows.length; i += 500) {
-        const { error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id' });
-        if (error) throw new Error(error.message);
-      }
-      if (r.removed.length) await db.from('transactions').delete().eq('user_id', userId).in('external_id', r.removed.map((id) => `plaid:${id}`));
-      await saveConnection(db, userId, c.kind, null, {
-        cursor: r.cursor, lastSync: new Date().toISOString(), error: null,
-        accounts: accts.map((a) => ({ name: name.get(a.account_id), balance: a.balances.current ?? 0, currency: a.balances.iso_currency_code ?? 'USD' })),
-      });
-      out.push(`${bank}: ${rows.length} transaction(s)`);
-    } catch (e) {
-      // ITEM_LOGIN_REQUIRED: the bank wants you to log in again (Settings shows a "Reconnect" button).
-      const msg = e instanceof PlaidError && e.code === 'ITEM_LOGIN_REQUIRED' ? 'needs you to log in again (Settings → Bank)' : e instanceof Error ? e.message : String(e);
-      await saveConnection(db, userId, c.kind, null, { error: msg, errorCode: e instanceof PlaidError ? e.code : null });
-      errs.push(`${bank} ${msg}`); // the other banks still sync
-    }
+// ---------- 📧 bank alert emails (free: patterns, no AI) ----------
+async function alertStep(db: SupabaseClient, userId: string, s: Settings): Promise<string | void> {
+  const c = await connection(db, userId, 'google');
+  if (!c || !s.bank.alerts || !has(c.meta.scope as string, 'gmail')) return;
+  const at = await refresh(await open(c.secret));
+  const seen = new Set((c.meta.seenAlerts as string[] | undefined) ?? []);
+  // First time: the last 400 days (as far back as your alerts go); then the last week.
+  const ids = (await findAlertEmails(at, c.meta.alertsScanned ? 7 : s.bank.lookbackDays, ALERT_QUERY, c.meta.alertsScanned ? 200 : 2000)).filter((id) => !seen.has(id));
+  const rows: Record<string, unknown>[] = [];
+  let skipped = 0;
+  const banks = new Set<string>();
+  for (const id of ids) {
+    const m = await readEmail(at, id);
+    seen.add(id);
+    const tx = parseBankAlert(m);
+    if (!tx) { skipped++; continue; }
+    banks.add(tx.bank);
+    rows.push({ user_id: userId, external_id: `mail:${id}`, account: tx.account, posted: tx.posted, amount: -tx.amount, description: tx.merchant, merchant: merchantKey(tx.merchant) });
   }
-  if (errs.length) throw new Error(`${errs.join(' · ')}${out.length ? ` (done: ${out.join(', ')})` : ''}`);
-  return out.join(' · ');
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
+    if (error) throw new Error(error.message);
+  }
+  await saveConnection(db, userId, 'google', null, {
+    seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(),
+    alertsRead: ((c.meta.alertsRead as number) ?? 0) + rows.length, alertBanks: [...new Set([...((c.meta.alertBanks as string[]) ?? []), ...banks])],
+  });
+  if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}`;
 }
 
 // ---------- 🔁 recurring bills in the transactions ----------
