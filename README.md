@@ -20,7 +20,7 @@ recurring bills, warns you about price rises, trials ending and renewals, and fi
 - **Settings → Pages → Source: GitHub Actions.**
 - **Settings → Secrets and variables → Actions**
   - Secrets: `SUPABASE_ACCESS_TOKEN` (supabase.com → Account → Access tokens), `SUPABASE_DB_PASSWORD` (the database password)
-  - Variables: `SUPABASE_PROJECT_REF` (the id in your project URL), `VITE_SUPABASE_URL` (`https://<ref>.supabase.co`), `VITE_SUPABASE_ANON_KEY` (Project Settings → API → anon / publishable key: safe to be public)
+  - Variables (or Secrets, either works): `SUPABASE_PROJECT_REF` (the id in your project URL), `VITE_SUPABASE_URL` (`https://<ref>.supabase.co`), `VITE_SUPABASE_ANON_KEY` (Project Settings → API → anon / publishable key: safe to be public)
 - Push to `main` (or Actions → Deploy → Run workflow): the database tables, the server functions and the website are deployed.
 
 ### 3. Server secrets (Supabase → Edge Functions → Secrets)
