@@ -39,6 +39,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="mx-auto max-w-md px-4 py-10">
       <div className="mb-6 flex items-center gap-2"><img src="./icon.svg" alt="" className="h-9 w-9" /><span className="font-display text-2xl font-semibold">LifeTracker</span></div>
       {children}
+      <p className="mt-6 text-center text-xs text-stone-500"><a className="underline" href="./privacy.html">Privacy</a> · <a className="underline" href="./terms.html">Terms</a></p>
       <Toasts />
     </div>
   );
