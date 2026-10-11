@@ -3,7 +3,8 @@ import { Fold } from '../components/ui';
 import { ItemRow, LoanCalc, Totals, Upcoming } from '../components/Items';
 import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
 import { AlertBanks } from '../components/Bank';
-import type { Alert, Doc, Item, Suggestion } from '../../supabase/functions/_shared/model.ts';
+import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
+import type { Alert, Doc, Finding, Item, Paper, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
 /* made-up examples, only for this guide */
@@ -24,6 +25,29 @@ const ALERTS: Alert[] = [
 const DOC: Doc = { id: 'd1', path: '', file_name: 'policy-renewal.pdf', mime: 'application/pdf', size: 1, status: 'done', ai_by: 'Gemini Flash (free)', error: null, item_id: null, created_at: today(),
   extracted: { isBill: true, name: 'Example Car Insurance', merchant: 'Example Insurance', category: 'insurance', amount: 690, currency: 'USD', cycle: 'semiannual', nextDue: d(40), endsOn: d(25), trialEnds: null, last4: '', policyNumber: 'EX-123456', coverage: 'Liability 100/300, collision with $500 deductible, roadside help.', deductible: 500, balance: null, rate: null, summary: 'Your car insurance renews soon at $690 for 6 months.', warnings: ['Price up 8% at renewal'] } };
 
+const fBase = { url: null, site: null, snippet: null, verdict: null, why: null, status: 'new', found_at: today(), check_after: null, created_at: '', updated_at: '' } as const;
+const WEB: Finding[] = [
+  { ...fBase, id: 'w1', kind: 'web', key: 'w1', title: 'Jordan Example - Example Bakery owner', url: 'https://example.com/team', site: 'example.com', snippet: 'Team page with a photo and a work email.', verdict: 'profile', why: 'Your own work page.' },
+  { ...fBase, id: 'w2', kind: 'web', key: 'w2', title: '“Jordan Example” selling cheap phones', url: 'https://example.org/shop', site: 'example.org', snippet: 'A shop page using your name and photo.', verdict: 'worrying', why: 'Looks like a fake profile using your name.' },
+];
+const BROKER_ROWS: Finding[] = [
+  { ...fBase, id: 'b1', kind: 'broker', key: 'spokeo', title: 'Spokeo', status: 'listed' },
+  { ...fBase, id: 'b2', kind: 'broker', key: 'whitepages', title: 'Whitepages', status: 'requested', check_after: d(80) },
+  { ...fBase, id: 'b3', kind: 'broker', key: 'radaris', title: 'Radaris', status: 'gone' },
+];
+const BREACH: Finding[] = [{ ...fBase, id: 'r1', kind: 'breach', key: 'Example Forum', title: 'Example Forum breach', found_at: d(-3) }];
+const sBase = { first_seen: d(-120), unsub: { oneClick: 'https://example.com' }, spam: false, status: 'subscribed', auto: false, done_at: null, error: null, unread: 0 } as const;
+const SENDERS: Sender[] = [
+  { ...sBase, id: 'm1', address: 'deals@example-shop.com', name: 'Example Shop', sample: 'Last chance: 20% off everything', emails: 48, unread: 48, last_seen: d(-1), last_opened: null },
+  { ...sBase, id: 'm2', address: 'news@example-paper.com', name: 'Example Paper', sample: 'Your morning briefing', emails: 30, last_seen: d(-1), last_opened: d(-2) },
+  { ...sBase, id: 'm3', address: 'promo@example-travel.com', name: 'Example Travel', sample: 'Weekend getaways', emails: 12, unread: 12, last_seen: d(-9), last_opened: null, status: 'unsubscribed', auto: true, done_at: d(-2) },
+  { ...sBase, id: 'm4', address: 'winner@example.biz', name: 'Prize Center', sample: 'You won!!!', emails: 6, unread: 6, last_seen: d(-4), last_opened: null, spam: true, unsub: {} },
+] as Sender[];
+const PAPERS: Paper[] = [
+  { id: 'p1', kind: 'passport', name: 'Passport', holder: 'Me', number_end: '4821', expires: d(52), notes: null, photo: null },
+  { id: 'p2', kind: 'registration', name: 'Car registration', holder: 'Example car', number_end: null, expires: d(140), notes: null, photo: null },
+];
+
 const Example = ({ children, caption }: { children: ReactNode; caption: string }) => (
   <figure className="space-y-1.5">
     <div className="pointer-events-none select-none rounded-2xl border border-dashed border-stone-300 p-2 dark:border-slate-700" aria-hidden="true">{children}</div>
@@ -41,6 +65,7 @@ export function Guide() {
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
         <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you.</P>
+        <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: the total, by category, and what’s coming up.">
           <div className="space-y-2"><Totals items={EX} /><Upcoming items={EX} days={30} /></div>
         </Example>
@@ -76,6 +101,63 @@ export function Guide() {
         <P>No alerts yet? Download your transactions as a <b>CSV</b> from your bank and use <b>Import a bank CSV</b> in Inbox. A paid direct bank link (SimpleFIN) is also in Settings.</P>
       </Fold>
 
+      <Fold icon="📊" title="My week">
+        <P>A short summary on Home (and by email on the day you pick in Settings → Documents &amp; My week): money spent this week against a usual week, bills in the next 7 days, anything new about you online, mailing lists removed, documents expiring soon and your credit freeze.</P>
+        <Example caption="Made-up example of My week.">
+          <WeekCard lines={[
+            { icon: '💸', text: 'Spent $412.30 this week (a usual week: $385.00). Most at Example Market $96.10, Example Gas $52.00.' },
+            { icon: '📋', text: '2 bills in the next 7 days: $28.98 (Example Streaming, Example Music App).' },
+            { icon: '📭', text: 'Unsubscribed from 3 mailing lists (some automatically): Example Travel, Example Shoes, Example Deals.', tone: 'good' },
+            { icon: '🛂', text: 'Passport expires in 52 days.', tone: 'warn' },
+          ]} />
+        </Example>
+      </Fold>
+
+      <Fold icon="🕵️" title="Your name online">
+        <P>Fill in <b>Settings → About me</b>: your name (and other spellings), your city, emails, phone numbers and usernames. Every 7 days (you can change it) the free Gemini searches Google for them and sorts each page: your own profile, news, a people-search site, or <b>worrying</b> (a fake profile using your name, a scam, leaked documents or passwords, harassment).</P>
+        <P>Only pages that really came back from the search are kept, so nothing is made up. New ones show in <b>Me</b>; worrying ones also as a heads-up. Tap <b>It’s fine</b> or <b>Not me</b> to clear them. For a worrying page: report it to the site, and ask Google to hide it with “Results about you”.</P>
+        <Example caption="Made-up examples: your own page, and a worrying one.">
+          <div className="space-y-2">{WEB.map((f) => <FindingRow key={f.id} f={f} />)}</div>
+        </Example>
+      </Fold>
+
+      <Fold icon="🧹" title="People-search sites">
+        <P>Sites like Spokeo, Whitepages and Radaris sell your address, phone and relatives. LifeTracker keeps a checklist of the 22 biggest ones; the name search marks the ones that list you. Tap a site for its free removal page and the steps, then tap <b>Removal sent</b>. They often add you back, so you get a reminder to look again after 3 months.</P>
+        <P>Removal can’t be done automatically: each site wants its own form, a captcha and an email confirmation (that’s what paid services charge for).</P>
+        <Example caption="Made-up checklist: one site lists you, one removal sent, one removed.">
+          <BrokerList rows={BROKER_ROWS} />
+        </Example>
+      </Fold>
+
+      <Fold icon="🔓" title="Data breaches and passwords">
+        <P>Sign up once (free) at <b>haveibeenpwned.com/NotifyMe</b> with each of your emails, or at Mozilla Monitor. When a site that has your email is hacked, they email you; LifeTracker reads that email in Gmail and tells you which password to change. No AI, nothing paid.</P>
+        <P><b>Is a password leaked?</b> Type it in Me: it never leaves your phone (only the first 5 characters of a scrambled code are sent), and it isn’t saved.</P>
+        <Example caption="Made-up breach."><BreachList rows={BREACH} /></Example>
+      </Fold>
+
+      <Fold icon="📭" title="Mailing lists (unsubscribe)">
+        <P>From Gmail, LifeTracker counts who sends you newsletters and ads, how many, and when you last opened one. It reads only the <b>headers</b> (sender, subject, opened or not), never what’s inside.</P>
+        <P><b>Unsubscribe</b> uses the official unsubscribe that real newsletters must include (the same one as Gmail’s Unsubscribe button). Most go with one tap, quietly, without opening any page. Some need an email (LifeTracker sends it from your Gmail) or a click on their page (it opens for you).</P>
+        <P><b>Automatic</b> (Settings → Mailing lists): unsubscribes by itself from lists you haven’t opened in 60 days (you choose), listed in your morning email. Never from <b>Spam</b> (that would tell spammers your address works): <b>Block</b> those instead, so their emails go out of your inbox under the label “LifeTracker/Blocked”. Nothing is ever deleted. Tap <b>Keep</b> on any list you want to stay on.</P>
+        <Example caption="Made-up mailing lists: never opened, opened often, unsubscribed automatically, and spam.">
+          <ul className="divide-y divide-stone-200 dark:divide-slate-800">{SENDERS.map((x) => <SenderRow key={x.id} x={x} days={60} />)}</ul>
+        </Example>
+      </Fold>
+
+      <Fold icon="🪪" title="Documents that expire">
+        <P>In Me, <b>Add a document</b>: passport, driver’s licence, ID, car registration or inspection, insurance card, Global Entry, visa… Take a photo and the AI fills in the kind, name and expiry date (free AIs first); check it and save. Only the last 4 characters of the number are kept.</P>
+        <P>You get heads-ups 90, 30 and 7 days before, and on the day. With Google Calendar connected, a “Start renewing” day is added 90 days before (passports take weeks) and the expiry day itself.</P>
+        <Example caption="Made-up documents."><div className="divide-y divide-stone-200 dark:divide-slate-800">{PAPERS.map((p) => <PaperRow key={p.id} p={p} />)}</div></Example>
+      </Fold>
+
+      <Fold icon="🔒" title="Credit freeze and reports">
+        <P>A <b>credit freeze</b> at the three credit bureaus is free, takes about 5 minutes each, and stops anyone from opening a loan or card in your name (the best protection against identity theft). You can lift it for a day when you apply for credit yourself. Me → Credit has the three freeze pages; mark each one done.</P>
+        <P>Every 4 months you get a reminder to look at your free credit reports at annualcreditreport.com for accounts you don’t know.</P>
+        <Example caption="Made-up example: two of three frozen.">
+          <CreditCard c={{ equifax: 'frozen', experian: 'frozen', transunion: 'not', lastReport: d(-40), reportMonths: 4 }} />
+        </Example>
+      </Fold>
+
       <Fold icon="📅" title="Google Calendar">
         <P>Settings → <b>Connect Google Calendar</b>. LifeTracker makes its own <b>LifeTracker</b> calendar (it can’t see or change your other calendars) with each bill’s due date (repeating), renewals and trial ends, with a phone reminder a couple of days before. It updates itself every morning when your bills change.</P>
       </Fold>
@@ -103,6 +185,7 @@ export function Guide() {
 
       <Fold icon="🔐" title="Privacy">
         <P>Your data is in your own Supabase database. Each person only ever sees their own rows (Row Level Security). The bank access link and Google sign-in are encrypted, and the app itself can’t read them: only the server uses them. You can download everything or sign out in Settings.</P>
+        <P>About me (your name, emails, phones, city) is private too; it is sent to the free Gemini only to run the searches. Mailing lists: only email headers are read. Document photos stay in your own private storage.</P>
       </Fold>
 
       <Fold icon="🛠️" title="Setting it up (one time)">
@@ -112,6 +195,7 @@ export function Guide() {
           <li><b>Server secrets</b> (Supabase → Edge Functions → Secrets): <code>LT_SECRET_KEY</code> (long random text), <code>CRON_SECRET</code>, <code>SITE_URL</code>, <code>LT_ALLOWED_EMAILS</code> (your email: only you can use the automatic parts), <code>GEMINI_API_KEY</code> (free), optional <code>GROQ_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code>, <code>RESEND_API_KEY</code>.</li>
           <li><b>Google Cloud</b>: enable the Calendar and Gmail APIs, make an OAuth “Web” client with the redirect <code>https://&lt;project&gt;.supabase.co/functions/v1/google-callback</code>, add yourself as a test user, then publish the app (otherwise Google signs you out every 7 days).</li>
           <li><b>Morning run</b>: Supabase → Vault: add <code>lt_project_url</code> and <code>lt_cron_secret</code> (same as CRON_SECRET).</li>
+          <li><b>Mailing lists (optional)</b>: Google Cloud → Google Auth Platform → Data Access → add the scope <code>gmail.modify</code>, then Settings → Mailing lists → Allow “Manage mailing lists”.</li>
           <li><b>iPhone / Android</b>: open the website and “Add to Home Screen”.</li>
         </ol>
       </Fold>

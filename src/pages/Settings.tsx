@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
-import { Field, Fold, Toggle, errText, toast } from '../components/ui';
+import { Field, Fold, ListInput, Toggle, errText, toast } from '../components/ui';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const Ready = ({ ok, label }: { ok: boolean; label: string }) => (
   <span className={`chip ${ok ? 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' : 'border-stone-300 text-stone-500 dark:border-slate-700'}`}>{ok ? '✓' : '○'} {label}</span>
@@ -32,7 +34,7 @@ export function Settings() {
     void st.reloadStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const google = async (want: ('calendar' | 'gmail')[]) => run('google', async () => {
+  const google = async (want: ('calendar' | 'gmail' | 'mailbox')[]) => run('google', async () => {
     const r = await api<{ url: string }>('google-start', { want, back: siteUrl() });
     location.href = r.url;
   });
@@ -80,6 +82,71 @@ export function Settings() {
     <div className="mx-auto max-w-2xl space-y-3">
       <h1 className="text-2xl font-semibold">Settings</h1>
       {st.statusErr && <p className="card text-sm text-amber-800 dark:text-amber-200">The server didn’t answer: {st.statusErr}</p>}
+
+      <Fold icon="👤" title="About me" subtitle={s.me.names.length ? `${s.me.names[0]}${s.me.places[0] ? ` · ${s.me.places[0]}` : ''}` : 'What to look for online (private to you)'}>
+        <p className="text-sm text-stone-600 dark:text-slate-300">Used to look for you online (Me → Your name online). Private: only you can see it. It is sent to the free Gemini only to run the searches.</p>
+        <p className="text-sm font-medium">Your name (and other spellings)</p>
+        <ListInput values={s.me.names} onChange={(v) => save({ me: { ...s.me, names: v } })} placeholder="First Last" label="name" max={4} />
+        <p className="text-sm font-medium">City or town</p>
+        <ListInput values={s.me.places} onChange={(v) => save({ me: { ...s.me, places: v } })} placeholder="e.g. Orlando FL" label="place" max={3} />
+        <p className="text-sm font-medium">Emails</p>
+        <ListInput values={s.me.emails} onChange={(v) => save({ me: { ...s.me, emails: v } })} placeholder="you@example.com" type="email" label="email" />
+        <p className="text-sm font-medium">Phone numbers</p>
+        <ListInput values={s.me.phones} onChange={(v) => save({ me: { ...s.me, phones: v } })} placeholder="(555) 123-4567" type="tel" label="phone" max={3} />
+        <p className="text-sm font-medium">Usernames (social media, games…)</p>
+        <ListInput values={s.me.usernames} onChange={(v) => save({ me: { ...s.me, usernames: v } })} placeholder="username" label="username" />
+        <Field label="Look for me online" hint="Free (Gemini with Google Search), a few searches each time.">
+          <Toggle on={s.online.on} onChange={(v) => save({ online: { ...s.online, on: v } })} label="Look for me online" />
+        </Field>
+        <Field label="How often">
+          <select className="input" value={s.online.everyDays} onChange={(e) => save({ online: { ...s.online, everyDays: Number(e.target.value) } })} aria-label="How often">
+            {[3, 7, 14, 30].map((n) => <option key={n} value={n}>Every {n} days</option>)}
+          </select>
+        </Field>
+      </Fold>
+
+      <Fold icon="📭" title="Mailing lists" subtitle={s.unsub.on ? (s.unsub.auto ? `Automatic after ${s.unsub.days} days` : 'You choose each one') : 'Off'}>
+        <Field label="Count my mailing lists" hint="Reads only the email headers from Gmail, never the contents.">
+          <Toggle on={s.unsub.on} onChange={(v) => save({ unsub: { ...s.unsub, on: v } })} label="Mailing lists" />
+        </Field>
+        <Field label="Unsubscribe automatically" hint={`From lists you haven’t opened in ${s.unsub.days} days. Only real newsletters with an official unsubscribe; never Spam, never ones you marked “Keep”. Listed in your morning email.`}>
+          <Toggle on={s.unsub.auto} onChange={(v) => save({ unsub: { ...s.unsub, auto: v } })} label="Unsubscribe automatically" />
+        </Field>
+        <Field label="Not opened for">
+          <select className="input" value={s.unsub.days} onChange={(e) => save({ unsub: { ...s.unsub, days: Number(e.target.value) } })} aria-label="Days">
+            {[30, 45, 60, 90, 120, 180].map((n) => <option key={n} value={n}>{n} days</option>)}
+          </select>
+        </Field>
+        <Field label="Keep my inbox tidy" hint="Emails that still come from unsubscribed or blocked senders move out of the inbox, under a “LifeTracker/…” label. Nothing is deleted.">
+          <Toggle on={s.unsub.tidy} onChange={(v) => save({ unsub: { ...s.unsub, tidy: v } })} label="Tidy" />
+        </Field>
+        <div className={`panel space-y-2 text-sm ${status?.google.mailbox ? '' : '!border-amber-300 dark:!border-amber-700'}`}>
+          {status?.google.mailbox ? <p>✓ “Manage mailing lists” is allowed: LifeTracker can send the unsubscribe emails some senders ask for, and move emails out of the inbox (never delete).</p> : (
+            <>
+              <p>One-tap unsubscribe works already. To also unsubscribe by email, block spam senders and tidy the inbox, allow “Manage mailing lists” (Google asks once; nothing is ever deleted).</p>
+              <button className="btn-primary" disabled={!!busy || !status?.keys.google} onClick={() => void google(['mailbox'])}>✉️ Allow “Manage mailing lists”</button>
+            </>
+          )}
+        </div>
+      </Fold>
+
+      <Fold icon="🪪" title="Documents & My week" subtitle={s.week.on ? `My week: ${DAYS[s.week.day]}` : 'My week: off'}>
+        <Field label="Heads-ups for documents that expire" hint={`${s.papers.remind.join(', ')} days before, and on the day. Add them in Me.`}>
+          <Toggle on={s.papers.on} onChange={(v) => save({ papers: { ...s.papers, on: v } })} label="Documents" />
+        </Field>
+        <Field label="“My week” email" hint={status?.keys.email ? `A short summary to ${st.session.user.email}: money, bills coming, your name online, mailing lists, documents, credit.` : 'Needs RESEND_API_KEY on the server (free at resend.com). The same summary is always on Home.'}>
+          <Toggle on={s.week.on} onChange={(v) => save({ week: { ...s.week, on: v } })} label="My week" />
+        </Field>
+        <Field label="Send it on">
+          <select className="input" value={s.week.day} onChange={(e) => save({ week: { ...s.week, day: Number(e.target.value) } })} aria-label="Day">
+            {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+          </select>
+        </Field>
+        <button className="btn" disabled={!!busy || !status?.keys.email} onClick={() => void run('week', async () => {
+          const r = await api<{ log: { steps: string[]; errors: string[] } }>('run', { part: 'week' });
+          toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'Sent.');
+        })}>{busy === 'week' ? <span className="spinner" /> : '✉️ Send my week now'}</button>
+      </Fold>
 
       <Fold icon="🏦" title="Bank & cards" subtitle={status?.google.gmail && s.bank.alerts ? `Bank alert emails: ${status.google.alertsRead ?? 0} purchases read` : 'Free: read your bank’s purchase-alert emails'}>
         <p className="text-sm text-stone-700 dark:text-slate-300">Free and automatic: your banks email you each purchase, and LifeTracker reads those emails in Gmail every morning to find your bills and subscriptions. It only reads; nothing can be paid or moved.</p>

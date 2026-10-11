@@ -102,7 +102,22 @@ export interface Suggestion {
   created_at: string;
 }
 
-export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
+export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
+
+// ---------- 👤 Me: name online, people-search sites, breaches, mailing lists, documents that expire ----------
+export interface Finding {
+  id: string; kind: 'web' | 'broker' | 'breach'; key: string; title: string; url: string | null; site: string | null; snippet: string | null;
+  verdict: 'profile' | 'people-search' | 'news' | 'worrying' | 'other' | null; why: string | null;
+  status: string; found_at: string; check_after: string | null; created_at: string; updated_at: string;
+}
+export interface Sender {
+  id: string; address: string; name: string | null; sample: string | null; emails: number; unread: number;
+  first_seen: string | null; last_seen: string | null; last_opened: string | null;
+  unsub: { oneClick?: string; web?: string; mailto?: string }; spam: boolean;
+  status: 'subscribed' | 'unsubscribed' | 'web' | 'kept' | 'blocked' | 'failed'; auto: boolean; done_at: string | null; error: string | null;
+}
+export interface Paper { id: string; kind: string; name: string; holder: string | null; number_end: string | null; expires: string | null; notes: string | null; photo: string | null; created_at?: string }
+export type Freeze = 'unknown' | 'frozen' | 'not';
 
 export interface Doc {
   id: string; path: string; file_name: string; mime: string; size: number;
@@ -170,6 +185,13 @@ export interface Settings {
   gmail: { on: boolean; plusTag: string }; // forwarding: you+lifetracker@gmail.com
   notify: { email: boolean; dueDays: number; renewalDays: number };
   currency: string;
+  /** 👤 About me: what to look for online (private to you). */
+  me: { names: string[]; emails: string[]; phones: string[]; places: string[]; usernames: string[] };
+  online: { on: boolean; everyDays: number }; // 🕵️ search the web for you (free AI with Google Search)
+  unsub: { on: boolean; auto: boolean; days: number; tidy: boolean }; // 📭 mailing lists; auto = unsubscribe from senders not opened in `days`
+  papers: { on: boolean; remind: number[] }; // 🪪 heads-ups this many days before a document expires
+  credit: { equifax: Freeze; experian: Freeze; transunion: Freeze; lastReport: string | null; reportMonths: number }; // 🔒
+  week: { on: boolean; day: number }; // 📊 "My week" email (0 = Sunday)
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -189,6 +211,12 @@ export const DEFAULT_SETTINGS: Settings = {
   gmail: { on: true, plusTag: 'lifetracker' },
   notify: { email: true, dueDays: 3, renewalDays: 30 },
   currency: 'USD',
+  me: { names: [], emails: [], phones: [], places: [], usernames: [] },
+  online: { on: true, everyDays: 7 },
+  unsub: { on: true, auto: false, days: 60, tidy: true },
+  papers: { on: true, remind: [90, 30, 7] },
+  credit: { equifax: 'unknown', experian: 'unknown', transunion: 'unknown', lastReport: null, reportMonths: 4 },
+  week: { on: true, day: 0 },
 };
 
 /** Saved settings merged over the defaults (new options get their default). */
@@ -206,5 +234,11 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     calendar: { ...d.calendar, ...s?.calendar },
     gmail: { ...d.gmail, ...s?.gmail },
     notify: { ...d.notify, ...s?.notify },
+    me: { ...d.me, ...s?.me },
+    online: { ...d.online, ...s?.online },
+    unsub: { ...d.unsub, ...s?.unsub },
+    papers: { ...d.papers, ...s?.papers },
+    credit: { ...d.credit, ...s?.credit },
+    week: { ...d.week, ...s?.week },
   };
 }

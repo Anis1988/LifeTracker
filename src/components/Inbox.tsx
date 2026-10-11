@@ -31,7 +31,8 @@ export function SuggestionCard({ s, onAdd, onIgnore }: { s: Suggestion; onAdd?: 
   );
 }
 
-const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️' };
+// '' = the title already starts with its own icon (documents, credit, breaches).
+const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭' };
 export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: string) => void }) {
   if (!alerts.length) return null;
   return (
@@ -40,7 +41,7 @@ export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: s
       <ul className="divide-y divide-stone-200 dark:divide-slate-800">
         {alerts.slice(0, 12).map((a) => (
           <li key={a.id} className="flex items-start gap-2 py-2">
-            <span aria-hidden="true">{ALERT_ICON[a.kind]}</span>
+            {ALERT_ICON[a.kind] && <span aria-hidden="true">{ALERT_ICON[a.kind]}</span>}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{a.title}</p>
               {a.body && <p className="text-xs text-stone-500 dark:text-slate-400">{a.body}</p>}

@@ -1,5 +1,6 @@
 import { env } from './server.ts';
-import { catOf, type Item, type Settings } from './model.ts';
+import { catOf, type Item, type Paper, type Settings } from './model.ts';
+import { paperKind } from './people.ts';
 
 /**
  * 📅 Google Calendar and ✉️ Gmail. Calendar uses the narrow "calendars this app created" permission: the app makes
@@ -9,6 +10,9 @@ import { catOf, type Item, type Settings } from './model.ts';
 export const SCOPES = {
   calendar: 'https://www.googleapis.com/auth/calendar.app.created',
   gmail: 'https://www.googleapis.com/auth/gmail.readonly',
+  // 📭 optional, for mailing lists: archive and label emails, send the "unsubscribe" email some senders ask for.
+  // Never deletes anything.
+  mailbox: 'https://www.googleapis.com/auth/gmail.modify',
 };
 export type Want = keyof typeof SCOPES;
 export const callbackUrl = () => `${env('SUPABASE_URL')}/functions/v1/google-callback`;
@@ -34,7 +38,11 @@ async function token(body: Record<string, string>): Promise<TokenReply> {
 }
 export const exchange = (code: string) => token({ code, grant_type: 'authorization_code', redirect_uri: callbackUrl() });
 export const refresh = async (refreshToken: string) => (await token({ refresh_token: refreshToken, grant_type: 'refresh_token' })).access_token!;
-export const has = (scope: string | undefined, w: Want) => !!scope?.split(' ').includes(SCOPES[w]);
+export const has = (scope: string | undefined, w: Want) => {
+  const list = scope?.split(' ') ?? [];
+  // Reading Gmail is also allowed by the wider mailbox permission.
+  return list.includes(SCOPES[w]) || (w === 'gmail' && list.includes(SCOPES.mailbox));
+};
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Google's "too fast" answers (per-minute limits): wait and try again. */
@@ -56,10 +64,10 @@ async function g<T>(at: string, url: string, init: RequestInit = {}): Promise<T>
   }
 }
 
-/** Gmail allows a limited number of reads per minute: keep a steady pace (about 4 emails a second). */
+/** Gmail allows a limited number of reads a minute: keep a steady pace (about 8 emails a second, well under the limit). */
 let lastRead = 0;
 async function pace() {
-  const wait = lastRead + 250 - Date.now();
+  const wait = lastRead + 125 - Date.now();
   if (wait > 0) await sleep(wait);
   lastRead = Date.now();
 }
@@ -106,8 +114,21 @@ export function eventsFor(item: Item, s: Settings, site: string): { kind: string
 const nextDay = (d: string) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
 const sigOf = (ev: GEvent) => { const s = JSON.stringify([ev.summary, ev.description, ev.start, ev.recurrence, ev.reminders]); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
 
-/** Makes the LifeTracker calendar match your bills: adds, updates and removes events. Returns counts. */
-export async function syncCalendar(at: string, calendarId: string, items: Item[], s: Settings, site: string) {
+/** 🪪 A document that expires: a "start renewing" day 90 days before, and the expiry day (reminders 4 weeks and 1 week before). */
+export function paperEvents(p: Paper, site: string): { kind: string; ev: GEvent }[] {
+  if (!p.expires) return [];
+  const k = paperKind(p.kind);
+  const link = site ? `\n\nOpen LifeTracker: ${site}` : '';
+  const allDay = (d: string) => ({ start: { date: d }, end: { date: nextDay(d) } });
+  const start = new Date(Date.parse(`${p.expires}T12:00:00Z`) - 90 * 86400_000).toISOString().slice(0, 10);
+  return [
+    { kind: 'paper-renew', ev: { summary: `${k.icon} Start renewing: ${p.name}`, description: `${p.name}${p.holder ? ` (${p.holder})` : ''} expires on ${p.expires}. Renewing can take weeks.${k.renew ? `\nRenew: ${k.renew}` : ''}${link}`, ...allDay(start), reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 9 * 60 }] } } },
+    { kind: 'paper-expires', ev: { summary: `${k.icon} ${p.name} expires`, description: `${p.name}${p.holder ? ` (${p.holder})` : ''} expires today.${link}`, ...allDay(p.expires), reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 28 * 1440 }, { method: 'popup', minutes: 7 * 1440 }] } } },
+  ];
+}
+
+/** Makes the LifeTracker calendar match your bills (and documents that expire): adds, updates and removes events. Returns counts. */
+export async function syncCalendar(at: string, calendarId: string, items: Item[], s: Settings, site: string, papers: Paper[] = []) {
   const existing: GEvent[] = [];
   let page: string | undefined;
   do {
@@ -119,8 +140,9 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
   const have = new Map(existing.map((e) => [`${e.extendedProperties?.private?.item}:${e.extendedProperties?.private?.kind}`, e]));
   let added = 0, changed = 0, removed = 0;
   const want = new Set<string>();
-  for (const item of items) {
-    for (const { kind, ev } of eventsFor(item, s, site)) {
+  const all = [...items.map((i) => ({ id: i.id, evs: eventsFor(i, s, site) })), ...papers.map((p) => ({ id: p.id, evs: paperEvents(p, site) }))];
+  for (const item of all) {
+    for (const { kind, ev } of item.evs) {
       const k = `${item.id}:${kind}`;
       want.add(k);
       const sig = sigOf(ev);
@@ -189,4 +211,50 @@ export async function findAlertEmails(at: string, days: number, query: string, m
     page = r.nextPageToken;
   } while (page && ids.length < max);
   return ids.slice(0, max);
+}
+
+/** Message ids for any Gmail search (newest first), up to `max`. */
+export async function searchIds(at: string, q: string, max: number, opts: { spam?: boolean } = {}): Promise<string[]> {
+  const ids: string[] = [];
+  let page: string | undefined;
+  do {
+    const p = new URLSearchParams({ q, maxResults: String(Math.min(500, max)), ...(opts.spam ? { includeSpamTrash: 'true' } : {}), ...(page ? { pageToken: page } : {}) });
+    const r = await g<{ messages?: { id: string }[]; nextPageToken?: string }>(at, `${GM}/messages?${p}`);
+    ids.push(...(r.messages ?? []).map((m) => m.id));
+    page = r.nextPageToken;
+  } while (page && ids.length < max);
+  return ids.slice(0, max);
+}
+
+/** Only the headers of an email (never the contents): who, subject, the "unsubscribe" header, opened or not. */
+export interface MailHead { id: string; from: string; subject: string; date: string; unread: boolean; spam: boolean; inbox: boolean; listUnsub: string; listUnsubPost: string }
+export async function readHead(at: string, id: string): Promise<MailHead> {
+  await pace();
+  const q = new URLSearchParams({ format: 'metadata' });
+  for (const h of ['From', 'Subject', 'List-Unsubscribe', 'List-Unsubscribe-Post']) q.append('metadataHeaders', h);
+  const m = await g<{ labelIds?: string[]; internalDate: string; payload: Part }>(at, `${GM}/messages/${id}?${q}`);
+  const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
+  const labels = m.labelIds ?? [];
+  return { id, from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), unread: labels.includes('UNREAD'), spam: labels.includes('SPAM'), inbox: labels.includes('INBOX'), listUnsub: h('list-unsubscribe'), listUnsubPost: h('list-unsubscribe-post') };
+}
+
+/** The "LifeTracker/…" label (made once). Needs the mailbox permission. */
+export async function ensureLabel(at: string, name: string): Promise<string> {
+  const r = await g<{ labels?: { id: string; name: string }[] }>(at, `${GM}/labels`);
+  const found = r.labels?.find((l) => l.name === name);
+  if (found) return found.id;
+  return (await g<{ id: string }>(at, `${GM}/labels`, { method: 'POST', body: JSON.stringify({ name, labelListVisibility: 'labelShow', messageListVisibility: 'show' }) })).id;
+}
+/** Archive (out of the inbox, nothing deleted) and label. Needs the mailbox permission. */
+export async function archive(at: string, ids: string[], labelId: string) {
+  for (let i = 0; i < ids.length; i += 500) {
+    await g(at, `${GM}/messages/batchModify`, { method: 'POST', body: JSON.stringify({ ids: ids.slice(i, i + 500), addLabelIds: [labelId], removeLabelIds: ['INBOX'] }) });
+  }
+}
+/** Sends a short plain email from your Gmail (the "unsubscribe" email some senders ask for). Needs the mailbox permission. */
+export async function sendMail(at: string, to: string, subject: string, body: string) {
+  const clean = (x: string) => x.replace(/[\r\n]+/g, ' ').slice(0, 300);
+  const raw = [`To: ${clean(to)}`, `Subject: ${clean(subject)}`, 'Content-Type: text/plain; charset=UTF-8', '', body].join('\r\n');
+  const b = btoa(String.fromCharCode(...new TextEncoder().encode(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  await g(at, `${GM}/messages/send`, { method: 'POST', body: JSON.stringify({ raw: b }) });
 }

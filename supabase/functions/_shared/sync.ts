@@ -1,5 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
-import type { Alert, Extracted, Item, Settings } from './model.ts';
+import type { Alert, Extracted, Finding, Item, Paper, Sender, Settings } from './model.ts';
 import { daysBetween, iso, money, nextDue, perYear, today } from './money.ts';
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
@@ -7,6 +7,10 @@ import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, look
 import { readWithAi } from './ai.ts';
 import { connection, env, open, saveConnection, settingsOf } from './server.ts';
 import { ALERT_QUERY, parseBankAlert } from './alerts.ts';
+import { breachStep, ensureBrokers, onlineStep } from './me.ts';
+import { sweepStep, unsubStep } from './unsub.ts';
+import { spentOf, weekSummary } from './week.ts';
+import { paperKind } from './people.ts';
 
 /**
  * 🔄 One automatic run for one person (every morning, or "Sync now"):
@@ -18,11 +22,18 @@ export interface RunLog { steps: string[]; errors: string[]; newAlerts: number }
 
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
-export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean } = {}): Promise<RunLog> {
+/** Parts that can be run on their own (from the app's buttons). */
+export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week';
+
+export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
   const log: RunLog = { steps: [], errors: [], newAlerts: 0 };
   const alerts: NewAlert[] = [];
+  // Server functions are stopped after about 150 s: long reads stop in time and carry on the next run.
+  const until = Date.now() + 110_000;
+  const want = (p: Part) => !opts.only || opts.only.includes(p);
   const step = async (name: string, f: () => Promise<string | void>) => {
+    if (Date.now() > until + 15_000) { log.errors.push(`${name}: skipped (out of time, next run)`); return; }
     try {
       const r = await f();
       if (r) log.steps.push(`${name}: ${r}`);
@@ -31,20 +42,29 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     }
   };
 
-  await step('Bank', () => bankStep(db, userId, s, opts.full));
-  await step('Bank alerts', () => alertStep(db, userId, s));
-  await step('Recurring', () => detectStep(db, userId, s, alerts));
-  await step('Gmail', () => gmailStep(db, userId, s, alerts));
-  await step('Due dates', () => rollStep(db, userId));
-  await step('Calendar', () => calendarStep(db, userId, s));
-  await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
+  if (want('bills')) {
+    await step('Bank', () => bankStep(db, userId, s, opts.full));
+    await step('Bank alerts', () => alertStep(db, userId, s, until));
+    await step('Recurring', () => detectStep(db, userId, s, alerts));
+    await step('Gmail', () => gmailStep(db, userId, s, alerts, until));
+    await step('Due dates', () => rollStep(db, userId));
+    await step('Calendar', () => calendarStep(db, userId, s));
+    await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
+  }
+  if (want('breaches')) await step('Data breaches', () => breachStep(db, userId, alerts));
+  if (want('online')) await step('Your name online', async () => { await ensureBrokers(db, userId); return onlineStep(db, userId, s, alerts, opts.force); });
+  if (want('lists')) {
+    await step('Mailing lists', () => sweepStep(db, userId, s, until));
+    await step('Unsubscribe', () => unsubStep(db, userId, s, until + 10_000));
+  }
 
   if (alerts.length) {
     const { data } = await db.from('alerts').upsert(alerts, { onConflict: 'user_id,kind,key', ignoreDuplicates: true }).select('title, body');
     log.newAlerts = data?.length ?? 0;
     if (data?.length && s.notify.email && email) await step('Email', () => digest(email, data as { title: string; body: string | null }[]));
   }
-  await saveConnection(db, userId, 'status', null, { lastRun: new Date().toISOString(), steps: log.steps, errors: log.errors });
+  if (want('week') && email) await step('My week', () => weekStep(db, userId, email, s, opts.force));
+  if (!opts.only) await saveConnection(db, userId, 'status', null, { lastRun: new Date().toISOString(), steps: log.steps, errors: log.errors });
   return log;
 }
 
@@ -74,7 +94,7 @@ async function bankStep(db: SupabaseClient, userId: string, s: Settings, full?: 
 }
 
 // ---------- 📧 bank alert emails (free: patterns, no AI) ----------
-async function alertStep(db: SupabaseClient, userId: string, s: Settings): Promise<string | void> {
+async function alertStep(db: SupabaseClient, userId: string, s: Settings, until: number): Promise<string | void> {
   const c = await connection(db, userId, 'google');
   if (!c || !s.bank.alerts || !has(c.meta.scope as string, 'gmail')) return;
   const at = await refresh(await open(c.secret));
@@ -87,6 +107,7 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings): Promi
   let skipped = 0, stopped = '';
   const banks = new Set<string>();
   for (const id of ids) {
+    if (Date.now() > until) { stopped = 'out of time: the rest next time'; break; }
     let m;
     try { m = await readEmail(at, id); } catch (e) {
       if (!isRateLimit(e)) throw e;
@@ -159,7 +180,7 @@ async function detectStep(db: SupabaseClient, userId: string, s: Settings, alert
 }
 
 // ---------- ✉️ Gmail receipts ----------
-async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[]): Promise<string | void> {
+async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number): Promise<string | void> {
   const c = await connection(db, userId, 'google');
   if (!c || !s.gmail.on || !has(c.meta.scope as string, 'gmail')) return;
   const at = await refresh(await open(c.secret));
@@ -169,6 +190,7 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   let read = 0, bills = 0, skipped = 0;
   let stopped = '';
   for (const id of ids) {
+    if (Date.now() > until) { stopped = 'out of time: the rest next time'; break; }
     let m;
     try { m = await readEmail(at, id); } catch (e) {
       if (!isRateLimit(e)) throw e;
@@ -243,7 +265,8 @@ async function calendarStep(db: SupabaseClient, userId: string, s: Settings): Pr
   const calendarId = await ensureCalendar(at, c.meta.calendarId as string | undefined);
   if (calendarId !== c.meta.calendarId) await saveConnection(db, userId, 'google', null, { calendarId });
   const { data: items } = await db.from('items').select('*').eq('user_id', userId);
-  const r = await syncCalendar(at, calendarId, (items as Item[]) ?? [], s, env('SITE_URL'));
+  const { data: papers } = s.papers.on ? await db.from('papers').select('*').eq('user_id', userId) : { data: [] };
+  const r = await syncCalendar(at, calendarId, (items as Item[]) ?? [], s, env('SITE_URL'), (papers as Paper[]) ?? []);
   return `calendar up to date (${r.added} added, ${r.changed} changed, ${r.removed} removed)`;
 }
 
@@ -258,18 +281,59 @@ async function headsUpStep(db: SupabaseClient, userId: string, s: Settings, aler
     if (i.trial_ends && i.trial_ends >= t && daysBetween(t, i.trial_ends) <= 3) { alerts.push({ user_id: userId, kind: 'trial', key: `${i.id}:${i.trial_ends}`, item_id: i.id, title: `${i.name}: free trial ends ${i.trial_ends}`, body: `Cancel before then if you don't want to pay ${money(i.amount)}.` }); n++; }
     if (i.ends_on && i.ends_on >= t && daysBetween(t, i.ends_on) <= s.notify.renewalDays) { alerts.push({ user_id: userId, kind: 'renewal', key: `${i.id}:${i.ends_on}`, item_id: i.id, title: `${i.name} renews or ends on ${i.ends_on}`, body: 'A good moment to compare prices or cancel.' }); n++; }
   }
+  // 🪪 documents that expire: one heads-up at each step (90, 30, 7 days before by default), and once expired.
+  if (s.papers.on) {
+    const { data: papers } = await db.from('papers').select('*').eq('user_id', userId).not('expires', 'is', null);
+    for (const p of (papers as Paper[]) ?? []) {
+      const left = daysBetween(t, p.expires!);
+      const at = [...s.papers.remind].sort((a, b) => a - b).find((d) => left <= d);
+      if (left < 0) { alerts.push({ user_id: userId, kind: 'paper', key: `${p.id}:${p.expires}:expired`, item_id: null, title: `${paperKind(p.kind).icon} ${p.name} has expired (${p.expires})`, body: 'Renew it, or delete it in Me if you already did.' }); n++; }
+      else if (at != null) { alerts.push({ user_id: userId, kind: 'paper', key: `${p.id}:${p.expires}:${at}`, item_id: null, title: `${paperKind(p.kind).icon} ${p.name} expires in ${left} day${left === 1 ? '' : 's'} (${p.expires})`, body: paperKind(p.kind).renew ? `Renew: ${paperKind(p.kind).renew}` : 'Time to renew it.' }); n++; }
+    }
+  }
+  // 🔒 credit freeze (once per change) and the free credit reports (every few months).
+  const c = s.credit;
+  const left = (['equifax', 'experian', 'transunion'] as const).filter((b) => c[b] !== 'frozen');
+  if (left.length) alerts.push({ user_id: userId, kind: 'credit', key: `freeze:${left.join(',')}`, item_id: null, title: `🔒 Freeze your credit: ${left.length} of 3 left`, body: 'Free, takes 5 minutes each, and stops anyone opening a loan or card in your name. Steps in Me → Credit.' });
+  const due = !c.lastReport || daysBetween(c.lastReport, t) >= c.reportMonths * 30;
+  if (due) alerts.push({ user_id: userId, kind: 'credit', key: `report:${t.slice(0, 7)}`, item_id: null, title: '🔎 Check your free credit reports', body: 'annualcreditreport.com: look for accounts you don’t know. Then tick “Checked” in Me → Credit.' });
   if (n) return `${n} heads-up(s)`;
 }
 
+// ---------- 📊 My week (an email on your chosen day; the same summary as on Home) ----------
+async function weekStep(db: SupabaseClient, userId: string, email: string, s: Settings, force?: boolean): Promise<string | void> {
+  if (!s.week.on && !force) return;
+  const t = today();
+  const meta = (await connection(db, userId, 'me'))?.meta ?? {};
+  if (!force && (new Date(`${t}T12:00:00Z`).getUTCDay() !== s.week.day || meta.weekSent === t)) return;
+  const since = iso(new Date(Date.now() - 63 * 86400_000));
+  const [items, findings, senders, papers, tx] = await Promise.all([
+    db.from('items').select('*').eq('user_id', userId),
+    db.from('findings').select('*').eq('user_id', userId).neq('status', 'unknown'),
+    db.from('senders').select('*').eq('user_id', userId).eq('status', 'unsubscribed'),
+    db.from('papers').select('*').eq('user_id', userId),
+    db.from('transactions').select('posted, amount, description').eq('user_id', userId).gte('posted', since).limit(20000),
+  ]);
+  const lines = weekSummary({ items: (items.data as Item[]) ?? [], findings: (findings.data as Finding[]) ?? [], senders: (senders.data as Sender[]) ?? [], papers: s.papers.on ? (papers.data as Paper[]) ?? [] : [], settings: s, spent: spentOf((tx.data ?? []) as { posted: string; amount: number; description: string | null }[], t) }, t);
+  const r = await sendEmail(email, `LifeTracker: your week (${t})`, ['Your week, in short:', '', ...lines.map((l) => `${l.icon} ${l.text}`)].join('\n'));
+  if (r.startsWith('sent')) await saveConnection(db, userId, 'me', null, { weekSent: t });
+  return r;
+}
+
 /** The morning email (Resend: RESEND_API_KEY, RESEND_FROM). */
-async function digest(to: string, list: { title: string; body: string | null }[]): Promise<string> {
+function digest(to: string, list: { title: string; body: string | null }[]): Promise<string> {
+  const text = [`LifeTracker: ${list.length} new heads-up${list.length > 1 ? 's' : ''}`, '', ...list.map((a) => `• ${a.title}${a.body ? `\n  ${a.body}` : ''}`)].join('\n');
+  return sendEmail(to, `LifeTracker: ${list[0].title}${list.length > 1 ? ` (+${list.length - 1} more)` : ''}`, text);
+}
+
+async function sendEmail(to: string, subject: string, body: string): Promise<string> {
   const key = env('RESEND_API_KEY');
   if (!key) return 'skipped (no RESEND_API_KEY)';
   const site = env('SITE_URL');
-  const text = [`LifeTracker: ${list.length} new heads-up${list.length > 1 ? 's' : ''}`, '', ...list.map((a) => `• ${a.title}${a.body ? `\n  ${a.body}` : ''}`), '', site ? `Open LifeTracker: ${site}` : ''].join('\n');
+  const text = `${body}\n\n${site ? `Open LifeTracker: ${site}` : ''}`;
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: env('RESEND_FROM') || 'LifeTracker <onboarding@resend.dev>', to: [to], subject: `LifeTracker: ${list[0].title}${list.length > 1 ? ` (+${list.length - 1} more)` : ''}`.slice(0, 150), text }),
+    body: JSON.stringify({ from: env('RESEND_FROM') || 'LifeTracker <onboarding@resend.dev>', to: [to], subject: subject.slice(0, 150), text }),
     signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`Resend: HTTP ${res.status} ${(await res.text()).slice(0, 120)}`);

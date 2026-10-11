@@ -8,10 +8,12 @@ import { Bills } from './pages/Bills';
 import { Inbox } from './pages/Inbox';
 import { Settings } from './pages/Settings';
 import { Guide } from './pages/Guide';
+import { Me } from './pages/Me';
 
 const TABS = [
   { id: 'home', icon: '🏠', label: 'Home' },
   { id: 'bills', icon: '📋', label: 'Bills' },
+  { id: 'me', icon: '👤', label: 'Me' },
   { id: 'inbox', icon: '🔎', label: 'Inbox' },
   { id: 'settings', icon: '⚙️', label: 'Settings' },
   { id: 'guide', icon: '📖', label: 'Guide' },
@@ -84,7 +86,9 @@ function Main() {
     return () => window.removeEventListener('hashchange', f);
   }, []);
   const go = (t: string) => { location.hash = `#/${t}`; window.scrollTo(0, 0); };
-  const badge = (t: Tab) => (t === 'inbox' ? st.suggestions.length : 0);
+  // Me: worrying pages, people-search listings and breaches still to handle.
+  const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
+  const badge = (t: Tab) => (t === 'inbox' ? st.suggestions.length : t === 'me' ? meCount : 0);
   return (
     <div className="min-h-screen pb-24 sm:pb-8">
       <header className="sticky top-0 z-30 border-b border-stone-200/70 bg-[#f6f3ec]/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
@@ -102,14 +106,14 @@ function Main() {
       </header>
       <main className="mx-auto max-w-5xl px-4 py-5">
         {st.loading ? <p className="text-sm text-stone-500"><span className="spinner" /> Loading your bills…</p>
-          : tab === 'home' ? <Home go={go} /> : tab === 'bills' ? <Bills /> : tab === 'inbox' ? <Inbox /> : tab === 'settings' ? <Settings /> : <Guide />}
+          : tab === 'home' ? <Home go={go} /> : tab === 'bills' ? <Bills /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <Me go={go} /> : tab === 'settings' ? <Settings /> : <Guide />}
       </main>
       {/* Phones: tabs at the bottom, within thumb reach. */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-stone-200 bg-[#f6f3ec]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-stone-200 bg-[#f6f3ec]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:hidden">
         {TABS.map((t) => (
-          <button key={t.id} onClick={() => go(t.id)} className={`relative flex flex-col items-center gap-0.5 py-2 text-[11px] ${tab === t.id ? 'font-semibold text-emerald-800 dark:text-emerald-400' : 'text-stone-500 dark:text-slate-400'}`} aria-current={tab === t.id ? 'page' : undefined}>
+          <button key={t.id} onClick={() => go(t.id)} className={`relative flex flex-col items-center gap-0.5 py-2 text-[10.5px] ${tab === t.id ? 'font-semibold text-emerald-800 dark:text-emerald-400' : 'text-stone-500 dark:text-slate-400'}`} aria-current={tab === t.id ? 'page' : undefined}>
             <span className="text-xl" aria-hidden="true">{t.icon}</span>{t.label}
-            {badge(t.id) ? <span className="absolute right-[22%] top-1 rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-stone-900">{badge(t.id)}</span> : null}
+            {badge(t.id) ? <span className="absolute right-[18%] top-1 rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-stone-900">{badge(t.id)}</span> : null}
           </button>
         ))}
       </nav>

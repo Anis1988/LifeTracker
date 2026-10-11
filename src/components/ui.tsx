@@ -89,3 +89,31 @@ export function Toasts() {
 
 export const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export const shortDate = (d: string | null | undefined) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(d.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) }) : '');
+
+/** A short list of values (names, emails…): type and press Enter or ＋, tap × to remove. */
+export function ListInput({ values, onChange, placeholder, type = 'text', max = 5, label }: { values: string[]; onChange: (v: string[]) => void; placeholder: string; type?: string; max?: number; label: string }) {
+  const [text, setText] = useState('');
+  const add = () => {
+    const v = text.trim();
+    if (!v || values.includes(v) || values.length >= max) return setText('');
+    onChange([...values, v]);
+    setText('');
+  };
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-2">
+        <input className="input min-w-0 flex-1" type={type} placeholder={placeholder} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} aria-label={label} disabled={values.length >= max} />
+        <button className="btn" onClick={add} disabled={!text.trim() || values.length >= max} aria-label={`Add ${label}`}>＋</button>
+      </div>
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {values.map((v) => (
+            <span key={v} className="chip border-stone-300 bg-white text-stone-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+              {v}<button className="ml-0.5 text-stone-400 hover:text-red-600" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

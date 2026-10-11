@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useStore } from '../lib/store';
 import { ItemForm, Totals, Upcoming } from '../components/Items';
 import { AlertList } from '../components/Inbox';
+import { WeekCard } from '../components/Me';
+import { weekSummary } from '../../supabase/functions/_shared/week.ts';
 import { Sheet, errText, toast } from '../components/ui';
 import { api } from '../lib/supabase';
 import type { Item } from '../../supabase/functions/_shared/model.ts';
@@ -55,6 +57,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
         <AlertList alerts={st.alerts} onSeen={(id) => void st.seeAlert(id)} />
       </div>
       <div className="space-y-4">
+        <WeekCard lines={weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: st.settings.papers.on ? st.papers : [], settings: st.settings, spent: st.spent })} onOpen={() => go('me')} />
         <Upcoming items={st.items} onOpen={setOpen} />
         <section className="card flex flex-wrap items-center justify-between gap-2 text-sm">
           <span className="text-stone-600 dark:text-slate-300">🔄 Automatic check: {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</span>

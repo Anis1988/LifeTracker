@@ -3,6 +3,8 @@
 Everything you pay regularly in one place: subscriptions, mortgage, insurance, utilities, phone, loans, memberships.
 As automatic as possible: reads your bank (read-only), your Gmail receipts and the documents you upload, finds
 recurring bills, warns you about price rises, trials ending and renewals, and fills a Google Calendar.
+**Me**: where your name shows up online, people-search sites, data breaches, mailing lists (unsubscribe), documents
+that expire, credit freeze, and a weekly "My week" summary.
 
 - **Database, sign-in, files, server functions, daily run:** Supabase
 - **Website:** GitHub Pages (Supabase doesn't host websites), built and deployed by `.github/workflows/deploy.yml` on every push to `main`
@@ -45,7 +47,10 @@ Google Cloud console → new project → enable **Google Calendar API** and **Gm
 Supabase → **Vault** → add two secrets: `lt_project_url` = `https://<ref>.supabase.co` and `lt_cron_secret` = the same text as `CRON_SECRET`.
 The database runs it every day at 11:15 UTC (see `supabase/migrations/…_storage_cron.sql`).
 
-### 6. Bank
+### 6. Mailing lists (optional)
+Google Cloud → Google Auth Platform → **Data Access** → add the scope `https://www.googleapis.com/auth/gmail.modify`; then in the app, Settings → Mailing lists → Allow “Manage mailing lists” (to unsubscribe by email, block spam senders and tidy the inbox; nothing is ever deleted). One-tap unsubscribe works without it.
+
+### 7. Bank
 Free: turn on **purchase alerts by email** in each bank's app (Settings → Bank & cards shows the steps for Bank of America, SoFi, Capital One) and connect Gmail; the alert emails are read every morning with free patterns. Paid alternative: SimpleFIN (direct bank link).
 
 ## Develop
