@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open LifeTracker</title>
+<meta name="robots" content="noindex">
+<!--
+  The bridge for the Android app's sign-in: the email link (or Google) lands here with ?code=…, and the button
+  hands that one-time code to the app (lifetracker://auth). The code is useless anywhere else: only the app that
+  asked for it can finish the sign-in. Nothing is stored or sent from this page.
+-->
+<style>
+  :root{color-scheme:light dark}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font:16px/1.5 Manrope,system-ui,sans-serif;background:#f3f6f5;color:#0f172a;overflow:hidden}
+  .glow{position:fixed;border-radius:50%;filter:blur(80px);opacity:.5;z-index:-1}
+  .g1{width:420px;height:340px;left:-120px;top:-120px;background:#6ee7b7}.g2{width:380px;height:300px;right:-140px;bottom:-100px;background:#5eead4}
+  .card{margin:16px;max-width:380px;width:100%;box-sizing:border-box;padding:28px 22px;border-radius:28px;background:rgba(255,255,255,.75);border:1px solid rgba(15,23,42,.08);box-shadow:0 10px 30px rgba(15,23,42,.1);backdrop-filter:blur(18px);text-align:center}
+  h1{margin:.4em 0 .2em;font:600 22px Sora,Manrope,system-ui,sans-serif}
+  p{margin:.4em 0;color:#475569;font-size:15px}
+  a.btn{display:block;margin-top:18px;padding:14px;border-radius:16px;background:#047857;color:#fff;font-weight:700;text-decoration:none}
+  .err{color:#b91c1c}
+  @media (prefers-color-scheme:dark){body{background:#070b14;color:#e8eef5}.g1{background:#10b981;opacity:.3}.g2{background:#14b8a6;opacity:.25}.card{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}p{color:#94a3b8}a.btn{background:#34d399;color:#04130d}.err{color:#fca5a5}}
+</style>
+</head><body>
+<div class="glow g1"></div><div class="glow g2"></div>
+<main class="card">
+  <svg width="56" height="56" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#070b14"/><path d="M14 42l10-10 8 8 18-18" fill="none" stroke="#ecfdf5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="18" cy="20" r="4" fill="#fbbf24"/></svg>
+  <h1 id="t">Open LifeTracker</h1>
+  <p id="m">Tap the button to finish signing in, in the app.</p>
+  <a class="btn" id="b" href="#">Open in the LifeTracker app</a>
+  <p id="w" style="font-size:13px;margin-top:14px">On a computer? <a href="./">Open the website</a> instead.</p>
+</main>
+<script>
+  (function () {
+    var q = location.search.slice(1), h = location.hash.slice(1);
+    var params = new URLSearchParams(q || h);
+    var err = params.get('error_description') || params.get('error');
+    if (err) {
+      document.getElementById('t').textContent = 'Sign-in didn’t work';
+      var m = document.getElementById('m'); m.textContent = err.replace(/\+/g, ' ') + '. Go back to the app and try again.'; m.className = 'err';
+    }
+    var tail = 'auth' + (q ? '?' + q : '') + (h ? '#' + h : '');
+    var android = /android/i.test(navigator.userAgent);
+    // Android opens the app from an "intent:" link; elsewhere the plain lifetracker:// link.
+    var href = android ? 'intent://' + tail + '#Intent;scheme=lifetracker;package=app.lifetracker;end' : 'lifetracker://' + tail;
+    var b = document.getElementById('b');
+    b.href = href;
+    if (err) b.textContent = 'Back to the app';
+    if (!params.get('code') && !err) b.style.display = 'none', (document.getElementById('m').textContent = 'Nothing to open here.');
+  })();
+</script>
+</body></html>
