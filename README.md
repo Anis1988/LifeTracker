@@ -54,6 +54,12 @@ Google Cloud → Google Auth Platform → **Data Access** → add the scope `htt
 ### 7. Bank
 Free: turn on **purchase alerts by email** in each bank's app (Settings → Bank & cards shows the steps for Bank of America, SoFi, Capital One) and connect Gmail; the alert emails are read every morning with free patterns. Paid alternative: SimpleFIN (direct bank link).
 
+## Android app (branch `android`)
+The same screens as an Android app (Capacitor). Every push to `android` builds the APK in GitHub Actions
+(`.github/workflows/android.yml`) and puts it on the **android-latest** release: open that page on the phone and tap
+`LifeTracker.apk`. One-time: Supabase → Authentication → URL configuration → Redirect URLs: add `lifetracker://auth`.
+Keep `android` up to date by merging `main` into it.
+
 ## Develop
 ```
 cp .env.example .env.local   # your project URL + anon key
