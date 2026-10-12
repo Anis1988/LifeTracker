@@ -5,7 +5,8 @@ import { Fold, Sheet, errText, toast } from '../components/ui';
 import { AboutMe } from '../components/AboutMe';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperForm, PaperRow, PasswordCheck, SenderRow, WeekCard, senderFilter, type SenderView } from '../components/Me';
 import { weekSummary } from '../../supabase/functions/_shared/week.ts';
-import type { Paper, Sender } from '../../supabase/functions/_shared/model.ts';
+import type { LifeDate, Paper, Sender } from '../../supabase/functions/_shared/model.ts';
+import { DateForm, DateRow } from '../components/Dates';
 
 const ago = (iso?: string | null) => {
   if (!iso) return 'not yet';
@@ -20,13 +21,14 @@ export function Me(_: { go: (tab: string) => void }) {
   const [busy, setBusy] = useState('');
   const [view, setView] = useState<SenderView>('stale');
   const [paper, setPaper] = useState<Partial<Paper> | null>(null);
+  const [date, setDate] = useState<Partial<LifeDate> | null>(null);
   const [showAll, setShowAll] = useState(false);
 
   const web = st.findings.filter((f) => f.kind === 'web');
   const newWeb = web.filter((f) => f.status === 'new').sort((a, b) => Number(b.verdict === 'worrying') - Number(a.verdict === 'worrying'));
   const brokers = st.findings.filter((f) => f.kind === 'broker');
   const breaches = st.findings.filter((f) => f.kind === 'breach');
-  const lines = useMemo(() => weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent }), [st.items, st.findings, st.senders, st.papers, s, st.spent]);
+  const lines = useMemo(() => weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent, dates: st.dates, purchases: st.purchases }), [st.items, st.findings, st.senders, st.papers, s, st.spent]);
   const senders = st.senders.filter(senderFilter(view, s.unsub.days));
   const hasProfile = s.me.names.length > 0 || s.me.emails.length > 0;
 
@@ -120,6 +122,12 @@ export function Me(_: { go: (tab: string) => void }) {
         )}
       </Fold>
 
+      <Fold icon="🎂" title="Important dates & car care" subtitle={st.dates.length ? `${st.dates.length} saved · next ${st.dates[0].title}` : 'Birthdays, oil changes, check-ups…'} open={st.dates.length > 0}>
+        <div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{st.dates.map((d) => <DateRow key={d.id} d={d} onOpen={() => setDate(d)} />)}</div>
+        <button className="btn-primary" onClick={() => setDate({})}>＋ Add a date</button>
+        <p className="text-xs text-slate-500 dark:text-slate-400">A heads-up before each one, on Home’s timeline, and in your Google Calendar (repeating).</p>
+      </Fold>
+
       <Fold icon="🪪" title="Documents that expire" subtitle={st.papers.length ? `${st.papers.length} saved${st.papers[0]?.expires ? ` · next ${st.papers[0].name}` : ''}` : 'Passport, licence, registration…'} open={st.papers.length > 0}>
         <div className="divide-y divide-stone-200 dark:divide-slate-800">{st.papers.map((p) => <PaperRow key={p.id} p={p} onOpen={() => setPaper(p)} />)}</div>
         <button className="btn-primary" onClick={() => setPaper({ kind: 'passport' })}>＋ Add a document</button>
@@ -130,6 +138,11 @@ export function Me(_: { go: (tab: string) => void }) {
         <CreditCard c={s.credit} onChange={(c) => void st.saveSettings({ ...s, credit: c }).catch((e) => toast('err', errText(e)))} />
       </Fold>
 
+      {date && (
+        <Sheet title={date.id ? date.title ?? 'Date' : 'Add a date'} onClose={() => setDate(null)}>
+          <DateForm d={date} onSave={st.saveDate} onDelete={date.id ? () => st.deleteDate(date.id!) : undefined} onDone={() => setDate(null)} />
+        </Sheet>
+      )}
       {paper && (
         <Sheet title={paper.id ? paper.name ?? 'Document' : 'Add a document'} onClose={() => setPaper(null)}>
           <PaperForm paper={paper} userId={st.session.user.id} onDone={() => setPaper(null)} onSave={st.savePaper}

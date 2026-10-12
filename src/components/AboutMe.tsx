@@ -91,7 +91,7 @@ export function SavedPopup({ me, onClose, onCheck }: { me: Me; onClose: () => vo
   const n = FIELDS.reduce((a, f) => a + me[f.key].length, 0);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-[fade_.2s_ease-out]" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="saved-title" className="w-full max-w-sm space-y-4 rounded-3xl bg-[#fbf9f4] p-6 text-center shadow-2xl animate-[pop_.25s_ease-out] dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="saved-title" className="w-full max-w-sm space-y-4 rounded-3xl border border-white/60 bg-[#f8faf9] p-6 text-center shadow-2xl animate-[pop_.25s_ease-out] dark:border-white/10 dark:bg-[#0c1220]" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300" aria-hidden="true">✓</div>
         <div className="space-y-1">
           <h2 id="saved-title" className="text-xl font-semibold">About me saved</h2>

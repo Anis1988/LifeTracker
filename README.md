@@ -3,7 +3,8 @@
 Everything you pay regularly in one place: subscriptions, mortgage, insurance, utilities, phone, loans, memberships.
 As automatic as possible: reads your bank (read-only), your Gmail receipts and the documents you upload, finds
 recurring bills, warns you about price rises, trials ending and renewals, and fills a Google Calendar.
-**Me**: where your name shows up online, people-search sites, data breaches, mailing lists (unsubscribe), documents
+**Home**: this month's spending against a usual month, an "Ask LifeTracker" bar, a timeline of everything coming up.
+**Money**: bills, spending by category with budgets, returns & warranties from order emails. **Me**: important dates & car care, where your name shows up online, people-search sites, data breaches, mailing lists (unsubscribe), documents
 that expire, credit freeze, and a weekly "My week" summary.
 
 - **Database, sign-in, files, server functions, daily run:** Supabase

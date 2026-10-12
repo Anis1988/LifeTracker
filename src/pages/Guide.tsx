@@ -1,11 +1,16 @@
 import type { ReactNode } from 'react';
 import { Fold } from '../components/ui';
-import { ItemRow, LoanCalc, Totals, Upcoming } from '../components/Items';
+import { ItemRow, LoanCalc, Totals } from '../components/Items';
+import { AskChat, MiniRings, MonthHero, TimelineList } from '../components/Dash';
+import { PurchaseRow, SpendingView } from '../components/Spending';
+import { DateRow } from '../components/Dates';
+import { timeline } from '../lib/timeline';
+import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
 import { AlertBanks } from '../components/Bank';
 import { AboutMe } from '../components/AboutMe';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
-import type { Alert, Doc, Finding, Item, Paper, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
+import type { Alert, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
 /* made-up examples, only for this guide */
@@ -49,6 +54,25 @@ const PAPERS: Paper[] = [
   { id: 'p2', kind: 'registration', name: 'Car registration', holder: 'Example car', number_end: null, expires: d(140), notes: null, photo: null },
 ];
 
+const DATES: LifeDate[] = [
+  { id: 'l1', kind: 'birthday', title: 'Example Mom’s birthday', next_date: d(5), every_months: 12, remind_days: 7, notes: null },
+  { id: 'l2', kind: 'car', title: 'Oil change', next_date: d(21), every_months: 6, remind_days: 7, notes: 'every 5,000 miles' },
+];
+const BUYS: Purchase[] = [
+  { id: 'u1', key: 'u1', store: 'Example Electronics', item: 'Headphones', amount: 149.99, bought: d(-12), return_by: d(2), warranty_ends: d(353), status: 'keep', notes: null },
+  { id: 'u2', key: 'u2', store: 'Example Home', item: 'Desk lamp', amount: 39, bought: d(-5), return_by: d(25), warranty_ends: null, status: 'keep', notes: null },
+];
+// A made-up month of purchases (and 3 months before it) for the Spending example.
+const ym = (n: number) => { const x = new Date(); x.setUTCDate(1); x.setUTCMonth(x.getUTCMonth() - n); return x.toISOString().slice(0, 7); };
+const TX = [0, 1, 2, 3].flatMap((n) => [
+  { posted: `${ym(n)}-02`, amount: -(n ? 410 : 362.4), description: 'EXAMPLE MARKET', merchant: 'example market' },
+  { posted: `${ym(n)}-04`, amount: -(n ? 120 : 96.1), description: 'EXAMPLE GAS', merchant: 'example gas' },
+  { posted: `${ym(n)}-05`, amount: -(n ? 180 : 214.5), description: 'EXAMPLE CAFE', merchant: 'example cafe' },
+  { posted: `${ym(n)}-06`, amount: -(n ? 95 : 58.2), description: 'EXAMPLE PHARMACY', merchant: 'example pharmacy' },
+]);
+const RULES = { 'example market': 'groceries', 'example gas': 'gas', 'example cafe': 'dining', 'example pharmacy': 'health' };
+const REPORT = spendReport(TX, RULES, ym(0), 31);
+
 const Example = ({ children, caption }: { children: ReactNode; caption: string }) => (
   <figure className="space-y-1.5">
     <div className="pointer-events-none select-none rounded-2xl border border-dashed border-stone-300 p-2 dark:border-slate-700" aria-hidden="true">{children}</div>
@@ -67,15 +91,51 @@ export function Guide() {
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
         <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you.</P>
         <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
-        <Example caption="Made-up example of Home: the total, by category, and what’s coming up.">
-          <div className="space-y-2"><Totals items={EX} /><Upcoming items={EX} days={30} /></div>
+        <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
+          <div className="space-y-2">
+            <MonthHero total={1842} usual={2120} soFarUsual={2120} bills={2940} monthName="October" />
+            <MiniRings rings={[{ label: 'Spending', sub: 'vs usual', value: 0.87, text: '87%', tone: 'emerald' }, { label: 'Bills', sub: 'this month', value: 5 / 8, text: '5/8', tone: 'teal' }, { label: 'Privacy', sub: 'credit frozen', value: 2 / 3, text: '2/3', tone: 'amber' }]} />
+            <TimelineList moments={timeline({ items: EX, papers: PAPERS, dates: DATES, purchases: BUYS }, 30)} max={5} />
+          </div>
+        </Example>
+        <P>The three rings: <b>Spending</b> (this month against a usual month), <b>Bills</b> (how many of this month’s bills already came), <b>Privacy</b> (credit bureaus frozen). Tap one to open it. <b>Coming up</b> mixes bills, free trials ending, renewals, documents, important dates and return windows; tap <b>See all</b> for the next 60 days.</P>
+      </Fold>
+
+      <Fold icon="💬" title="Ask LifeTracker">
+        <P>Type a question in the bar on Home, in your own words: “How much did I spend eating out last month?”, “Which subscriptions renew this month?”, “What could I cancel?”, “When does my passport expire?”. The answer comes only from your own data, with follow-up questions to tap.</P>
+        <P>Each question is one AI read: the free AIs first, Claude only if they can’t (Settings → AI). A short summary of your bills, spending, documents and dates goes to the AI with the question, nothing else.</P>
+        <Example caption="Made-up question and answer.">
+          <AskChat turns={[{ q: 'How much did I spend eating out last month?', a: 'In September you spent $180.00 eating out, mostly at Example Cafe (9 times). That’s about the same as a usual month.', by: 'Gemini Flash (free)', followUps: ['And on groceries?', 'Which month was highest?'] }]} />
         </Example>
       </Fold>
 
+      <Fold icon="💸" title="Spending and budgets">
+        <P>In <b>Money → Spending</b>: every purchase from your bank alert emails (or a bank CSV) is sorted into groceries, gas, eating out, shopping and so on, with free rules (no AI). You see this month (or last month) against your usual month (the 3 before), each category with a thin mark for its usual amount, and the shops it went to.</P>
+        <P>Tap a category to set a <b>monthly budget</b>: you get a heads-up at 80% (change it in Settings → Spending & returns) and when it’s used up. A shop in the wrong category? Pick the right one next to it: that shop always goes there from now on. Transfers (Zelle, Venmo, cash) aren’t counted as spending.</P>
+        <Example caption="Made-up month: eating out over its usual amount, groceries with a budget.">
+          <SpendingView r={REPORT} budgets={{ groceries: 450, dining: 200 }} monthName="This month" />
+        </Example>
+      </Fold>
+
+      <Fold icon="🧾" title="Returns and warranties">
+        <P>Every morning LifeTracker looks for order confirmations and receipts in Gmail (a free check first, then the AI reads only real orders). It saves the shop, what you bought, the price, the <b>last day to return it</b> (from the email, or the store’s usual window like Best Buy 15 days, Amazon 30, Target 90) and any warranty.</P>
+        <P>In <b>Money → Returns</b>: tap <b>Returning it</b> or <b>Keeping it</b>. You get a heads-up 3 days before a return window closes and a month before a warranty ends. Add any purchase by hand with ＋ Add.</P>
+        <Example caption="Made-up purchases: one return window closing in 2 days, one still open.">
+          <div className="space-y-2">{BUYS.map((p) => <PurchaseRow key={p.id} p={p} />)}</div>
+        </Example>
+      </Fold>
+
+      <Fold icon="🎂" title="Important dates and car care">
+        <P>In <b>Me → Important dates</b>: birthdays, anniversaries, oil changes, tire rotations, dentist and check-ups, the HVAC filter… Pick a starter (one tap) or type your own, the next date, how often it repeats and when to remind you. After each date it moves to the next one by itself.</P>
+        <P>You get a heads-up before each one, it’s on Home’s timeline, and it goes in your LifeTracker Google Calendar (repeating).</P>
+        <Example caption="Made-up dates."><div>{DATES.map((x) => <DateRow key={x.id} d={x} />)}</div></Example>
+      </Fold>
+
       <Fold icon="📋" title="Your bills">
-        <P>Tap <b>＋ Add</b> in <b>Bills</b>, pick a kind (subscription, insurance…), type the amount and how often, and the next payment date. The date moves forward by itself after each payment. <b>Autopay off</b> means you get a heads-up to pay it.</P>
+        <P>Tap <b>＋ Add</b> in <b>Money → Bills</b>, pick a kind (subscription, insurance…), type the amount and how often, and the next payment date. The date moves forward by itself after each payment. <b>Autopay off</b> means you get a heads-up to pay it.</P>
         <P>Marking one <b>✂️ cancelled</b> keeps it in your history and shows how much you save a year.</P>
-        <Example caption="Made-up bills: a price rise (↑ price) and a free trial.">
+        <Example caption="Made-up bills: the monthly total, a price rise (↑ price) and a free trial.">
+          <Totals items={EX} />
           <div>{EX.slice(0, 4).map((i) => <ItemRow key={i.id} i={i} />)}</div>
         </Example>
       </Fold>
@@ -189,6 +249,7 @@ export function Guide() {
 
       <Fold icon="🔐" title="Privacy">
         <P>Your data is in your own Supabase database. Each person only ever sees their own rows (Row Level Security). The bank access link and Google sign-in are encrypted, and the app itself can’t read them: only the server uses them. You can download everything or sign out in Settings.</P>
+        <P>Ask LifeTracker sends a short summary of your own data with each question to the AI, only to answer it. Order emails are read only after a free check says they’re real orders.</P>
         <P>About me (your name, emails, phones, city) is private too; it is sent to the free Gemini only to run the searches. Mailing lists: only email headers are read. Document photos stay in your own private storage.</P>
       </Fold>
 

@@ -102,7 +102,7 @@ export interface Suggestion {
   created_at: string;
 }
 
-export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
+export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
 
 // ---------- 👤 Me: name online, people-search sites, breaches, mailing lists, documents that expire ----------
 export interface Finding {
@@ -118,6 +118,20 @@ export interface Sender {
 }
 export interface Paper { id: string; kind: string; name: string; holder: string | null; number_end: string | null; expires: string | null; notes: string | null; photo: string | null; created_at?: string }
 export type Freeze = 'unknown' | 'frozen' | 'not';
+
+// ---------- 🧾 returns & warranties, 🎂 important dates ----------
+export interface Purchase { id: string; key: string; store: string; item: string | null; amount: number | null; bought: string; return_by: string | null; warranty_ends: string | null; status: 'keep' | 'kept' | 'returning' | 'returned' | 'ignored'; notes: string | null; created_at?: string }
+export interface LifeDate { id: string; kind: string; title: string; next_date: string; every_months: number | null; remind_days: number; notes: string | null; created_at?: string }
+export const DATE_KINDS: { id: string; icon: string; label: string }[] = [
+  { id: 'birthday', icon: '🎂', label: 'Birthday' },
+  { id: 'anniversary', icon: '💍', label: 'Anniversary' },
+  { id: 'car', icon: '🚗', label: 'Car care' },
+  { id: 'health', icon: '🩺', label: 'Health' },
+  { id: 'home', icon: '🏠', label: 'Home' },
+  { id: 'pet', icon: '🐾', label: 'Pet' },
+  { id: 'other', icon: '📌', label: 'Other' },
+];
+export const dateKind = (id: string) => DATE_KINDS.find((k) => k.id === id) ?? DATE_KINDS[DATE_KINDS.length - 1];
 
 export interface Doc {
   id: string; path: string; file_name: string; mime: string; size: number;
@@ -192,6 +206,9 @@ export interface Settings {
   papers: { on: boolean; remind: number[] }; // 🪪 heads-ups this many days before a document expires
   credit: { equifax: Freeze; experian: Freeze; transunion: Freeze; lastReport: string | null; reportMonths: number }; // 🔒
   week: { on: boolean; day: number }; // 📊 "My week" email (0 = Sunday)
+  /** 💸 spending: monthly budgets per spending category, your own category for a shop, warn at this share of a budget. */
+  spend: { budgets: Record<string, number>; rules: Record<string, string>; alertAt: number };
+  purchases: { on: boolean; maxPerRun: number }; // 🧾 read order emails for returns & warranties
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -217,6 +234,8 @@ export const DEFAULT_SETTINGS: Settings = {
   papers: { on: true, remind: [90, 30, 7] },
   credit: { equifax: 'unknown', experian: 'unknown', transunion: 'unknown', lastReport: null, reportMonths: 4 },
   week: { on: true, day: 0 },
+  spend: { budgets: {}, rules: {}, alertAt: 0.8 },
+  purchases: { on: true, maxPerRun: 8 },
 };
 
 /** Saved settings merged over the defaults (new options get their default). */
@@ -240,5 +259,7 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     papers: { ...d.papers, ...s?.papers },
     credit: { ...d.credit, ...s?.credit },
     week: { ...d.week, ...s?.week },
+    spend: { ...d.spend, ...s?.spend, budgets: { ...s?.spend?.budgets }, rules: { ...s?.spend?.rules } },
+    purchases: { ...d.purchases, ...s?.purchases },
   };
 }

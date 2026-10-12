@@ -122,6 +122,22 @@ export function Settings() {
         </div>
       </Fold>
 
+      <Fold icon="💸" title="Spending & returns" subtitle={`${Object.keys(s.spend.budgets).length} budget(s) · order emails ${s.purchases.on ? 'read' : 'off'}`}>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Budgets are set in Money → Spending (tap a category). Purchases come from your bank alert emails, sorted with free rules.</p>
+        <Field label="Warn me when a budget reaches">
+          <select className="input" value={s.spend.alertAt} onChange={(e) => save({ spend: { ...s.spend, alertAt: Number(e.target.value) } })} aria-label="Warn at">
+            {[0.5, 0.75, 0.8, 0.9].map((n) => <option key={n} value={n}>{Math.round(n * 100)}%</option>)}
+          </select>
+        </Field>
+        {Object.keys(s.spend.rules).length > 0 && <Field label={`Shops you moved to another category: ${Object.keys(s.spend.rules).length}`}><button className="btn" onClick={() => save({ spend: { ...s.spend, rules: {} } })}>Reset</button></Field>}
+        <Field label="Read order emails for returns & warranties" hint="A free check first; only real orders and receipts go to the AI (free ones first).">
+          <Toggle on={s.purchases.on} onChange={(v) => save({ purchases: { ...s.purchases, on: v } })} label="Order emails" />
+        </Field>
+        <Field label="Most order emails read per morning">
+          <input className="input w-20" type="number" min={1} max={30} value={s.purchases.maxPerRun} onChange={(e) => save({ purchases: { ...s.purchases, maxPerRun: Math.min(30, Math.max(1, Number(e.target.value) || 8)) } })} aria-label="Most per morning" />
+        </Field>
+      </Fold>
+
       <Fold icon="🪪" title="Documents & My week" subtitle={s.week.on ? `My week: ${DAYS[s.week.day]}` : 'My week: off'}>
         <Field label="Heads-ups for documents that expire" hint={`${s.papers.remind.join(', ')} days before, and on the day. Add them in Me.`}>
           <Toggle on={s.papers.on} onChange={(v) => save({ papers: { ...s.papers, on: v } })} label="Documents" />

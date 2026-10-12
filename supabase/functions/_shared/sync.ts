@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
-import type { Alert, Extracted, Finding, Item, Paper, Sender, Settings } from './model.ts';
-import { daysBetween, iso, money, nextDue, perYear, today } from './money.ts';
+import type { Alert, Extracted, Finding, Item, LifeDate, Paper, Sender, Settings } from './model.ts';
+import { daysBetween, iso, money, nextDue, parseDay, perYear, today } from './money.ts';
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
 import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
@@ -9,8 +9,11 @@ import { connection, env, open, saveConnection, settingsOf } from './server.ts';
 import { ALERT_QUERY, parseBankAlert } from './alerts.ts';
 import { breachStep, ensureBrokers, onlineStep } from './me.ts';
 import { sweepStep, unsubStep } from './unsub.ts';
-import { spentOf, weekSummary } from './week.ts';
+import { spentOf, weekSummary, type WeekInput } from './week.ts';
 import { paperKind } from './people.ts';
+import { purchaseAlerts, purchaseStep } from './purchases.ts';
+import { spendCat, spendReport, type SpendTx } from './spend.ts';
+import { dateKind } from './model.ts';
 
 /**
  * 🔄 One automatic run for one person (every morning, or "Sync now"):
@@ -23,7 +26,7 @@ export interface RunLog { steps: string[]; errors: string[]; newAlerts: number }
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
 /** Parts that can be run on their own (from the app's buttons). */
-export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week';
+export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases';
 
 export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
@@ -51,6 +54,8 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     await step('Calendar', () => calendarStep(db, userId, s));
     await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
   }
+  if (want('purchases')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until));
+  if (want('bills') || want('purchases')) await step('Coming up', () => lifeStep(db, userId, s, alerts));
   if (want('breaches')) await step('Data breaches', () => breachStep(db, userId, alerts));
   if (want('online')) await step('Your name online', async () => { await ensureBrokers(db, userId); return onlineStep(db, userId, s, alerts, opts.force); });
   if (want('lists')) {
@@ -266,7 +271,8 @@ async function calendarStep(db: SupabaseClient, userId: string, s: Settings): Pr
   if (calendarId !== c.meta.calendarId) await saveConnection(db, userId, 'google', null, { calendarId });
   const { data: items } = await db.from('items').select('*').eq('user_id', userId);
   const { data: papers } = s.papers.on ? await db.from('papers').select('*').eq('user_id', userId) : { data: [] };
-  const r = await syncCalendar(at, calendarId, (items as Item[]) ?? [], s, env('SITE_URL'), (papers as Paper[]) ?? []);
+  const { data: dates } = await db.from('life_dates').select('*').eq('user_id', userId);
+  const r = await syncCalendar(at, calendarId, (items as Item[]) ?? [], s, env('SITE_URL'), (papers as Paper[]) ?? [], (dates as LifeDate[]) ?? []);
   return `calendar up to date (${r.added} added, ${r.changed} changed, ${r.removed} removed)`;
 }
 
@@ -300,6 +306,37 @@ async function headsUpStep(db: SupabaseClient, userId: string, s: Settings, aler
   if (n) return `${n} heads-up(s)`;
 }
 
+// ---------- 🎂 important dates, 🧾 returns & warranties, 💸 budgets ----------
+async function lifeStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[]): Promise<string | void> {
+  const t = today();
+  let n = 0;
+  // Dates that passed move to their next time (every year, every 6 months…); one-time ones stay as they are.
+  const { data: dates } = await db.from('life_dates').select('*').eq('user_id', userId);
+  for (const d of (dates as LifeDate[]) ?? []) {
+    let next = d.next_date;
+    if (next < t && d.every_months) {
+      for (let i = 0; i < 500 && next < t; i++) { const x = parseDay(next); x.setUTCMonth(x.getUTCMonth() + d.every_months); next = iso(x); }
+      await db.from('life_dates').update({ next_date: next }).eq('id', d.id);
+    }
+    const left = daysBetween(t, next);
+    if (left >= 0 && left <= d.remind_days) { alerts.push({ user_id: userId, kind: 'date', key: `${d.id}:${next}`, item_id: null, title: `${dateKind(d.kind).icon} ${d.title}: ${left === 0 ? 'today' : left === 1 ? 'tomorrow' : `in ${left} days (${next})`}`, body: d.notes }); n++; }
+  }
+  n += await purchaseAlerts(db, userId, alerts);
+  // Budgets: a heads-up at the warning level (80% by default) and when it's used up.
+  if (Object.keys(s.spend.budgets).length) {
+    const month = t.slice(0, 7);
+    const { data: tx } = await db.from('transactions').select('posted, amount, description, merchant, item_id').eq('user_id', userId).gte('posted', `${month}-01`).limit(5000);
+    const r = spendReport((tx as SpendTx[]) ?? [], s.spend.rules, month);
+    for (const [cat, budget] of Object.entries(s.spend.budgets)) {
+      if (!(budget > 0)) continue;
+      const spent = r.byCat.find((c) => c.id === cat)?.amount ?? 0;
+      const level = spent >= budget ? 100 : spent >= budget * s.spend.alertAt ? Math.round(s.spend.alertAt * 100) : 0;
+      if (level) { alerts.push({ user_id: userId, kind: 'budget', key: `${cat}:${month}:${level}`, item_id: null, title: `${spendCat(cat).icon} ${spendCat(cat).label}: ${money(spent)} of your ${money(budget)} budget${level === 100 ? ' (used up)' : ''}`, body: `${daysBetween(t, iso(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1))))} days left this month.` }); n++; }
+    }
+  }
+  if (n) return `${n} heads-up(s)`;
+}
+
 // ---------- 📊 My week (an email on your chosen day; the same summary as on Home) ----------
 async function weekStep(db: SupabaseClient, userId: string, email: string, s: Settings, force?: boolean): Promise<string | void> {
   if (!s.week.on && !force) return;
@@ -307,14 +344,16 @@ async function weekStep(db: SupabaseClient, userId: string, email: string, s: Se
   const meta = (await connection(db, userId, 'me'))?.meta ?? {};
   if (!force && (new Date(`${t}T12:00:00Z`).getUTCDay() !== s.week.day || meta.weekSent === t)) return;
   const since = iso(new Date(Date.now() - 63 * 86400_000));
-  const [items, findings, senders, papers, tx] = await Promise.all([
+  const [items, findings, senders, papers, tx, dates, purchases] = await Promise.all([
     db.from('items').select('*').eq('user_id', userId),
     db.from('findings').select('*').eq('user_id', userId).neq('status', 'unknown'),
     db.from('senders').select('*').eq('user_id', userId).eq('status', 'unsubscribed'),
     db.from('papers').select('*').eq('user_id', userId),
     db.from('transactions').select('posted, amount, description').eq('user_id', userId).gte('posted', since).limit(20000),
+    db.from('life_dates').select('*').eq('user_id', userId),
+    db.from('purchases').select('*').eq('user_id', userId).eq('status', 'keep'),
   ]);
-  const lines = weekSummary({ items: (items.data as Item[]) ?? [], findings: (findings.data as Finding[]) ?? [], senders: (senders.data as Sender[]) ?? [], papers: s.papers.on ? (papers.data as Paper[]) ?? [] : [], settings: s, spent: spentOf((tx.data ?? []) as { posted: string; amount: number; description: string | null }[], t) }, t);
+  const lines = weekSummary({ items: (items.data as Item[]) ?? [], findings: (findings.data as Finding[]) ?? [], senders: (senders.data as Sender[]) ?? [], papers: s.papers.on ? (papers.data as Paper[]) ?? [] : [], settings: s, spent: spentOf((tx.data ?? []) as { posted: string; amount: number; description: string | null }[], t), dates: (dates.data as LifeDate[]) ?? [], purchases: (purchases.data ?? []) as WeekInput['purchases'] }, t);
   const r = await sendEmail(email, `LifeTracker: your week (${t})`, ['Your week, in short:', '', ...lines.map((l) => `${l.icon} ${l.text}`)].join('\n'));
   if (r.startsWith('sent')) await saveConnection(db, userId, 'me', null, { weekSent: t });
   return r;

@@ -1,5 +1,5 @@
 import { env } from './server.ts';
-import { catOf, type Item, type Paper, type Settings } from './model.ts';
+import { catOf, dateKind, type Item, type LifeDate, type Paper, type Settings } from './model.ts';
 import { paperKind } from './people.ts';
 
 /**
@@ -127,8 +127,19 @@ export function paperEvents(p: Paper, site: string): { kind: string; ev: GEvent 
   ];
 }
 
-/** Makes the LifeTracker calendar match your bills (and documents that expire): adds, updates and removes events. Returns counts. */
-export async function syncCalendar(at: string, calendarId: string, items: Item[], s: Settings, site: string, papers: Paper[] = []) {
+/** 🎂 An important date: on its day, repeating every year or every few months, with a reminder `remind_days` before. */
+export function lifeDateEvents(d: LifeDate, site: string): { kind: string; ev: GEvent }[] {
+  const k = dateKind(d.kind);
+  const rule = d.every_months ? (d.every_months % 12 === 0 ? `RRULE:FREQ=YEARLY;INTERVAL=${d.every_months / 12}` : `RRULE:FREQ=MONTHLY;INTERVAL=${d.every_months}`) : null;
+  return [{ kind: 'date', ev: {
+    summary: `${k.icon} ${d.title}`, description: `${d.notes ? `${d.notes}\n` : ''}${site ? `\nOpen LifeTracker: ${site}` : ''}`.trim(),
+    start: { date: d.next_date }, end: { date: nextDay(d.next_date) }, ...(rule ? { recurrence: [rule] } : {}),
+    reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: Math.max(0, Math.min(28, d.remind_days) * 1440 - 9 * 60) }] },
+  } }];
+}
+
+/** Makes the LifeTracker calendar match your bills (and documents that expire, important dates): adds, updates and removes events. Returns counts. */
+export async function syncCalendar(at: string, calendarId: string, items: Item[], s: Settings, site: string, papers: Paper[] = [], dates: LifeDate[] = []) {
   const existing: GEvent[] = [];
   let page: string | undefined;
   do {
@@ -140,7 +151,7 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
   const have = new Map(existing.map((e) => [`${e.extendedProperties?.private?.item}:${e.extendedProperties?.private?.kind}`, e]));
   let added = 0, changed = 0, removed = 0;
   const want = new Set<string>();
-  const all = [...items.map((i) => ({ id: i.id, evs: eventsFor(i, s, site) })), ...papers.map((p) => ({ id: p.id, evs: paperEvents(p, site) }))];
+  const all = [...items.map((i) => ({ id: i.id, evs: eventsFor(i, s, site) })), ...papers.map((p) => ({ id: p.id, evs: paperEvents(p, site) })), ...dates.map((d) => ({ id: d.id, evs: lifeDateEvents(d, site) }))];
   for (const item of all) {
     for (const { kind, ev } of item.evs) {
       const k = `${item.id}:${kind}`;

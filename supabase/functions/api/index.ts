@@ -7,6 +7,7 @@ import { applyExtracted, syncUser } from '../_shared/sync.ts';
 import { merchantKey } from '../_shared/recurring.ts';
 import { refresh } from '../_shared/google.ts';
 import { blockOne, unsubscribeOne } from '../_shared/unsub.ts';
+import { ask } from '../_shared/ask.ts';
 import { PAPER_KINDS } from '../_shared/people.ts';
 import type { Item, Sender } from '../_shared/model.ts';
 
@@ -30,7 +31,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('bank-connect'), setupToken: z.string().min(20).max(2000) }),
   z.object({ action: z.literal('disconnect'), kind: z.enum(['simplefin', 'google']) }),
   z.object({ action: z.literal('google-start'), want: z.array(z.enum(['calendar', 'gmail', 'mailbox'])).min(1).max(3), back: z.string().url().max(300) }),
-  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week']) }),
+  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases']) }),
+  z.object({ action: z.literal('ask'), question: z.string().min(2).max(500), history: z.array(z.object({ q: z.string().max(500), a: z.string().max(2000) })).max(6).optional() }),
   z.object({ action: z.literal('unsubscribe'), id: z.string().uuid() }),
   z.object({ action: z.literal('block'), id: z.string().uuid() }),
   z.object({ action: z.literal('read-paper'), path: z.string().min(10).max(300) }),
@@ -91,6 +93,8 @@ Deno.serve(async (req) => {
         const log = await syncUser(db, user.id, user.email, { only: [body.part], force: true });
         return json({ ok: true, log });
       }
+      case 'ask':
+        return json(await ask(db, user.id, await settingsOf(db, user.id), body.question, body.history ?? []));
       case 'unsubscribe':
       case 'block': {
         const { data: sender } = await db.from('senders').select('*').eq('id', body.id).eq('user_id', user.id).maybeSingle();

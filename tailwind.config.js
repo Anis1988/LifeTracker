@@ -1,13 +1,13 @@
-// "Calm ledger": warm paper and ink in light mode, deep slate at night (follows the phone's setting),
-// one green accent for money that's fine, amber for heads-ups, red only for problems.
+// "Aurora": a soft emerald/teal/amber glow behind frosted-glass cards; pearl in light mode, deep midnight at night
+// (follows the phone's setting). Green for money that's fine, amber for heads-ups, red only for problems.
 export default {
   darkMode: 'media',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['"Fraunces"', 'Georgia', 'serif'],
+        sans: ['Manrope', 'system-ui', 'sans-serif'],
+        display: ['Sora', 'Manrope', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
     },

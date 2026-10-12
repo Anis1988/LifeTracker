@@ -53,8 +53,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-[#fbf9f4] p-4 pb-8 shadow-xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/50 backdrop-blur-sm animate-[fade_.2s_ease-out] sm:items-center" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] border border-white/60 bg-[#f8faf9] p-4 pb-8 shadow-2xl animate-[pop_.25s_ease-out] dark:border-white/10 dark:bg-[#0c1220] sm:max-w-lg sm:rounded-[28px]" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold">{title}</h2>
           <button className="btn-ghost text-lg" aria-label="Close" onClick={onClose}>✕</button>

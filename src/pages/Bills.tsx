@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
-import { ItemForm, ItemRow } from '../components/Items';
+import { ItemForm, ItemRow, Totals } from '../components/Items';
 import { Money, Sheet } from '../components/ui';
 import { CATEGORIES, type Item } from '../../supabase/functions/_shared/model.ts';
 import { monthly } from '../../supabase/functions/_shared/money.ts';
@@ -19,6 +19,7 @@ export function Bills() {
         <h1 className="mr-auto text-2xl font-semibold">My bills</h1>
         <button className="btn-primary" onClick={() => setOpen({})}>＋ Add</button>
       </div>
+      {st.items.length > 0 && <Totals items={st.items} />}
       <div className="flex flex-wrap gap-2">
         <input className="input min-w-0 flex-1" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
         <select className="input" value={show} onChange={(e) => setShow(e.target.value as typeof show)} aria-label="Show">

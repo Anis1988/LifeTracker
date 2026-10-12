@@ -1,4 +1,4 @@
-import type { Finding, Item, Paper, Sender, Settings } from './model.ts';
+import { dateKind, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings } from './model.ts';
 import { daysBetween, money, nextDue, today } from './money.ts';
 import { paperKind } from './people.ts';
 
@@ -9,6 +9,7 @@ import { paperKind } from './people.ts';
 export interface WeekInput {
   items: Item[]; findings: Finding[]; senders: Sender[]; papers: Paper[]; settings: Settings;
   spent: { week: number; usualWeek: number | null; top: { name: string; amount: number }[] };
+  dates?: LifeDate[]; purchases?: Purchase[];
 }
 export interface WeekLine { icon: string; text: string; tone?: 'warn' | 'good' }
 
@@ -25,6 +26,13 @@ export function weekSummary(w: WeekInput, now = today()): WeekLine[] {
   // 📋 bills in the next 7 days
   const due = w.items.filter((i) => i.status === 'active').map((i) => ({ i, d: nextDue(i) })).filter((x) => x.d && daysBetween(now, x.d) >= 0 && daysBetween(now, x.d) <= 7);
   if (due.length) out.push({ icon: '📋', text: `${due.length} bill${due.length > 1 ? 's' : ''} in the next 7 days: ${money(due.reduce((a, x) => a + Number(x.i.amount), 0))} (${due.slice(0, 4).map((x) => x.i.name).join(', ')}${due.length > 4 ? '…' : ''}).` });
+  // 🎂 important dates and 🧾 return windows in the next 7 days
+  for (const d of (w.dates ?? []).filter((x) => daysBetween(now, x.next_date) >= 0 && daysBetween(now, x.next_date) <= 7).slice(0, 3)) {
+    const left = daysBetween(now, d.next_date);
+    out.push({ icon: dateKind(d.kind).icon, text: `${d.title}: ${left === 0 ? 'today' : left === 1 ? 'tomorrow' : `in ${left} days`}.` });
+  }
+  const returns = (w.purchases ?? []).filter((p) => p.status === 'keep' && p.return_by && daysBetween(now, p.return_by) >= 0 && daysBetween(now, p.return_by) <= 7);
+  if (returns.length) out.push({ icon: '🧾', text: `Return window closing soon: ${returns.slice(0, 3).map((p) => `${p.store}${p.item ? ` (${p.item.slice(0, 24)})` : ''} by ${p.return_by}`).join(', ')}.`, tone: 'warn' });
   // 🕵️ found about you this week
   const newWeb = w.findings.filter((f) => f.kind === 'web' && f.status === 'new');
   const worrying = newWeb.filter((f) => f.verdict === 'worrying');

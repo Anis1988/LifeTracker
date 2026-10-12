@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
-import { ItemForm, Totals, Upcoming } from '../components/Items';
+import { ItemForm } from '../components/Items';
 import { AlertList } from '../components/Inbox';
 import { WeekCard } from '../components/Me';
-import { weekSummary } from '../../supabase/functions/_shared/week.ts';
+import { AskBar, AskChat, MiniRings, MonthHero, TimelineList, askError, type Turn } from '../components/Dash';
 import { Sheet, errText, toast } from '../components/ui';
 import { api } from '../lib/supabase';
+import { timeline } from '../lib/timeline';
+import { weekSummary } from '../../supabase/functions/_shared/week.ts';
+import { spendReport } from '../../supabase/functions/_shared/spend.ts';
+import { monthly, today } from '../../supabase/functions/_shared/money.ts';
 import type { Item } from '../../supabase/functions/_shared/model.ts';
 
 const ago = (iso?: string | null) => {
@@ -13,57 +17,105 @@ const ago = (iso?: string | null) => {
   const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
   return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
 };
+const hello = () => { const h = new Date().getHours(); return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
+
+/** Bills this month: monthly bills whose date already came this month (next one is next month), out of all due this month. */
+export function billsThisMonth(items: Item[], t = today()) {
+  const month = t.slice(0, 7);
+  const active = items.filter((i) => i.status === 'active' && i.next_due);
+  const monthlyOnes = active.filter((i) => i.cycle === 'monthly' || i.cycle === 'weekly' || i.cycle === 'biweekly');
+  const done = monthlyOnes.filter((i) => i.next_due!.slice(0, 7) > month).length;
+  const others = active.filter((i) => !monthlyOnes.includes(i) && (i.next_due!.slice(0, 7) === month || (i.last_charged ?? '').slice(0, 7) === month));
+  const othersDone = others.filter((i) => (i.last_charged ?? '').slice(0, 7) === month).length;
+  return { done: done + othersDone, total: monthlyOnes.length + others.length };
+}
 
 export function Home({ go }: { go: (tab: string) => void }) {
   const st = useStore();
+  const s = st.settings;
   const [open, setOpen] = useState<Item | null>(null);
+  const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [chat, setChat] = useState<Turn[] | null>(null);
+  const [thinking, setThinking] = useState(false);
+  const t = today();
+  const r = useMemo(() => spendReport(st.tx, s.spend.rules, t.slice(0, 7), Number(t.slice(8, 10))), [st.tx, s.spend.rules, t]);
+  const moments = useMemo(() => timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases }, 30), [st.items, st.papers, st.dates, st.purchases, s.papers.on]);
+  const bills = billsThisMonth(st.items, t);
+  const frozen = (['equifax', 'experian', 'transunion'] as const).filter((b) => s.credit[b] === 'frozen').length;
+  const lines = weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent, dates: st.dates, purchases: st.purchases });
+
+  const ask = async (q: string) => {
+    const before = chat ?? [];
+    setChat([...before]);
+    setThinking(true);
+    try {
+      const a = await api<{ answer: string; followUps: string[]; by: string }>('ask', { question: q, history: before.filter((x) => !x.error).slice(-4).map((x) => ({ q: x.q, a: x.a.slice(0, 1900) })) });
+      setChat([...before, { q, a: a.answer, by: a.by, followUps: a.followUps }]);
+    } catch (e) { setChat([...before, { q, a: askError(e), error: true }]); }
+    setThinking(false);
+  };
   const sync = async () => {
     setBusy(true);
     try {
-      const r = await api<{ log: { steps: string[]; errors: string[]; newAlerts: number } }>('sync');
-      toast(r.log.errors.length ? 'err' : 'ok', r.log.errors.length ? r.log.errors[0] : `Up to date. ${r.log.newAlerts ? `${r.log.newAlerts} new heads-up(s).` : ''}`);
+      const x = await api<{ log: { steps: string[]; errors: string[]; newAlerts: number } }>('sync');
+      toast(x.log.errors.length ? 'err' : 'ok', x.log.errors.length ? x.log.errors[0] : `Up to date. ${x.log.newAlerts ? `${x.log.newAlerts} new heads-up(s).` : ''}`);
       await Promise.all([st.reload(), st.reloadStatus()]);
-    } catch (e) {
-      toast('err', errText(e));
-    }
+    } catch (e) { toast('err', errText(e)); }
     setBusy(false);
   };
-  if (!st.loading && !st.items.length) {
-    return (
-      <div className="card space-y-3 text-center">
-        <h1 className="text-2xl font-semibold">Let’s find your bills</h1>
-        <p className="text-sm text-stone-600 dark:text-slate-300">Link your bank or Gmail and LifeTracker finds your subscriptions, mortgage, insurance and other bills by itself. Or add one by hand.</p>
-        <div className="flex flex-wrap justify-center gap-2">
-          <button className="btn-primary" onClick={() => go('settings')}>🔗 Connect bank / Google</button>
-          <button className="btn" onClick={() => go('inbox')}>📄 Upload a bill</button>
-          <button className="btn" onClick={() => go('bills')}>＋ Add by hand</button>
-        </div>
-        {st.suggestions.length > 0 && <button className="btn-ghost mx-auto" onClick={() => go('inbox')}>🔎 {st.suggestions.length} found, waiting for your OK →</button>}
-      </div>
-    );
-  }
+  const openMoment = (itemId?: string) => { const i = st.items.find((x) => x.id === itemId); if (i) setOpen(i); };
+  const empty = !st.items.length && !st.tx.length;
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="space-y-4">
-        <Totals items={st.items} />
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="label">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+            <h1 className="text-[26px] font-semibold">{hello()}</h1>
+          </div>
+          <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-900/10 bg-white/60 text-slate-700 dark:border-white/10 dark:bg-white/[0.05] dark:text-slate-200" disabled={busy} onClick={() => void sync()} aria-label="Sync now" title={`Checked ${ago(st.status?.lastRun?.lastRun)}`}>
+            {busy ? <span className="spinner" /> : <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12A9 9 0 0 1 18.5 5.8M18 2v4h-4M6 22v-4h4" /></svg>}
+          </button>
+        </div>
+        {empty ? (
+          <div className="card rise space-y-3 text-center">
+            <h2 className="text-xl font-semibold">Let’s find your bills</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Connect Gmail (bank alert emails) and LifeTracker finds your subscriptions, mortgage, insurance and spending by itself. Or add a bill by hand.</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button className="btn-primary" onClick={() => go('settings')}>Connect Google</button>
+              <button className="btn" onClick={() => go('inbox')}>Upload a bill</button>
+              <button className="btn" onClick={() => go('money')}>＋ Add by hand</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <MonthHero total={r.total} usual={r.usual} soFarUsual={r.soFarUsual} bills={st.items.filter((i) => i.status === 'active').reduce((a, i) => a + monthly(i), 0)} monthName={new Date().toLocaleDateString('en-US', { month: 'long' })} />
+            <MiniRings rings={[
+              { label: 'Spending', sub: 'vs usual', value: r.usual ? r.total / r.usual : 0, text: r.usual ? `${Math.round((r.total / r.usual) * 100)}%` : '—', tone: r.usual && r.total > r.usual ? 'red' : 'emerald', onClick: () => { sessionStorage.setItem('lt.money', 'spending'); go('money'); } },
+              { label: 'Bills', sub: 'this month', value: bills.total ? bills.done / bills.total : 0, text: `${bills.done}/${bills.total}`, tone: 'teal', onClick: () => { sessionStorage.setItem('lt.money', 'bills'); go('money'); } },
+              { label: 'Privacy', sub: 'credit frozen', value: frozen / 3, text: `${frozen}/3`, tone: 'amber', onClick: () => go('me') },
+            ]} />
+          </>
+        )}
+        <AskBar onAsk={(q) => void ask(q)} disabled={thinking} />
         {st.suggestions.length > 0 && (
-          <button className="card flex w-full items-center gap-3 text-left !border-emerald-300 dark:!border-emerald-800" onClick={() => go('inbox')}>
-            <span className="text-2xl">🔎</span>
-            <span className="flex-1"><b>{st.suggestions.length} found</b> automatically: add them or ignore them.</span>
+          <button className="card flex w-full items-center gap-3 text-left !border-emerald-500/40" onClick={() => go('inbox')}>
+            <span className="text-2xl" aria-hidden="true">🔎</span>
+            <span className="flex-1 text-sm"><b>{st.suggestions.length} found</b> automatically: add them or ignore them.</span>
             <span aria-hidden="true">→</span>
           </button>
         )}
         <AlertList alerts={st.alerts} onSeen={(id) => void st.seeAlert(id)} />
       </div>
       <div className="space-y-4">
-        <WeekCard lines={weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: st.settings.papers.on ? st.papers : [], settings: st.settings, spent: st.spent })} onOpen={() => go('me')} />
-        <Upcoming items={st.items} onOpen={setOpen} />
-        <section className="card flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-stone-600 dark:text-slate-300">🔄 Automatic check: {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</span>
-          <button className="btn" disabled={busy} onClick={() => void sync()}>{busy ? <><span className="spinner" /> Checking…</> : 'Sync now'}</button>
-        </section>
+        <TimelineList moments={moments} onAll={() => setAll(true)} onOpen={(m) => openMoment(m.itemId)} />
+        <WeekCard lines={lines} onOpen={() => go('me')} />
+        <p className="text-center text-xs text-slate-500 dark:text-slate-400">🔄 Automatic check {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</p>
       </div>
+      {all && <Sheet title="Next 60 days" onClose={() => setAll(false)}><TimelineList moments={timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases }, 60)} max={200} title="Timeline" onOpen={(m) => { setAll(false); openMoment(m.itemId); }} /></Sheet>}
+      {chat && <Sheet title="Ask LifeTracker" onClose={() => setChat(null)}><AskChat turns={chat} busy={thinking} onAsk={(q) => void ask(q)} /><div className="mt-3"><AskBar onAsk={(q) => void ask(q)} disabled={thinking} /></div></Sheet>}
       {open && (
         <Sheet title={open.name} onClose={() => setOpen(null)}>
           <ItemForm item={open} onSave={st.saveItem} onDelete={() => st.deleteItem(open.id)} onDone={() => setOpen(null)} />
