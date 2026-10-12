@@ -1,0 +1,12 @@
+{
+	"appId": "app.lifetracker",
+	"appName": "LifeTracker",
+	"webDir": "build",
+	"backgroundColor": "#070b14",
+	"plugins": {
+		"SystemBars": {
+			"style": "DEFAULT",
+			"initialViewportFitValueHint": "cover"
+		}
+	}
+}
