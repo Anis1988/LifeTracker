@@ -24,6 +24,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Never ship the secret key (checks the key itself, like the website's deploy)
+        env:
+          KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          case "$KEY" in sb_secret_*) echo "::error::VITE_SUPABASE_ANON_KEY is your SECRET key. Use the publishable (anon) key."; exit 1;; esac
+          if printf '%s' "$KEY" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | grep -q '"service_role"'; then
+            echo "::error::VITE_SUPABASE_ANON_KEY is the service_role key. Use the anon / publishable key instead."; exit 1
+          fi
       - name: Build the screens
         run: npm run build
         env:
@@ -31,9 +39,6 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_APP_BUILD: ${{ github.run_number }} # the app compares this with the release page to offer updates
-      - name: Never ship the secret key
-        run: |
-          if grep -rqE "sb_secret_|service_role" build/assets; then echo "::error::The Supabase SECRET key is in VITE_SUPABASE_ANON_KEY. Use the publishable (anon) key."; exit 1; fi
       - name: Copy them into the Android project
         run: npx cap sync android
       - uses: actions/setup-java@v5
