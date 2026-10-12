@@ -253,7 +253,7 @@ export function Guide() {
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-700 dark:text-slate-300">
           <li>On your phone, open <b className="break-all">github.com/Anis1988/LifeTracker/releases/tag/android-latest</b> and tap <b>LifeTracker.apk</b>.</li>
           <li>Android asks to allow installing from your browser: tap <b>Settings → Allow</b>, then <b>Install</b>.</li>
-          <li>Sign in with Google (it opens your browser and comes back to the app), or with your email: type the <b>6-digit code</b> from the email in the app.</li>
+          <li>Sign in with Google or your email: the browser opens a small LifeTracker page, tap <b>Open in the LifeTracker app</b> and you’re in.</li>
         </ol>
         <P>When a new version is ready, a banner at the top says so: tap <b>Update</b> and install it over the old one (your data stays). Connecting Google Calendar or Gmail opens your browser; when it says “connected”, come back to the app.</P>
         <Example caption="Made-up example of the update banner.">
@@ -276,7 +276,7 @@ export function Guide() {
           <li><b>Google Cloud</b>: enable the Calendar and Gmail APIs, make an OAuth “Web” client with the redirect <code>https://&lt;project&gt;.supabase.co/functions/v1/google-callback</code>, add yourself as a test user, then publish the app (otherwise Google signs you out every 7 days).</li>
           <li><b>Morning run</b>: Supabase → Vault: add <code>lt_project_url</code> and <code>lt_cron_secret</code> (same as CRON_SECRET).</li>
           <li><b>Mailing lists (optional)</b>: Google Cloud → Google Auth Platform → Data Access → add the scope <code>gmail.modify</code>, then Settings → Mailing lists → Allow “Manage mailing lists”.</li>
-          <li><b>Android app</b>: Supabase → Authentication → URL configuration → Redirect URLs: add <code>lifetracker://auth</code> (so sign-in links come back to the app). Then install it (see “Android app”).</li>
+          <li><b>Android app</b>: Supabase → Authentication → URL configuration → Redirect URLs: add <code>https://anis1988.github.io/LifeTracker/**</code> (so sign-in links reach the page that opens the app). Then install it (see “Android app”).</li>
           <li><b>iPhone</b>: open the website in Safari and “Add to Home Screen”.</li>
         </ol>
       </Fold>

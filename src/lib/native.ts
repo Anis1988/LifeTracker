@@ -4,8 +4,14 @@ import { Browser } from '@capacitor/browser';
 /** True inside the Android app, false on the website. */
 export const isNative = (): boolean => Capacitor.isNativePlatform();
 
-/** Where sign-in links come back to in the app (Supabase → Authentication → URL configuration → Redirect URLs). */
+/** The app's own link: the sign-in page below hands the one-time code back to the app with it. */
 export const APP_AUTH_REDIRECT = 'lifetracker://auth';
+/**
+ * Where the email link and Google send you after signing in (a page on the website, public/app-login.html). It has
+ * one button that opens the app with the code: Android reliably opens an app from a tap, not from a redirect.
+ * Supabase → Authentication → URL configuration → Redirect URLs must allow it.
+ */
+export const APP_LOGIN_PAGE = (import.meta.env.VITE_APP_LOGIN_PAGE as string | undefined) || 'https://anis1988.github.io/LifeTracker/app-login.html';
 
 /** Opens a page in the phone's browser (app) or goes there (website). */
 export function openExternal(url: string): void {
