@@ -253,7 +253,7 @@ export function Guide() {
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-700 dark:text-slate-300">
           <li>On your phone, open <b className="break-all">github.com/Anis1988/LifeTracker/releases/tag/android-latest</b> and tap <b>LifeTracker.apk</b>.</li>
           <li>Android asks to allow installing from your browser: tap <b>Settings → Allow</b>, then <b>Install</b>.</li>
-          <li>Sign in with Google or an email link: it opens your browser and comes back to the app by itself.</li>
+          <li>Sign in with Google (it opens your browser and comes back to the app), or with your email: type the <b>6-digit code</b> from the email in the app.</li>
         </ol>
         <P>When a new version is ready, a banner at the top says so: tap <b>Update</b> and install it over the old one (your data stays). Connecting Google Calendar or Gmail opens your browser; when it says “connected”, come back to the app.</P>
         <Example caption="Made-up example of the update banner.">
