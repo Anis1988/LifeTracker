@@ -14,7 +14,7 @@ import { Settings } from './pages/Settings';
 import { Guide } from './pages/Guide';
 import { Me } from './pages/Me';
 
-// Tabs (line icons, like the rest of the Aurora look). Guide sits in the header.
+// Tabs (line icons, like the rest of the Liquid Glass look). Guide sits in the header.
 const TABS = [
   { id: 'home', label: 'Home', icon: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z' },
   { id: 'money', label: 'Money', icon: 'M3 7h18v12H3zM3 11h18M7 15h3M16 7V5H5v2' },
@@ -29,13 +29,13 @@ const Icon = ({ d, className = 'h-[22px] w-[22px]' }: { d: string; className?: s
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d={d} /></svg>
 );
 
-/** The slow emerald / teal / amber glow behind everything (still when the phone asks for less motion). */
+/** The slow teal / violet / amber glow behind the glass (still when the phone asks for less motion). */
 function Aurora() {
   return (
     <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
-      <div className="absolute -left-32 -top-36 h-[360px] w-[440px] rounded-full bg-emerald-300 opacity-50 blur-[80px] animate-[drift1_18s_ease-in-out_infinite] dark:bg-emerald-500 dark:opacity-30" />
-      <div className="absolute -right-40 top-32 h-[320px] w-[400px] rounded-full bg-teal-200 opacity-50 blur-[90px] animate-[drift2_22s_ease-in-out_infinite] dark:bg-teal-500 dark:opacity-25" />
-      <div className="absolute -bottom-32 left-10 h-[260px] w-[340px] rounded-full bg-amber-200 opacity-40 blur-[100px] animate-[drift1_26s_ease-in-out_infinite] dark:bg-amber-500 dark:opacity-[0.12]" />
+      <div className="absolute -left-32 -top-28 h-[380px] w-[420px] rounded-full bg-teal-300 opacity-50 blur-[70px] will-change-transform animate-[drift1_20s_ease-in-out_infinite] dark:bg-teal-600 dark:opacity-50" />
+      <div className="absolute -right-40 top-40 h-[340px] w-[380px] rounded-full bg-violet-300 opacity-45 blur-[80px] will-change-transform animate-[drift2_24s_ease-in-out_infinite] dark:bg-violet-700 dark:opacity-45" />
+      <div className="absolute -bottom-32 left-6 h-[260px] w-[320px] rounded-full bg-amber-200 opacity-40 blur-[90px] will-change-transform animate-[drift1_28s_ease-in-out_infinite] dark:bg-amber-600 dark:opacity-[0.22]" />
     </div>
   );
 }
@@ -155,34 +155,34 @@ function Main() {
   return (
     <div className="min-h-screen pb-28 sm:pb-10">
       <Aurora />
-      <header className="sticky top-0 z-30 border-b border-slate-900/5 bg-[#f3f6f5]/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#070b14]/70" style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }}>
+      <header className="sticky top-0 z-30 border-b border-slate-900/5 bg-[#eaeff6]/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#060912]/70" style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }}>
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
           <img src="./icon.svg" alt="" className="h-8 w-8" />
           <span className="font-display text-xl font-semibold tracking-tight">LifeTracker</span>
-          <nav className="ml-auto hidden gap-1 rounded-2xl border border-slate-900/[0.07] bg-white/60 p-1 dark:border-white/10 dark:bg-white/[0.04] sm:flex" aria-label="Tabs">
+          <nav className="glass ml-auto hidden gap-1 rounded-2xl p-1 sm:flex" aria-label="Tabs">
             {TABS.map((t) => (
-              <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`relative flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition ${tab === t.id ? 'bg-emerald-700 text-white dark:bg-emerald-400 dark:text-emerald-950' : 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/[0.06]'}`}>
+              <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`tap tabbtn flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-bold ${tab === t.id ? 'bg-white text-slate-900 shadow-[0_0_20px_-6px_#5eead4] dark:bg-white/[0.12] dark:text-white' : 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/[0.06]'}`}>
                 <Icon d={t.icon} className="h-[18px] w-[18px]" />{t.label}{badge(t.id) ? <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold text-slate-900">{badge(t.id)}</span> : null}
               </button>
             ))}
           </nav>
-          <button onClick={() => go('guide')} aria-label="Guide" className={`ml-auto flex h-11 w-11 items-center justify-center rounded-2xl border transition sm:ml-1 ${tab === 'guide' ? 'border-emerald-600 text-emerald-700 dark:border-emerald-400 dark:text-emerald-300' : 'border-slate-900/10 bg-white/60 text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300'}`}>
+          <button onClick={() => go('guide')} aria-label="Guide" className={`btn ml-auto h-11 w-11 !p-0 sm:ml-1 ${tab === 'guide' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
             <Icon d="M12 17h.01M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" className="h-5 w-5" />
           </button>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-5">
+      <main key={tab} className="rise mx-auto max-w-5xl px-4 py-5">
         <AppUpdateCheck />
         {st.loading ? <p className="text-sm text-slate-500"><span className="spinner" /> Loading…</p>
           : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <Me go={go} /> : tab === 'settings' ? <Settings /> : <Guide />}
       </main>
-      {/* Phones: a floating glass tab bar within thumb reach. */}
-      <nav aria-label="Tabs" style={{ bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className="fixed inset-x-3 z-30 grid grid-cols-5 rounded-[26px] border border-slate-900/[0.07] bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1220]/80 dark:shadow-[0_10px_40px_rgba(0,0,0,0.5)] sm:hidden">
+      {/* Phones: a floating glass tab bar within thumb reach; a glass pill slides to the open tab. */}
+      <nav aria-label="Tabs" style={{ bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className="glass fixed inset-x-3 z-30 flex rounded-[28px] p-1.5 sm:hidden">
+        <span aria-hidden="true" className="tabpill" style={{ '--i': Math.max(0, TABS.findIndex((t) => t.id === tab)), opacity: tab === 'guide' ? 0 : 1 } as React.CSSProperties} />
         {TABS.map((t) => (
-          <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`relative flex h-16 flex-col items-center justify-center gap-0.5 text-[10.5px] font-semibold ${tab === t.id ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>
+          <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`tap tabbtn z-[1] flex h-[54px] flex-1 basis-0 flex-col items-center justify-center gap-0.5 rounded-[22px] text-[10.5px] font-bold ${tab === t.id ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
             <Icon d={t.icon} />{t.label}
-            <span aria-hidden="true" className={`h-1 w-1 rounded-full ${tab === t.id ? 'bg-emerald-600 shadow-[0_0_8px_#10b981] dark:bg-emerald-300' : 'bg-transparent'}`} />
-            {badge(t.id) ? <span className="absolute right-[16%] top-1.5 rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-900">{badge(t.id)}</span> : null}
+            {badge(t.id) ? <span className="absolute right-[14%] top-1 rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-900 animate-[pulse_2.4s_ease-in-out_infinite]">{badge(t.id)}</span> : null}
           </button>
         ))}
       </nav>

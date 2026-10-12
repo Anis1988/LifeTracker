@@ -9,20 +9,20 @@
 -->
 <style>
   :root{color-scheme:light dark}
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font:16px/1.5 Manrope,system-ui,sans-serif;background:#f3f6f5;color:#0f172a;overflow:hidden}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font:16px/1.5 Manrope,system-ui,sans-serif;background:#eaeff6;color:#0f172a;overflow:hidden}
   .glow{position:fixed;border-radius:50%;filter:blur(80px);opacity:.5;z-index:-1}
-  .g1{width:420px;height:340px;left:-120px;top:-120px;background:#6ee7b7}.g2{width:380px;height:300px;right:-140px;bottom:-100px;background:#5eead4}
+  .g1{width:420px;height:340px;left:-120px;top:-120px;background:#5eead4}.g2{width:380px;height:300px;right:-140px;bottom:-100px;background:#c4b5fd}
   .card{margin:16px;max-width:380px;width:100%;box-sizing:border-box;padding:28px 22px;border-radius:28px;background:rgba(255,255,255,.75);border:1px solid rgba(15,23,42,.08);box-shadow:0 10px 30px rgba(15,23,42,.1);backdrop-filter:blur(18px);text-align:center}
   h1{margin:.4em 0 .2em;font:600 22px Sora,Manrope,system-ui,sans-serif}
   p{margin:.4em 0;color:#475569;font-size:15px}
-  a.btn{display:block;margin-top:18px;padding:14px;border-radius:16px;background:#047857;color:#fff;font-weight:700;text-decoration:none}
+  a.btn{display:block;margin-top:18px;padding:14px;border-radius:18px;background:linear-gradient(135deg,#5eead4,#a78bfa);color:#04121a;font-weight:800;text-decoration:none;box-shadow:0 10px 26px -12px #5eead4;transition:transform .5s cubic-bezier(.34,1.56,.64,1)}a.btn:active{transform:scale(.95);transition-duration:.12s}
   .err{color:#b91c1c}
-  @media (prefers-color-scheme:dark){body{background:#070b14;color:#e8eef5}.g1{background:#10b981;opacity:.3}.g2{background:#14b8a6;opacity:.25}.card{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}p{color:#94a3b8}a.btn{background:#34d399;color:#04130d}.err{color:#fca5a5}}
+  @media (prefers-color-scheme:dark){body{background:#060912;color:#e8eef5}.g1{background:#0d9488;opacity:.45}.g2{background:#6d28d9;opacity:.4}.card{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}p{color:#94a3b8}.err{color:#fca5a5}}
 </style>
 </head><body>
 <div class="glow g1"></div><div class="glow g2"></div>
 <main class="card">
-  <svg width="56" height="56" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#070b14"/><path d="M14 42l10-10 8 8 18-18" fill="none" stroke="#ecfdf5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="18" cy="20" r="4" fill="#fbbf24"/></svg>
+  <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1430"/><stop offset="1" stop-color="#0a2a33"/></linearGradient><radialGradient id="g" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#5eead4" stop-opacity=".45"/><stop offset="1" stop-color="#5eead4" stop-opacity="0"/></radialGradient><radialGradient id="c" cx=".38" cy=".32" r=".7"><stop offset="0" stop-color="#ecfeff"/><stop offset=".45" stop-color="#5eead4"/><stop offset="1" stop-color="#0d9488"/></radialGradient><linearGradient id="r" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#a78bfa"/></linearGradient><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#a)"/><circle cx="32" cy="32" r="22" fill="url(#g)"/><g transform="rotate(-24 32 32)" fill="none" stroke="url(#r)" stroke-width="2.8" stroke-linecap="butt"><path d="M9 32A23 9 0 0 1 55 32" stroke-opacity=".55"/><circle cx="32" cy="32" r="10.5" fill="url(#c)" stroke="none"/><path d="M55 32A23 9 0 0 1 9 32"/><circle cx="51.9" cy="27.5" r="3.4" fill="#fbbf24" stroke="none"/></g><rect width="64" height="64" rx="15" fill="url(#s)"/><rect x=".5" y=".5" width="63" height="63" rx="14.5" fill="none" stroke="#fff" stroke-opacity=".14"/></svg>
   <h1 id="t">Open LifeTracker</h1>
   <p id="m">Tap the button to finish signing in, in the app.</p>
   <a class="btn" id="b" href="#">Open in the LifeTracker app</a>

@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { Bills } from './Bills';
 import { PurchaseForm, PurchaseRow, SpendingView } from '../components/Spending';
-import { Sheet, errText, toast } from '../components/ui';
+import { Seg, Sheet, errText, toast } from '../components/ui';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
 
@@ -16,11 +16,7 @@ export function MoneyPage() {
   const pick = (v: View) => { setView(v); try { sessionStorage.setItem('lt.money', v); } catch { /* private mode */ } };
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <div className="seg" role="tablist" aria-label="Money">
-        {([['bills', 'Bills'], ['spending', 'Spending'], ['returns', 'Returns']] as [View, string][]).map(([v, l]) => (
-          <button key={v} role="tab" aria-selected={view === v} onClick={() => pick(v)}>{l}</button>
-        ))}
-      </div>
+      <Seg label="Money" options={[['bills', 'Bills'], ['spending', 'Spending'], ['returns', 'Returns']]} value={view} onChange={pick} />
       {view === 'bills' ? <Bills /> : view === 'spending' ? <Spending /> : <Returns />}
     </div>
   );
@@ -38,10 +34,7 @@ function Spending() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-2xl font-semibold">Spending</h1>
-        <div className="seg !p-0.5">
-          <button aria-selected={month === now} onClick={() => setMonth(now)}>This month</button>
-          <button aria-selected={month === last} onClick={() => setMonth(last)}>Last month</button>
-        </div>
+        <Seg label="Month" options={[[now, 'This month'], [last, 'Last month']]} value={month} onChange={setMonth} />
       </div>
       <SpendingView r={r} budgets={s.spend.budgets} alertAt={s.spend.alertAt} monthName={monthName(month)}
         onBudget={(cat, n) => { const budgets = { ...s.spend.budgets }; if (n) budgets[cat] = n; else delete budgets[cat]; save({ ...s.spend, budgets }); toast('ok', n ? 'Budget saved: you get a heads-up at 80% and when it’s used up.' : 'Budget removed.'); }}

@@ -102,7 +102,7 @@ export function Me(_: { go: (tab: string) => void }) {
             <p className="text-sm text-stone-600 dark:text-slate-300">Only the email headers are read (who, subject, opened or not), never the contents. Unsubscribe uses the official unsubscribe that real newsletters carry; senders seen in Spam are never unsubscribed (block them instead).{s.unsub.auto ? ` Automatic: on, after ${s.unsub.days} days without opening.` : ''}</p>
             <div className="flex flex-wrap gap-1.5" role="tablist">
               {([['stale', `Not opened in ${s.unsub.days} days`], ['all', 'All'], ['done', 'Done'], ['spam', 'Spam']] as [SenderView, string][]).map(([v, l]) => (
-                <button key={v} role="tab" aria-selected={view === v} className={`chip !px-3 !py-1 ${view === v ? 'border-emerald-700 bg-emerald-800 text-white dark:border-emerald-600 dark:bg-emerald-600' : 'border-stone-300 text-stone-600 dark:border-slate-700 dark:text-slate-300'}`} onClick={() => setView(v)}>{l}</button>
+                <button key={v} role="tab" aria-selected={view === v} className={`chip !px-3 !py-1 ${view === v ? 'bg-gradient-to-br from-teal-300 to-violet-400 !border-transparent text-[#04121a] shadow-[0_0_18px_-6px_#5eead4]' : 'border-stone-300 text-stone-600 dark:border-slate-700 dark:text-slate-300'}`} onClick={() => setView(v)}>{l}</button>
               ))}
             </div>
             <ul className="divide-y divide-stone-200 dark:divide-slate-800">

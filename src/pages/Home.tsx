@@ -101,7 +101,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
         )}
         <AskBar onAsk={(q) => void ask(q)} disabled={thinking} />
         {st.suggestions.length > 0 && (
-          <button className="card flex w-full items-center gap-3 text-left !border-emerald-500/40" onClick={() => go('inbox')}>
+          <button className="card flex w-full items-center gap-3 text-left tap !border-teal-400/50" onClick={() => go('inbox')}>
             <span className="text-2xl" aria-hidden="true">🔎</span>
             <span className="flex-1 text-sm"><b>{st.suggestions.length} found</b> automatically: add them or ignore them.</span>
             <span aria-hidden="true">→</span>
