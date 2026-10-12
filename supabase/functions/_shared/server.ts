@@ -14,6 +14,13 @@ export const cors = () => ({
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   Vary: 'Origin',
 });
+/** The Android app (branch "android") runs the same screens from https://localhost: allow it as well as the website. */
+const APP_ORIGINS = ['https://localhost', 'capacitor://localhost'];
+export function withCors(res: Response, req: Request): Response {
+  const o = req.headers.get('origin');
+  if (o && APP_ORIGINS.includes(o)) res.headers.set('Access-Control-Allow-Origin', o);
+  return res;
+}
 export const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...cors() } });
 export class HttpError extends Error {
   constructor(message: string, public status = 400) { super(message); }

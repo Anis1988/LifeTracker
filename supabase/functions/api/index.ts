@@ -1,5 +1,5 @@
 import { z } from 'npm:zod@4.1.12';
-import { admin, connection, cors, env, HttpError, json, open, saveConnection, settingsOf, sign, userOf } from '../_shared/server.ts';
+import { admin, connection, cors, env, HttpError, json, open, saveConnection, settingsOf, sign, userOf, withCors } from '../_shared/server.ts';
 import { claimSetupToken } from '../_shared/simplefin.ts';
 import { authUrl, has, type Want } from '../_shared/google.ts';
 import { askAi, readWithAi } from '../_shared/ai.ts';
@@ -41,7 +41,9 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('import-csv'), rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), description: z.string().max(200), account: z.string().max(80).optional() })).min(1).max(5000) }),
 ]);
 
-Deno.serve(async (req) => {
+Deno.serve(async (req) => withCors(await handle(req), req));
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors() });
   try {
     const user = await userOf(req);
@@ -167,7 +169,7 @@ Deno.serve(async (req) => {
     const status = e instanceof HttpError ? e.status : 500;
     return json({ error: (e instanceof Error ? e.message : String(e)).slice(0, 500) }, status);
   }
-});
+}
 
 function b64(u: Uint8Array): string {
   let s = '';
