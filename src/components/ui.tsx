@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { money } from '../../supabase/functions/_shared/money.ts';
 
 export function Money({ n, currency = 'USD', className = '' }: { n: number; currency?: string; className?: string }) {
@@ -19,10 +19,20 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 
 export function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
-      className={`relative h-7 w-12 rounded-full transition disabled:opacity-40 ${on ? 'bg-emerald-700 dark:bg-emerald-600' : 'bg-stone-300 dark:bg-slate-700'}`}>
-      <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${on ? 'left-6' : 'left-1'}`} />
+    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} className="switch">
+      <span />
     </button>
+  );
+}
+
+/** Segmented switch: a glass thumb slides to the picked option. */
+export function Seg<T extends string>({ options, value, onChange, label, className = '' }: { options: [T, string][]; value: T; onChange: (v: T) => void; label: string; className?: string }) {
+  const i = Math.max(0, options.findIndex(([v]) => v === value));
+  return (
+    <div className={`seg ${className}`} role="tablist" aria-label={label} style={{ '--i': i, '--n': options.length } as CSSProperties}>
+      <span className="thumb" aria-hidden="true" />
+      {options.map(([v, l]) => <button key={v} type="button" role="tab" aria-selected={v === value} onClick={() => onChange(v)}>{l}</button>)}
+    </div>
   );
 }
 
@@ -31,15 +41,15 @@ export function Fold({ title, subtitle, icon, open: start = false, children }: {
   const [open, setOpen] = useState(start);
   return (
     <section className="card !p-0">
-      <button className="flex w-full items-center gap-3 px-4 py-3.5 text-left" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button className="tap flex w-full items-center gap-3 rounded-[26px] px-4 py-3.5 text-left" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {icon && <span className="text-xl" aria-hidden="true">{icon}</span>}
         <span className="min-w-0 flex-1">
           <span className="block font-display text-[17px] font-semibold text-stone-900 dark:text-slate-50">{title}</span>
           {subtitle && <span className="block truncate text-xs text-stone-500 dark:text-slate-400">{subtitle}</span>}
         </span>
-        <span aria-hidden="true" className={`text-stone-400 transition ${open ? 'rotate-180' : ''}`}>⌄</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24" className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-500 [transition-timing-function:var(--spring)] ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
       </button>
-      {open && <div className="space-y-2 border-t border-stone-200 px-4 pb-4 pt-3 dark:border-slate-800">{children}</div>}
+      {open && <div className="rise space-y-2 border-t border-slate-900/[0.07] px-4 pb-4 pt-3 dark:border-white/[0.08]">{children}</div>}
     </section>
   );
 }
@@ -53,11 +63,12 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/50 backdrop-blur-sm animate-[fade_.2s_ease-out] sm:items-center" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] border border-white/60 bg-[#f8faf9] p-4 pb-8 shadow-2xl animate-[pop_.25s_ease-out] dark:border-white/10 dark:bg-[#0c1220] sm:max-w-lg sm:rounded-[28px]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/40 backdrop-blur-md animate-[fade_.25s_ease-out] sm:items-center" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="max-h-[92vh] w-full overflow-y-auto rounded-t-[30px] border border-white/70 bg-[#f4f7fb]/95 p-4 pb-8 shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl animate-[pop_.45s_cubic-bezier(.34,1.3,.64,1)] dark:border-white/10 dark:bg-[#0b1020]/95 dark:shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.12)] sm:max-w-lg sm:rounded-[30px]" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto -mt-1 mb-3 h-1.5 w-10 rounded-full bg-slate-900/15 dark:bg-white/20 sm:hidden" aria-hidden="true" />
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold">{title}</h2>
-          <button className="btn-ghost text-lg" aria-label="Close" onClick={onClose}>✕</button>
+          <button className="btn h-10 w-10 !min-h-0 !rounded-full !p-0" aria-label="Close" onClick={onClose}><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
         </div>
         {children}
       </div>
@@ -81,7 +92,7 @@ export function Toasts() {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex flex-col items-center gap-2 px-4" aria-live="polite">
       {list.map((t) => (
-        <div key={t.id} className={`pointer-events-auto max-w-md rounded-xl px-4 py-2.5 text-sm shadow-lg ${t.kind === 'err' ? 'bg-red-700 text-white' : t.kind === 'ok' ? 'bg-emerald-800 text-white' : 'bg-stone-800 text-white'}`}>{t.text}</div>
+        <div key={t.id} className={`pointer-events-auto max-w-md rounded-2xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_40px_-12px_rgba(0,0,0,0.6)] backdrop-blur-xl animate-[popin_.45s_cubic-bezier(.34,1.56,.64,1)] ${t.kind === 'err' ? 'bg-red-700/90' : t.kind === 'ok' ? 'bg-teal-800/90' : 'bg-slate-800/90'}`}>{t.text}</div>
       ))}
     </div>
   );

@@ -11,7 +11,7 @@ export function ItemRow({ i, onOpen }: { i: Item; onOpen?: () => void }) {
   const days = due ? daysBetween(today(), due) : null;
   const up = i.price_history?.length ? i.price_history[i.price_history.length - 1] : null;
   return (
-    <button className="flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-stone-100 dark:hover:bg-slate-800/60" onClick={onOpen}>
+    <button className="tap flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-xl dark:bg-slate-800" aria-hidden="true">{catOf(i.category).icon}</span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
@@ -53,7 +53,7 @@ export function Totals({ items }: { items: Item[] }) {
           {byCat.map(({ c, v }) => (
             <div key={c.id}>
               <div className="flex justify-between text-sm"><span>{c.icon} {c.label}</span><span className="num text-stone-600 dark:text-slate-300"><Money n={v} />/mo</span></div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-slate-800"><div className="h-full rounded-full bg-emerald-700 dark:bg-emerald-500" style={{ width: `${(v / m) * 100}%` }} /></div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-slate-800"><div className="bar-grow h-full rounded-full bg-gradient-to-r from-teal-400 to-violet-400" style={{ width: `${(v / m) * 100}%` }} /></div>
             </div>
           ))}
         </div>
@@ -156,7 +156,7 @@ export function ItemForm({ item, onSave, onDelete, onDone }: {
       <div className="flex flex-wrap gap-1.5 pb-2">
         {CATEGORIES.map((c) => (
           <button key={c.id} type="button" onClick={() => set({ category: c.id })}
-            className={`chip !py-1 ${f.category === c.id ? 'border-emerald-700 bg-emerald-800 text-white dark:bg-emerald-600' : 'border-stone-300 text-stone-700 dark:border-slate-700 dark:text-slate-300'}`}>{c.icon} {c.label}</button>
+            className={`chip !py-1 ${f.category === c.id ? 'bg-gradient-to-br from-teal-300 to-violet-400 !border-transparent text-[#04121a] shadow-[0_0_18px_-6px_#5eead4]' : 'border-stone-300 text-stone-700 dark:border-slate-700 dark:text-slate-300'}`}>{c.icon} {c.label}</button>
         ))}
       </div>
       <input className="input w-full text-lg" placeholder="Name, e.g. Netflix" value={f.name ?? ''} onChange={(e) => set({ name: e.target.value })} aria-label="Name" />

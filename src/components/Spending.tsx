@@ -35,7 +35,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
           const cat = spendCat(c.id);
           const b = budgets[c.id];
           const over = b ? c.amount / b : 0;
-          const bar = over >= 1 ? 'bg-red-500 dark:bg-red-400' : b && over >= alertAt ? 'bg-amber-500 dark:bg-amber-300' : 'bg-emerald-600 dark:bg-emerald-400';
+          const bar = over >= 1 ? 'bg-red-500 dark:bg-red-400' : b && over >= alertAt ? 'bg-amber-500 dark:bg-amber-300' : 'bg-gradient-to-r from-teal-400 to-violet-400';
           return (
             <div key={c.id} className="space-y-1">
               <button className="flex w-full items-baseline justify-between gap-2 text-left text-sm" onClick={() => { setEdit(edit === c.id ? null : c.id); setVal(b ? String(b) : ''); }} aria-expanded={edit === c.id}>
@@ -43,7 +43,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
                 <span className="num shrink-0 text-slate-700 dark:text-slate-200">{money(c.amount)}{b ? <span className="text-slate-500 dark:text-slate-400"> / {money(b)}</span> : ''}</span>
               </button>
               <div className="relative h-2 overflow-hidden rounded-full bg-slate-900/[0.07] dark:bg-white/[0.08]">
-                <div className={`h-full rounded-full ${bar} transition-[width] duration-700`} style={{ width: `${Math.min(100, (c.amount / max) * 100)}%` }} />
+                <div className={`bar-grow h-full rounded-full ${bar} transition-[width] duration-700`} style={{ width: `${Math.min(100, (c.amount / max) * 100)}%` }} />
                 {c.usual != null && c.usual > 0 && <span className="absolute top-0 h-full w-0.5 bg-slate-500/70 dark:bg-slate-300/70" style={{ left: `${Math.min(99.5, (c.usual / max) * 100)}%` }} title={`Usual: ${money(c.usual)}`} />}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">{c.usual != null ? `Usual month ${money(c.usual)}` : 'No usual month yet'}{b ? ` · ${over >= 1 ? 'budget used up' : `${Math.round(over * 100)}% of budget`}` : ''}</p>

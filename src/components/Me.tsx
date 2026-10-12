@@ -195,7 +195,7 @@ export function PaperRow({ p, onOpen }: { p: Paper; onOpen?: () => void }) {
   const left = p.expires ? daysBetween(today(), p.expires) : null;
   const cls = left == null ? 'text-stone-500' : left < 0 ? 'text-red-700 dark:text-red-300' : left <= 30 ? 'text-amber-700 dark:text-amber-300' : left <= 90 ? 'text-amber-700/80 dark:text-amber-200/80' : 'text-stone-500 dark:text-slate-400';
   return (
-    <button className="flex w-full items-center gap-3 rounded-xl px-1 py-2.5 text-left hover:bg-stone-100 dark:hover:bg-slate-800/60" onClick={onOpen}>
+    <button className="tap flex w-full items-center gap-3 rounded-2xl px-1 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
       <span className="text-2xl" aria-hidden="true">{k.icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{p.name}</span>

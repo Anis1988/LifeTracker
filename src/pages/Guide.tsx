@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Fold } from '../components/ui';
+import { Fold, Seg, Toggle } from '../components/ui';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
-import { AskChat, MiniRings, MonthHero, TimelineList } from '../components/Dash';
+import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
 import { PurchaseRow, SpendingView } from '../components/Spending';
 import { DateRow } from '../components/Dates';
 import { timeline } from '../lib/timeline';
@@ -99,6 +99,23 @@ export function Guide() {
           </div>
         </Example>
         <P>The three rings: <b>Spending</b> (this month against a usual month), <b>Bills</b> (how many of this month’s bills already came), <b>Privacy</b> (credit bureaus frozen). Tap one to open it. <b>Coming up</b> mixes bills, free trials ending, renewals, documents, important dates and return windows; tap <b>See all</b> for the next 60 days.</P>
+      </Fold>
+
+      <Fold icon="🫧" title="How it looks and feels">
+        <P>Everything sits on frosted glass over a slow, soft glow. When you tap a button it sinks a little, a glow spreads from your finger and it springs back. The tab bar at the bottom has a glass bubble that slides to the tab you open, and switches (like Bills | Spending | Returns) slide the same way.</P>
+        <P>Rings and bars draw themselves in when a page opens. It follows your phone: light by day, dark at night. If your phone is set to <b>reduce motion</b>, all the movement stops and everything simply appears.</P>
+        <Example caption="Made-up example: a switch, an on/off switch, a ring and a button, as they look in the app.">
+          <div className="space-y-3">
+            <Seg label="Example" options={[['a', 'Bills'], ['b', 'Spending'], ['c', 'Returns']]} value="b" onChange={() => undefined} />
+            <div className="flex items-center gap-3">
+              <Ring value={0.72} size={64} stroke={7} label="Example ring 72%"><span className="num text-[13px] font-semibold">72%</span></Ring>
+              <span className="flex-1 text-sm">Daily check</span>
+              <Toggle on label="Example switch" onChange={() => undefined} />
+            </div>
+            <span className="btn-primary w-full">Run the check now</span>
+          </div>
+        </Example>
+        <P>The app icon is a small glowing planet with a ring and an amber moon: your life in the middle, with what’s coming up going around it.</P>
       </Fold>
 
       <Fold icon="💬" title="Ask LifeTracker">
