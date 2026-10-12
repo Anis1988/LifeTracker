@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { App as NativeApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
+import { APP_AUTH_REDIRECT, isNative, setupNativeLinks } from './lib/native';
+import { AppUpdateCheck } from './components/AppUpdate';
 import type { Session } from '@supabase/supabase-js';
 import { configured, secretKey, siteUrl, supabase } from './lib/supabase';
 import { StoreProvider, useStore } from './lib/store';
@@ -42,7 +46,19 @@ export function App() {
     if (!configured) return setSession(null);
     void supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => data.subscription.unsubscribe();
+    // Android app: the sign-in link (email or Google) opens lifetracker://auth?code=… → finish signing in here.
+    setupNativeLinks();
+    const h = isNative() ? NativeApp.addListener('appUrlOpen', ({ url }) => {
+      if (!url.startsWith(APP_AUTH_REDIRECT)) return;
+      void Browser.close().catch(() => undefined);
+      const q = new URLSearchParams(url.split('?')[1]?.split('#')[0] ?? '');
+      const h2 = new URLSearchParams(url.split('#')[1] ?? '');
+      const code = q.get('code');
+      const err = q.get('error_description') ?? h2.get('error_description');
+      if (err) return toast('err', err.replace(/\+/g, ' '));
+      if (code) void supabase.auth.exchangeCodeForSession(code).then(({ error }) => error && toast('err', `Sign-in: ${error.message}`));
+    }) : null;
+    return () => { data.subscription.unsubscribe(); void h?.then((x) => x.remove()); };
   }, []);
   if (secretKey) return <Shell><p className="card text-sm text-red-700 dark:text-red-300">This site was built with the Supabase <b>secret</b> key. Replace VITE_SUPABASE_ANON_KEY with the publishable (anon) key, revoke the secret key in Supabase, and deploy again.</p></Shell>;
   if (!configured) return <Shell><p className="card text-sm">This copy isn’t linked to Supabase yet: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (see README).</p></Shell>;
@@ -69,13 +85,15 @@ function Login() {
   const [busy, setBusy] = useState(false);
   const link = async () => {
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: siteUrl() } });
+    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: isNative() ? APP_AUTH_REDIRECT : siteUrl() } });
     setBusy(false);
     if (error) toast('err', error.message); else setSent(true);
   };
   const google = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: siteUrl() } });
+    // In the app, Google opens in the phone's browser and comes back with lifetracker://auth.
+    const { data, error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: isNative() ? APP_AUTH_REDIRECT : siteUrl(), skipBrowserRedirect: isNative() } });
     if (error) toast('err', errText(error));
+    else if (isNative() && data.url) void Browser.open({ url: data.url });
   };
   return (
     <div className="card space-y-3">
@@ -102,13 +120,27 @@ function Main() {
     return () => window.removeEventListener('hashchange', f);
   }, []);
   const go = (t: string) => { location.hash = `#/${t}`; window.scrollTo(0, 0); };
+  // Android app: the back button closes an open panel, then goes back to Home, then puts the app away.
+  // Coming back to the app (e.g. after connecting Google in the browser) refreshes everything.
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  useEffect(() => {
+    if (!isNative()) return;
+    const back = NativeApp.addListener('backButton', () => {
+      if (document.querySelector('[role="dialog"]')) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      else if (tabRef.current !== 'home') go('home');
+      else void NativeApp.minimizeApp();
+    });
+    const resume = NativeApp.addListener('resume', () => { void st.reload().catch(() => undefined); void st.reloadStatus(); });
+    return () => { void back.then((x) => x.remove()); void resume.then((x) => x.remove()); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Me: worrying pages, people-search listings and breaches still to handle.
   const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
   const badge = (t: Tab): number => (t === 'inbox' ? st.suggestions.length : t === 'me' ? meCount : 0);
   return (
     <div className="min-h-screen pb-28 sm:pb-10">
       <Aurora />
-      <header className="sticky top-0 z-30 border-b border-slate-900/5 bg-[#f3f6f5]/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#070b14]/70">
+      <header className="sticky top-0 z-30 border-b border-slate-900/5 bg-[#f3f6f5]/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#070b14]/70" style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }}>
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
           <img src="./icon.svg" alt="" className="h-8 w-8" />
           <span className="font-display text-xl font-semibold tracking-tight">LifeTracker</span>
@@ -125,11 +157,12 @@ function Main() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-5">
+        <AppUpdateCheck />
         {st.loading ? <p className="text-sm text-slate-500"><span className="spinner" /> Loading…</p>
           : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <Me go={go} /> : tab === 'settings' ? <Settings /> : <Guide />}
       </main>
       {/* Phones: a floating glass tab bar within thumb reach. */}
-      <nav aria-label="Tabs" className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid grid-cols-5 rounded-[26px] border border-slate-900/[0.07] bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1220]/80 dark:shadow-[0_10px_40px_rgba(0,0,0,0.5)] sm:hidden">
+      <nav aria-label="Tabs" style={{ bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className="fixed inset-x-3 z-30 grid grid-cols-5 rounded-[26px] border border-slate-900/[0.07] bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1220]/80 dark:shadow-[0_10px_40px_rgba(0,0,0,0.5)] sm:hidden">
         {TABS.map((t) => (
           <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`relative flex h-16 flex-col items-center justify-center gap-0.5 text-[10.5px] font-semibold ${tab === t.id ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>
             <Icon d={t.icon} />{t.label}

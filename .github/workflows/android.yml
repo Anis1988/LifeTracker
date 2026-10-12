@@ -1,0 +1,59 @@
+# Builds the Android app (APK) from the "android" branch: the same screens as the website, talking to the same Supabase.
+# Download: the "android-latest" release (open it on your phone), or the run's Artifacts.
+name: Android app
+
+on:
+  push:
+    branches: [android]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the screens
+        run: npm run build
+        env:
+          # The same public values the website uses (Settings → Secrets and variables → Actions: Variables or Secrets).
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_APP_BUILD: ${{ github.run_number }} # the app compares this with the release page to offer updates
+      - name: Never ship the secret key
+        run: |
+          if grep -rqE "sb_secret_|service_role" build/assets; then echo "::error::The Supabase SECRET key is in VITE_SUPABASE_ANON_KEY. Use the publishable (anon) key."; exit 1; fi
+      - name: Copy them into the Android project
+        run: npx cap sync android
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build the APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Name it
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeTracker.apk
+      - uses: actions/upload-artifact@v6
+        with:
+          name: LifeTracker-apk
+          path: LifeTracker.apk
+          retention-days: 30
+      - name: Put it on the "android-latest" release (easy download on the phone)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --target android --prerelease --title "Android app (latest)" --notes "Open this page on your Android phone and tap LifeTracker.apk to install or update."
+          gh release upload android-latest LifeTracker.apk --clobber
+          gh release edit android-latest --notes "Latest build: run ${{ github.run_number }} (version 1.0.${{ github.run_number }}), commit ${GITHUB_SHA::7}. Open this page on your Android phone and tap LifeTracker.apk to install or update."

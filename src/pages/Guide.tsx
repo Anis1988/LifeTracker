@@ -9,6 +9,7 @@ import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
 import { AlertBanks } from '../components/Bank';
 import { AboutMe } from '../components/AboutMe';
+import { UpdateBanner } from '../components/AppUpdate';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
 import type { Alert, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
@@ -247,6 +248,19 @@ export function Guide() {
         <P>Reading documents and emails uses an AI. The <b>free ones go first</b> (Gemini, then Groq, in the order you set in Settings → AI). <b>Claude</b> (paid, a few cents) only reads when the free ones are over their daily limit, not set up, can’t read that kind of file, or fail. Each AI has its own daily limit; finding bills in your bank uses no AI at all.</P>
       </Fold>
 
+      <Fold icon="📱" title="Android app">
+        <P>LifeTracker is also an app for Android phones: the same screens and the same data, in its own icon.</P>
+        <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-700 dark:text-slate-300">
+          <li>On your phone, open <b className="break-all">github.com/Anis1988/LifeTracker/releases/tag/android-latest</b> and tap <b>LifeTracker.apk</b>.</li>
+          <li>Android asks to allow installing from your browser: tap <b>Settings → Allow</b>, then <b>Install</b>.</li>
+          <li>Sign in with Google or an email link: it opens your browser and comes back to the app by itself.</li>
+        </ol>
+        <P>When a new version is ready, a banner at the top says so: tap <b>Update</b> and install it over the old one (your data stays). Connecting Google Calendar or Gmail opens your browser; when it says “connected”, come back to the app.</P>
+        <Example caption="Made-up example of the update banner.">
+          <UpdateBanner have={12} next={14} />
+        </Example>
+      </Fold>
+
       <Fold icon="🔐" title="Privacy">
         <P>Your data is in your own Supabase database. Each person only ever sees their own rows (Row Level Security). The bank access link and Google sign-in are encrypted, and the app itself can’t read them: only the server uses them. You can download everything or sign out in Settings.</P>
         <P>Ask LifeTracker sends a short summary of your own data with each question to the AI, only to answer it. Order emails are read only after a free check says they’re real orders.</P>
@@ -261,7 +275,8 @@ export function Guide() {
           <li><b>Google Cloud</b>: enable the Calendar and Gmail APIs, make an OAuth “Web” client with the redirect <code>https://&lt;project&gt;.supabase.co/functions/v1/google-callback</code>, add yourself as a test user, then publish the app (otherwise Google signs you out every 7 days).</li>
           <li><b>Morning run</b>: Supabase → Vault: add <code>lt_project_url</code> and <code>lt_cron_secret</code> (same as CRON_SECRET).</li>
           <li><b>Mailing lists (optional)</b>: Google Cloud → Google Auth Platform → Data Access → add the scope <code>gmail.modify</code>, then Settings → Mailing lists → Allow “Manage mailing lists”.</li>
-          <li><b>iPhone / Android</b>: open the website and “Add to Home Screen”.</li>
+          <li><b>Android app</b>: Supabase → Authentication → URL configuration → Redirect URLs: add <code>lifetracker://auth</code> (so sign-in links come back to the app). Then install it (see “Android app”).</li>
+          <li><b>iPhone</b>: open the website in Safari and “Add to Home Screen”.</li>
         </ol>
       </Fold>
     </div>

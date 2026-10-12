@@ -4,6 +4,8 @@ import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
 import { Field, Fold, Toggle, errText, toast } from '../components/ui';
 import { AboutMe } from '../components/AboutMe';
+import { Browser } from '@capacitor/browser';
+import { isNative } from '../lib/native';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -37,7 +39,8 @@ export function Settings() {
 
   const google = async (want: ('calendar' | 'gmail' | 'mailbox')[]) => run('google', async () => {
     const r = await api<{ url: string }>('google-start', { want, back: siteUrl() });
-    location.href = r.url;
+    // In the app, Google opens in the phone's browser; it ends on the website, then come back to the app.
+    if (isNative()) { toast('info', 'Finish in the browser, then come back to the app.'); await Browser.open({ url: r.url }); } else location.href = r.url;
   });
   const bank = () => run('bank', async () => {
     const r = await api<{ log: { steps: string[]; errors: string[] } }>('bank-connect', { setupToken: token.trim() });
