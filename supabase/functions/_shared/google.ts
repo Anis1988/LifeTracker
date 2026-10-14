@@ -1,5 +1,6 @@
 import { env } from './server.ts';
-import { catOf, dateKind, type Item, type LifeDate, type Paper, type Settings } from './model.ts';
+import { apptKind, catOf, dateKind, type Appointment, type Item, type LifeDate, type Paper, type Settings } from './model.ts';
+import { endOf } from './apptText.ts';
 import { paperKind } from './people.ts';
 
 /**
@@ -78,7 +79,8 @@ const RRULE: Record<string, string | null> = {
   weekly: 'RRULE:FREQ=WEEKLY', biweekly: 'RRULE:FREQ=WEEKLY;INTERVAL=2', monthly: 'RRULE:FREQ=MONTHLY', quarterly: 'RRULE:FREQ=MONTHLY;INTERVAL=3',
   semiannual: 'RRULE:FREQ=MONTHLY;INTERVAL=6', yearly: 'RRULE:FREQ=YEARLY', once: null,
 };
-interface GEvent { id?: string; summary: string; description?: string; start: { date: string }; end: { date: string }; recurrence?: string[]; reminders?: unknown; extendedProperties?: { private?: Record<string, string> }; status?: string }
+type When = { date: string } | { dateTime: string; timeZone: string };
+interface GEvent { id?: string; summary: string; description?: string; location?: string; start: When; end: When; recurrence?: string[]; reminders?: unknown; extendedProperties?: { private?: Record<string, string> }; status?: string }
 
 /** The "LifeTracker" calendar (made once). */
 export async function ensureCalendar(at: string, known?: string): Promise<string> {
@@ -112,7 +114,7 @@ export function eventsFor(item: Item, s: Settings, site: string): { kind: string
   return out;
 }
 const nextDay = (d: string) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
-const sigOf = (ev: GEvent) => { const s = JSON.stringify([ev.summary, ev.description, ev.start, ev.recurrence, ev.reminders]); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
+const sigOf = (ev: GEvent) => { const s = JSON.stringify([ev.summary, ev.description, ev.start, ev.end, ev.location, ev.recurrence, ev.reminders]); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
 
 /** 🪪 A document that expires: a "start renewing" day 90 days before, and the expiry day (reminders 4 weeks and 1 week before). */
 export function paperEvents(p: Paper, site: string): { kind: string; ev: GEvent }[] {
@@ -138,8 +140,22 @@ export function lifeDateEvents(d: LifeDate, site: string): { kind: string; ev: G
   } }];
 }
 
+/** 📅 An appointment: at its time (in your time zone), or all day when no time was given; your reminders. */
+export function apptEvents(a: Appointment, s: Settings, site: string): { kind: string; ev: GEvent }[] {
+  if (a.status !== 'booked') return [];
+  const tz = s.appts.timeZone || 'America/New_York';
+  const when = a.time
+    ? { start: { dateTime: `${a.day}T${a.time}:00`, timeZone: tz }, end: { dateTime: endOf(a.day, a.time, a.minutes ?? 60), timeZone: tz } }
+    : { start: { date: a.day }, end: { date: nextDay(a.day) } };
+  const lines = [a.with_who && `With ${a.with_who}`, a.notes, `Found in ${a.source === 'email' ? 'an email' : a.source === 'text' ? 'a text' : 'LifeTracker'}${a.source_from ? ` from ${a.source_from}` : ''}.`, site && `Open LifeTracker: ${site}`].filter(Boolean);
+  return [{ kind: 'appt', ev: {
+    summary: `${apptKind(a.kind).icon} ${a.title}`, description: lines.join('\n'), ...(a.place ? { location: a.place } : {}), ...when,
+    reminders: { useDefault: false, overrides: s.appts.remind.slice(0, 5).map((m) => ({ method: 'popup', minutes: Math.max(0, Math.min(40320, m)) })) },
+  } }];
+}
+
 /** Makes the LifeTracker calendar match your bills (and documents that expire, important dates): adds, updates and removes events. Returns counts. */
-export async function syncCalendar(at: string, calendarId: string, items: Item[], s: Settings, site: string, papers: Paper[] = [], dates: LifeDate[] = []) {
+export async function syncCalendar(at: string, calendarId: string, items: Item[], s: Settings, site: string, papers: Paper[] = [], dates: LifeDate[] = [], appts: Appointment[] = []) {
   const existing: GEvent[] = [];
   let page: string | undefined;
   do {
@@ -151,7 +167,7 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
   const have = new Map(existing.map((e) => [`${e.extendedProperties?.private?.item}:${e.extendedProperties?.private?.kind}`, e]));
   let added = 0, changed = 0, removed = 0;
   const want = new Set<string>();
-  const all = [...items.map((i) => ({ id: i.id, evs: eventsFor(i, s, site) })), ...papers.map((p) => ({ id: p.id, evs: paperEvents(p, site) })), ...dates.map((d) => ({ id: d.id, evs: lifeDateEvents(d, site) }))];
+  const all = [...items.map((i) => ({ id: i.id, evs: eventsFor(i, s, site) })), ...papers.map((p) => ({ id: p.id, evs: paperEvents(p, site) })), ...dates.map((d) => ({ id: d.id, evs: lifeDateEvents(d, site) })), ...appts.map((a) => ({ id: a.id, evs: apptEvents(a, s, site) }))];
   for (const item of all) {
     for (const { kind, ev } of item.evs) {
       const k = `${item.id}:${kind}`;

@@ -4,8 +4,10 @@ import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
 import { Field, Fold, Toggle, errText, toast } from '../components/ui';
 import { AboutMe } from '../components/AboutMe';
+import { TextsSetup } from '../components/Appointments';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
 
+const REMINDS: [string, string][] = [['1440,120', '1 day and 2 hours before'], ['1440,60', '1 day and 1 hour before'], ['1440', '1 day before'], ['120', '2 hours before'], ['60', '1 hour before'], ['', 'No reminder']];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const Ready = ({ ok, label }: { ok: boolean; label: string }) => (
@@ -216,6 +218,31 @@ export function Settings() {
           <p className="font-medium">✉️ Forward a bill by email</p>
           <p className="text-stone-600 dark:text-slate-300">Forward any bill or receipt to <b className="select-all break-all">{plus}</b>: it lands in your own Gmail and is read the next morning (Gmail reading must be on).</p>
         </div>
+      </Fold>
+
+      <Fold icon="📅" title="Appointments" subtitle={s.appts.on ? `Emails${status?.phone?.since ? ' + texts' : ''} → straight into your calendar` : 'Off'}>
+        <p className="text-sm text-stone-600 dark:text-slate-300">Appointments in your emails and texts (doctor, dentist, car, haircut, reservations…) go <b>straight into your LifeTracker calendar</b>, with a heads-up. Moved or cancelled? The calendar follows. Wrong one? Remove it on Home.</p>
+        <Field label="Find appointments in my emails" hint={status?.google.gmail ? `Every hour. Free check first; only emails that look like appointments go to the AI.${status.mail?.apptsScanned ? ` Last look: ${new Date(status.mail.apptsScanned).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}.` : ''}` : 'Needs Gmail: Google Calendar & Gmail → “Also read Gmail receipts”.'}>
+          <Toggle on={s.appts.on} onChange={(v) => save({ appts: { ...s.appts, on: v } })} label="Appointments" />
+        </Field>
+        <Field label="Remind me">
+          <select className="input" value={s.appts.remind.join(',')} onChange={(e) => save({ appts: { ...s.appts, remind: e.target.value ? e.target.value.split(',').map(Number) : [] } })} aria-label="Appointment reminders">
+            {!REMINDS.some(([v]) => v === s.appts.remind.join(',')) && <option value={s.appts.remind.join(',')}>Your own</option>}
+            {REMINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </Field>
+        <Field label="Time zone" hint="Times in emails and texts are read as this time zone.">
+          <span className="flex items-center gap-2 text-sm">
+            <b>{s.appts.timeZone || 'not set'}</b>
+            {s.appts.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone && <button className="btn !min-h-9 text-xs" onClick={() => save({ appts: { ...s.appts, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } })}>Use {Intl.DateTimeFormat().resolvedOptions().timeZone}</button>}
+          </span>
+        </Field>
+        <TextsSetup phone={status?.phone} getKey={async () => { const r = await api<{ key: string; url: string }>('phone-key'); await st.reloadStatus(); return r; }} />
+        <button className="btn" disabled={!!busy || !s.appts.on || !status?.google.gmail} onClick={() => void run('appts', async () => {
+          const r = await api<{ log: { steps: string[]; errors: string[]; newAlerts: number } }>('run', { part: 'appts' });
+          toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'No new appointment emails.');
+          await st.reload();
+        })}>{busy === 'appts' ? <span className="spinner" /> : '✉️ Look in my emails now'}</button>
       </Fold>
 
       <Fold icon="🤖" title="AI that reads bills" subtitle={`Free first (${free.map((p) => providerOf(p).name).join(' → ')}), then Claude if they can’t`}>

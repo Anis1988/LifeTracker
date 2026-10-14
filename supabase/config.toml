@@ -11,3 +11,7 @@ verify_jwt = false
 # Called by pg_cron every morning; protected by the CRON_SECRET header instead.
 [functions.cron]
 verify_jwt = false
+
+# The Android app sends appointment texts here with its own signed key (no sign-in header).
+[functions.texts]
+verify_jwt = false

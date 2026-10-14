@@ -14,6 +14,8 @@ import { paperKind } from './people.ts';
 import { purchaseAlerts, purchaseStep } from './purchases.ts';
 import { spendCat, spendReport, type SpendTx } from './spend.ts';
 import { dateKind } from './model.ts';
+import { apptEmailStep } from './appointments.ts';
+import type { Appointment } from './model.ts';
 
 /**
  * 🔄 One automatic run for one person (every morning, or "Sync now"):
@@ -26,7 +28,7 @@ export interface RunLog { steps: string[]; errors: string[]; newAlerts: number }
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
 /** Parts that can be run on their own (from the app's buttons). */
-export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases';
+export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar';
 
 export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
@@ -45,6 +47,10 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     }
   };
 
+  // 📅 Appointments (also every hour on their own): straight into the calendar.
+  let apptChanges = 0;
+  if (want('appts')) await step('Appointments', async () => { const r = await apptEmailStep(db, userId, s, alerts, until); apptChanges = r.changed; return r.text; });
+  if (!want('bills') && (apptChanges || (opts.only?.includes('calendar')))) await step('Calendar', () => calendarStep(db, userId, s));
   if (want('bills')) {
     await step('Bank', () => bankStep(db, userId, s, opts.full));
     await step('Bank alerts', () => alertStep(db, userId, s, until));
@@ -263,7 +269,7 @@ async function rollStep(db: SupabaseClient, userId: string): Promise<string | vo
 }
 
 // ---------- 📅 Google Calendar ----------
-async function calendarStep(db: SupabaseClient, userId: string, s: Settings): Promise<string | void> {
+export async function calendarStep(db: SupabaseClient, userId: string, s: Settings): Promise<string | void> {
   const c = await connection(db, userId, 'google');
   if (!c || !s.calendar.on || !has(c.meta.scope as string, 'calendar')) return;
   const at = await refresh(await open(c.secret));
@@ -272,7 +278,8 @@ async function calendarStep(db: SupabaseClient, userId: string, s: Settings): Pr
   const { data: items } = await db.from('items').select('*').eq('user_id', userId);
   const { data: papers } = s.papers.on ? await db.from('papers').select('*').eq('user_id', userId) : { data: [] };
   const { data: dates } = await db.from('life_dates').select('*').eq('user_id', userId);
-  const r = await syncCalendar(at, calendarId, (items as Item[]) ?? [], s, env('SITE_URL'), (papers as Paper[]) ?? [], (dates as LifeDate[]) ?? []);
+  const { data: appts } = await db.from('appointments').select('*').eq('user_id', userId).eq('status', 'booked').gte('day', iso(new Date(Date.now() - 400 * 86400_000))).limit(3000);
+  const r = await syncCalendar(at, calendarId, (items as Item[]) ?? [], s, env('SITE_URL'), (papers as Paper[]) ?? [], (dates as LifeDate[]) ?? [], (appts as Appointment[]) ?? []);
   return `calendar up to date (${r.added} added, ${r.changed} changed, ${r.removed} removed)`;
 }
 

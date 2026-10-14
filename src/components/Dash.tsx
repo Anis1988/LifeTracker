@@ -64,7 +64,7 @@ export function MiniRings({ rings }: { rings: { label: string; sub: string; valu
 
 const DOT: Record<Tone, string> = {
   bill: 'bg-teal-400 shadow-[0_0_10px_#2dd4bf]', warn: 'bg-amber-400 shadow-[0_0_10px_#fbbf24]', date: 'bg-pink-400 shadow-[0_0_10px_#f472b6]',
-  doc: 'bg-violet-400 shadow-[0_0_10px_#a78bfa]', return: 'bg-sky-400 shadow-[0_0_10px_#38bdf8]',
+  doc: 'bg-violet-400 shadow-[0_0_10px_#a78bfa]', return: 'bg-sky-400 shadow-[0_0_10px_#38bdf8]', appt: 'bg-emerald-400 shadow-[0_0_10px_#34d399]',
 };
 
 /** 🗓️ Coming up: one line per moment, with a glowing dot by kind. */
