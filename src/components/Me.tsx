@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Finding, Paper, Sender, Settings } from '../../supabase/functions/_shared/model.ts';
 import { BROKERS, BUREAUS, FREE_REPORTS, PAPER_KINDS, paperKind } from '../../supabase/functions/_shared/people.ts';
 import type { WeekLine } from '../../supabase/functions/_shared/week.ts';
@@ -68,15 +68,16 @@ const BROKER_STATUS: Record<string, { label: string; cls: string }> = {
   gone: { label: 'Removed', cls: 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' },
   'not-listed': { label: 'Not listed', cls: 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' },
 };
-export function BrokerList({ rows, onSet }: { rows: Finding[]; onSet?: (f: Finding, patch: Partial<Finding>) => void }) {
+export function BrokerList({ rows, onSet, onAdd }: { rows: Finding[]; onSet?: (f: Finding, patch: Partial<Finding>) => void; onAdd?: (b: { id: string; name: string; domain: string }, patch: Partial<Finding>) => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const order = ['listed', 'requested', 'unknown', 'gone', 'not-listed'];
   const list = BROKERS.map((b) => ({ b, f: rows.find((r) => r.key === b.id) }))
     .concat(rows.filter((r) => !BROKERS.some((b) => b.id === r.key)).map((f) => ({ b: { id: f.key, name: f.title, domain: f.site ?? f.key, remove: f.url ?? `https://${f.site}`, note: 'Look for “opt out”, “remove my info” or “do not sell” at the bottom of the site.' }, f })))
     .sort((x, y) => order.indexOf(x.f?.status ?? 'unknown') - order.indexOf(y.f?.status ?? 'unknown'));
-  const set = (f: Finding | undefined, status: string) => {
-    if (!f) return;
-    onSet?.(f, { status, check_after: status === 'requested' || status === 'gone' ? plus(today(), 90) : null });
+  const set = (f: Finding | undefined, status: string, b?: { id: string; name: string; domain: string }) => {
+    const patch = { status, check_after: status === 'requested' || status === 'gone' ? plus(today(), 90) : null };
+    if (f) onSet?.(f, patch);
+    else if (b) onAdd?.(b, patch); // not checked yet: no row to change, so it is made now
   };
   return (
     <div className="space-y-1.5">
@@ -99,7 +100,7 @@ export function BrokerList({ rows, onSet }: { rows: Finding[]; onSet?: (f: Findi
                 </ol>
                 <div className="flex flex-wrap gap-1.5">
                   {(['listed', 'requested', 'gone', 'not-listed'] as const).map((s) => (
-                    <button key={s} className={`btn !min-h-[36px] text-xs ${f?.status === s ? '!border-emerald-600' : ''}`} onClick={() => set(f, s)}>{BROKER_STATUS[s].label}</button>
+                    <button key={s} className={`btn !min-h-[36px] text-xs ${f?.status === s ? '!border-emerald-600' : ''}`} onClick={() => set(f, s, b)}>{BROKER_STATUS[s].label}</button>
                   ))}
                 </div>
                 {f?.check_after && (f.status === 'requested' || f.status === 'gone') && <p className="text-xs text-stone-500">Look again from {shortDate(f.check_after)}.</p>}
@@ -215,6 +216,12 @@ export function PaperForm({ paper, userId, onSave, onDelete, onDone, read }: {
   const [p, setP] = useState<Partial<Paper>>({ kind: 'passport', ...paper });
   const [busy, setBusy] = useState('');
   const set = (patch: Partial<Paper>) => setP((c) => ({ ...c, ...patch }));
+  // A new photo that is never saved (panel closed) is deleted, so ID photos don't pile up in storage.
+  const latest = useRef<string | null | undefined>(paper.photo);
+  const savedOk = useRef(false);
+  useEffect(() => () => {
+    if (!savedOk.current && latest.current && latest.current !== paper.photo) void supabase.storage.from('docs').remove([latest.current]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const photo = async (f: File | undefined) => {
     if (!f) return;
     if (f.size > 15 * 1024 * 1024) return toast('err', '15 MB at most.');
@@ -225,6 +232,7 @@ export function PaperForm({ paper, userId, onSave, onDelete, onDone, read }: {
       const up = await supabase.storage.from('docs').upload(path, f, { contentType: f.type || 'image/jpeg' });
       if (up.error) throw new Error(up.error.message);
       if (p.photo && p.photo !== paper.photo) await supabase.storage.from('docs').remove([p.photo]);
+      latest.current = path;
       set({ photo: path });
       const r = await read(path);
       set({ kind: r.kind, name: r.name || p.name || paperKind(r.kind).label, holder: r.holder ?? p.holder ?? null, number_end: r.numberEnd ?? p.number_end ?? null, expires: r.expires ?? p.expires ?? null });
@@ -234,14 +242,19 @@ export function PaperForm({ paper, userId, onSave, onDelete, onDone, read }: {
   };
   const save = async () => {
     setBusy('save');
-    try { await onSave({ ...p, name: (p.name || paperKind(p.kind ?? 'other').label).trim() }); onDone(); } catch (e) { toast('err', errText(e)); }
+    try {
+      await onSave({ ...p, name: (p.name || paperKind(p.kind ?? 'other').label).trim() });
+      savedOk.current = true;
+      if (paper.photo && paper.photo !== p.photo) await supabase.storage.from('docs').remove([paper.photo]).catch(() => undefined); // the old photo it replaced
+      onDone();
+    } catch (e) { toast('err', errText(e)); }
     setBusy('');
   };
   return (
     <div className="space-y-3">
       <label className="btn w-full cursor-pointer">
         {busy === 'photo' ? <><span className="spinner" /> Reading the photo…</> : p.photo ? '📷 Photo saved · take another' : '📷 Take or pick a photo (the AI fills the form)'}
-        <input type="file" accept="image/*,application/pdf" capture="environment" className="sr-only" onChange={(e) => void photo(e.target.files?.[0])} disabled={!!busy} />
+        <input type="file" accept="image/*,application/pdf"  className="sr-only" onChange={(e) => void photo(e.target.files?.[0])} disabled={!!busy} />
       </label>
       <label className="block text-sm">Kind
         <select className="input mt-1 w-full" value={p.kind} onChange={(e) => set({ kind: e.target.value })}>

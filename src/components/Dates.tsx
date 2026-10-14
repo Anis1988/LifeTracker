@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DATE_KINDS, dateKind, type LifeDate } from '../../supabase/functions/_shared/model.ts';
-import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
+import { addCycle, daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 import { errText, shortDate, toast } from './ui';
 
 /** 🎂 Important dates & car care: one row (also drawn in the Guide with made-up data). */
@@ -30,7 +30,7 @@ export const DATE_PRESETS: { label: string; d: Partial<LifeDate> }[] = [
   { label: '🔥 HVAC filter', d: { kind: 'home', title: 'Change the HVAC filter', every_months: 3, remind_days: 3 } },
 ];
 
-const addMonths = (d: string, n: number) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCMonth(x.getUTCMonth() + n); return x.toISOString().slice(0, 10); };
+const addMonths = (d: string, n: number) => addCycle(d, 'monthly', n);
 
 export function DateForm({ d, onSave, onDelete, onDone }: { d: Partial<LifeDate>; onSave: (d: Partial<LifeDate> & { title: string; next_date: string }) => Promise<unknown>; onDelete?: () => Promise<void>; onDone: () => void }) {
   const [x, setX] = useState<Partial<LifeDate>>({ kind: 'other', every_months: 12, remind_days: 3, next_date: d.every_months && d.kind !== 'birthday' ? addMonths(today(), d.every_months) : '', ...d });

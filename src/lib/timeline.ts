@@ -1,5 +1,5 @@
 import { apptKind, catOf, dateKind, type Appointment, type Item, type LifeDate, type Paper, type Purchase } from '../../supabase/functions/_shared/model.ts';
-import { daysBetween, dueDates, today } from '../../supabase/functions/_shared/money.ts';
+import { addCycle, daysBetween, dueDates, today } from '../../supabase/functions/_shared/money.ts';
 import { paperKind } from '../../supabase/functions/_shared/people.ts';
 import { whenText } from '../../supabase/functions/_shared/apptText.ts';
 
@@ -7,7 +7,7 @@ import { whenText } from '../../supabase/functions/_shared/apptText.ts';
 export type Tone = 'bill' | 'warn' | 'date' | 'doc' | 'return' | 'appt';
 export interface Moment { date: string; icon: string; title: string; sub: string; amount?: number; tone: Tone; itemId?: string; apptId?: string; time?: string }
 
-const monthsLater = (d: string, n: number) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCMonth(x.getUTCMonth() + n); return x.toISOString().slice(0, 10); };
+const monthsLater = (d: string, n: number) => addCycle(d, 'monthly', n);
 
 export function timeline(input: { items: Item[]; papers: Paper[]; dates: LifeDate[]; purchases: Purchase[]; appts?: Appointment[] }, days = 30, from = today()): Moment[] {
   const end = new Date(Date.parse(`${from}T12:00:00Z`) + days * 86400_000).toISOString().slice(0, 10);
@@ -28,7 +28,7 @@ export function timeline(input: { items: Item[]; papers: Paper[]; dates: LifeDat
     for (let k = 0; k < 24 && n <= end; k++) {
       if (n >= from) out.push({ date: n, icon: dateKind(d.kind).icon, title: d.title, sub: d.every_months ? (d.every_months === 12 ? 'Every year' : `Every ${d.every_months} months`) : 'Once', tone: 'date' });
       if (!d.every_months) break;
-      n = monthsLater(n, d.every_months);
+      n = monthsLater(d.next_date, d.every_months * (k + 1));
     }
   }
   for (const p of input.purchases.filter((x) => x.status === 'keep' || x.status === 'kept')) {

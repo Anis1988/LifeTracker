@@ -5,6 +5,7 @@ import { AlertBanks } from '../components/Bank';
 import { Field, Fold, Toggle, errText, toast } from '../components/ui';
 import { AboutMe } from '../components/AboutMe';
 import { TextsSetup } from '../components/Appointments';
+import { allRows } from '../../supabase/functions/_shared/rows.ts';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
 
 const REMINDS: [string, string][] = [['1440,120', '1 day and 2 hours before'], ['1440,60', '1 day and 1 hour before'], ['1440', '1 day before'], ['120', '2 hours before'], ['60', '1 hour before'], ['', 'No reminder']];
@@ -70,7 +71,8 @@ export function Settings() {
   const slot = (p: Provider, patch: Partial<S['ai']['slots'][Provider]>) => save({ ai: { ...s.ai, slots: { ...s.ai.slots, [p]: { ...s.ai.slots[p], ...patch } } } });
 
   const exportAll = async () => {
-    const [i, sg, d, tx] = await Promise.all(['items', 'suggestions', 'documents', 'transactions'].map((t) => supabase.from(t).select('*')));
+    // Every row, page by page (Supabase sends at most 1,000 at a time).
+    const [i, sg, d, tx] = await Promise.all(['items', 'suggestions', 'documents', 'transactions'].map((t) => allRows((a, b) => supabase.from(t).select('*').order('id').range(a, b), 100000).then((data) => ({ data }))));
     const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), items: i.data, suggestions: sg.data, documents: d.data, transactions: tx.data, settings: s }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
