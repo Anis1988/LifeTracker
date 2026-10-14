@@ -14,7 +14,9 @@ import { connection, open, saveConnection } from './server.ts';
 
 /** "Shop <news@shop.com>" → { address, name } */
 export function parseFrom(from: string): { address: string; name: string } {
-  const address = (from.match(/<([^>]+)>/)?.[1] ?? from.match(/[\w.+-]+@[\w.-]+\.\w+/)?.[0] ?? '').trim().toLowerCase();
+  let address = (from.match(/<([^>]+)>/)?.[1] ?? from.match(/[\w.+-]+@[\w.-]+\.\w+/)?.[0] ?? '').trim().toLowerCase();
+  // Only a plain address goes into Gmail searches (an odd "From" could otherwise match, and archive, other emails).
+  if (!/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(address)) address = '';
   const name = from.replace(/<[^>]*>/, '').replace(/["']/g, '').trim();
   return { address, name: name && name !== address ? name.slice(0, 80) : address.split('@')[1] ?? address };
 }
@@ -155,6 +157,9 @@ export async function unsubStep(db: SupabaseClient, userId: string, s: Settings,
     let n = 0;
     for (const x of due) {
       if (Date.now() > until) break;
+      // Opened one lately (seen in Gmail, even if the app hadn't noticed)? Keep that list.
+      const read = await searchIds(at, `from:"${x.address}" -is:unread newer_than:${s.unsub.days}d`, 1).catch(() => [] as string[]);
+      if (read.length) { await db.from('senders').update({ last_opened: new Date().toISOString().slice(0, 10) }).eq('id', x.id); continue; }
       const r = await unsubscribeOne(db, userId, x, { at, mailbox, auto: true }).catch((e) => ({ status: 'failed' as const, error: String(e) }));
       if (r.status === 'unsubscribed') n++;
     }
@@ -169,7 +174,7 @@ export async function unsubStep(db: SupabaseClient, userId: string, s: Settings,
     const labels: Record<string, string> = {};
     for (const x of list.slice(0, 40)) {
       if (Date.now() > until) break;
-      const ids = await searchIds(at, `from:${x.address} in:inbox`, 200).catch(() => []);
+      const ids = await searchIds(at, `from:"${x.address}" in:inbox`, 200).catch(() => []);
       if (!ids.length) continue;
       const name = x.status === 'blocked' ? 'LifeTracker/Blocked' : 'LifeTracker/Unsubscribed';
       labels[name] ??= await ensureLabel(at, name);
@@ -183,7 +188,7 @@ export async function unsubStep(db: SupabaseClient, userId: string, s: Settings,
 
 /** Block: their emails go out of the inbox (labelled), now and every morning. Nothing is deleted. */
 export async function blockOne(db: SupabaseClient, userId: string, sender: Sender, at: string): Promise<number> {
-  const ids = await searchIds(at, `from:${sender.address} in:inbox`, 500);
+  const ids = await searchIds(at, `from:"${sender.address}" in:inbox`, 500);
   if (ids.length) await archive(at, ids, await ensureLabel(at, 'LifeTracker/Blocked'));
   await db.from('senders').update({ status: 'blocked', done_at: new Date().toISOString(), error: null }).eq('id', sender.id).eq('user_id', userId);
   return ids.length;

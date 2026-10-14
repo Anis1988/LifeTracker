@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { SPEND_CATS, spendCat, type SpendReport } from '../../supabase/functions/_shared/spend.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
-import { daysBetween, money, today } from '../../supabase/functions/_shared/money.ts';
+import { addCycle, daysBetween, money, today } from '../../supabase/functions/_shared/money.ts';
 import { Ring } from './Dash';
-import { Money, shortDate } from './ui';
+import { Money, errText, shortDate, toast } from './ui';
 
 /** 💸 One month of spending: the total against a usual month, each category with its budget, the shops. Also in the Guide. */
 export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, monthName }: {
@@ -123,8 +123,8 @@ export function PurchaseForm({ p, onSave, onDelete, onDone }: { p: Partial<Purch
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<Purchase>) => setX((c) => ({ ...c, ...patch }));
   const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400_000).toISOString().slice(0, 10);
-  const addMonths = (d: string, n: number) => { const y = new Date(`${d}T12:00:00Z`); y.setUTCMonth(y.getUTCMonth() + n); return y.toISOString().slice(0, 10); };
-  const save = async () => { setBusy(true); try { await onSave({ ...x, store: (x.store ?? '').trim() }); onDone(); } finally { setBusy(false); } };
+  const addMonths = (d: string, n: number) => addCycle(d, 'monthly', n); // Jan 31 + 1 month = Feb 28, not Mar 3
+  const save = async () => { setBusy(true); try { await onSave({ ...x, store: (x.store ?? '').trim() }); onDone(); } catch (e) { toast('err', errText(e)); } finally { setBusy(false); } };
   return (
     <div className="space-y-3">
       <label className="block text-sm font-semibold">Store<input className="input mt-1 w-full" value={x.store ?? ''} onChange={(e) => set({ store: e.target.value })} placeholder="e.g. Best Buy" /></label>
@@ -139,7 +139,7 @@ export function PurchaseForm({ p, onSave, onDelete, onDone }: { p: Partial<Purch
       <div className="flex flex-wrap gap-1.5">{[12, 24, 36].map((m) => <button key={m} className="chip border-slate-900/10 px-3 py-1.5 dark:border-white/10" onClick={() => set({ warranty_ends: addMonths(x.bought ?? today(), m) })}>{m / 12} year{m > 12 ? 's' : ''}</button>)}</div>
       <div className="flex gap-2">
         <button className="btn-primary flex-1" disabled={busy || !(x.store ?? '').trim()} onClick={() => void save()}>{busy ? <span className="spinner" /> : 'Save'}</button>
-        {onDelete && <button className="btn text-red-700 dark:text-red-300" onClick={() => void (confirm('Delete this purchase?') && onDelete().then(onDone))}>Delete</button>}
+        {onDelete && <button className="btn text-red-700 dark:text-red-300" onClick={() => void (confirm('Delete this purchase?') && onDelete().then(onDone).catch((e) => toast('err', errText(e))))}>Delete</button>}
       </div>
     </div>
   );

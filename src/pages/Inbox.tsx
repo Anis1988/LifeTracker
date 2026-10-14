@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { CsvImport, DocRow, SuggestionCard, Uploader } from '../components/Inbox';
 import { ItemForm } from '../components/Items';
@@ -9,6 +9,7 @@ import type { Item, Suggestion } from '../../supabase/functions/_shared/model.ts
 export function Inbox() {
   const st = useStore();
   const [adding, setAdding] = useState<Suggestion | null>(null);
+  const saved = useRef<{ for: string; item: Item } | null>(null); // a retry after an error doesn't add the bill twice
   const prefill = (s: Suggestion): Partial<Item> => ({
     name: s.name, category: s.category ?? 'other', amount: Number(s.amount ?? 0), currency: s.currency ?? 'USD', cycle: s.cycle ?? 'monthly',
     next_due: s.next_due, ends_on: s.ends_on, trial_ends: s.trial_ends, merchant: s.merchant, details: s.details ?? {}, source: s.source,
@@ -37,9 +38,10 @@ export function Inbox() {
       {adding && (
         <Sheet title="Add to my bills" onClose={() => setAdding(null)}>
           <ItemForm item={prefill(adding)} onDone={() => setAdding(null)} onSave={async (i) => {
-            const saved = await st.saveItem(i);
-            await st.setSuggestion(adding.id, { status: 'accepted', item_id: saved.id });
-            toast('ok', `${saved.name} added.`);
+            const item = saved.current?.for === adding.id ? await st.saveItem({ ...i, id: saved.current.item.id }) : await st.saveItem(i);
+            saved.current = { for: adding.id, item };
+            await st.setSuggestion(adding.id, { status: 'accepted', item_id: item.id });
+            toast('ok', `${item.name} added.`);
           }} />
         </Sheet>
       )}

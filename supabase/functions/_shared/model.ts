@@ -80,6 +80,7 @@ export interface ItemDetails {
   // anything else the AI found
   last4?: string;
   documentId?: string;
+  dueDay?: number; // a bill due on the 29th–31st: its real day, kept when a short month moves it earlier
 }
 
 export interface Suggestion {

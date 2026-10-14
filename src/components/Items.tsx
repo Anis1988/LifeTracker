@@ -65,7 +65,7 @@ export function Totals({ items }: { items: Item[] }) {
 /** The next 30 days of payments, by date. */
 export function Upcoming({ items, days = 30, onOpen }: { items: Item[]; days?: number; onOpen?: (i: Item) => void }) {
   const t = today();
-  const end = new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
+  const end = new Date(Date.parse(`${t}T12:00:00Z`) + days * 86400_000).toISOString().slice(0, 10);
   const rows = items.filter((i) => i.status === 'active').flatMap((i) => dueDates(i, t, end).map((d) => ({ d, i }))).sort((a, b) => a.d.localeCompare(b.d));
   const total = rows.reduce((s, r) => s + Number(r.i.amount), 0);
   return (

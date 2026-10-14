@@ -1,7 +1,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@4.1.12';
 import type { Alert, Settings } from './model.ts';
-import { daysBetween, iso, money, today } from './money.ts';
+import { addCycle, daysBetween, iso, money, today } from './money.ts';
 import { has, isRateLimit, readEmail, refresh, searchIds, type Mail } from './google.ts';
 import { askAi } from './ai.ts';
 import { connection, open, saveConnection } from './server.ts';
@@ -39,7 +39,7 @@ export function looksLikeOrder(m: Mail): boolean {
 }
 
 const addDays = (d: string, n: number) => iso(new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400_000));
-const addMonths = (d: string, n: number) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCMonth(x.getUTCMonth() + n); return iso(x); };
+const addMonths = (d: string, n: number) => addCycle(d, 'monthly', n);
 
 export async function purchaseStep(db: SupabaseClient, userId: string, s: Settings, until: number): Promise<string | void> {
   if (!s.purchases.on) return;

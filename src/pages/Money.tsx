@@ -5,6 +5,7 @@ import { Bills } from './Bills';
 import { PurchaseForm, PurchaseRow, SpendingView } from '../components/Spending';
 import { Seg, Sheet, errText, toast } from '../components/ui';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
+import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
 
 type View = 'bills' | 'spending' | 'returns';
@@ -25,10 +26,11 @@ export function MoneyPage() {
 function Spending() {
   const st = useStore();
   const s = st.settings;
-  const now = new Date().toISOString().slice(0, 7);
-  const last = (() => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const t = today(); // this phone's day, not the UTC one
+  const now = t.slice(0, 7);
+  const last = addCycle(`${now}-01`, 'monthly', -1).slice(0, 7);
   const [month, setMonth] = useState(now);
-  const r = useMemo(() => spendReport(st.tx, s.spend.rules, month, month === now ? Number(new Date().toISOString().slice(8, 10)) : 31), [st.tx, s.spend.rules, month, now]);
+  const r = useMemo(() => spendReport(st.tx, s.spend.rules, month, month === now ? Number(t.slice(8, 10)) : 31), [st.tx, s.spend.rules, month, now]);
   const save = (spend: typeof s.spend) => void st.saveSettings({ ...s, spend }).catch((e) => toast('err', errText(e)));
   return (
     <div className="space-y-3">

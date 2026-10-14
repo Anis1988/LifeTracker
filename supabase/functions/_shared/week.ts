@@ -1,5 +1,6 @@
 import { dateKind, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings } from './model.ts';
 import { daysBetween, money, nextDue, today } from './money.ts';
+import { categorize } from './spend.ts';
 import { paperKind } from './people.ts';
 
 /**
@@ -60,7 +61,7 @@ export function weekSummary(w: WeekInput, now = today()): WeekLine[] {
 }
 
 /** 💸 Money out in the last 7 days, a usual week (the 8 weeks before), and where most of it went. */
-export function spentOf(tx: { posted: string; amount: number; description: string | null }[], now = today()): WeekInput['spent'] {
+export function spentOf(tx: { posted: string; amount: number; description: string | null; merchant?: string | null; item_id?: string | null }[], now = today(), rules: Record<string, string> = {}): WeekInput['spent'] {
   const t = Date.parse(`${now}T12:00:00Z`);
   const daysAgo = (d: string) => Math.floor((t - Date.parse(`${d}T12:00:00Z`)) / 86400_000);
   let week = 0, before = 0, oldest = 0;
@@ -68,6 +69,7 @@ export function spentOf(tx: { posted: string; amount: number; description: strin
   for (const x of tx) {
     const a = Number(x.amount);
     if (!(a < 0)) continue;
+    if (categorize({ description: x.description, merchant: x.merchant ?? null, item_id: x.item_id ?? null }, rules) === 'transfers') continue; // Zelle, Venmo, ATM: not spending
     const d = daysAgo(x.posted);
     if (d < 0) continue;
     if (d < 7) {

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Alert, Extracted, Finding, Item, LifeDate, Paper, Sender, Settings } from './model.ts';
-import { daysBetween, iso, money, nextDue, parseDay, perYear, today } from './money.ts';
+import { addCycle, daysBetween, dueDayOf, iso, money, nextDue, parseDay, perYear, today } from './money.ts';
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
 import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
@@ -15,6 +15,7 @@ import { purchaseAlerts, purchaseStep } from './purchases.ts';
 import { spendCat, spendReport, type SpendTx } from './spend.ts';
 import { dateKind } from './model.ts';
 import { apptEmailStep } from './appointments.ts';
+import { allRows } from './rows.ts';
 import type { Appointment } from './model.ts';
 
 /**
@@ -146,7 +147,7 @@ const PER_RUN = 300; // alert emails read per run (about 75 seconds)
 // ---------- 🔁 recurring bills in the transactions ----------
 async function detectStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[]): Promise<string | void> {
   const since = iso(new Date(Date.now() - s.bank.lookbackDays * 86400_000));
-  const { data: txs } = await db.from('transactions').select('posted, amount, description, merchant').eq('user_id', userId).gte('posted', since).limit(20000);
+  const txs = await allRows<{ posted: string; amount: number; description: string; merchant: string }>((a, b) => db.from('transactions').select('posted, amount, description, merchant').eq('user_id', userId).gte('posted', since).order('posted', { ascending: false }).order('external_id').range(a, b));
   if (!txs?.length) return;
   const found = findRecurring(txs as { posted: string; amount: number; description: string; merchant: string }[], s.bank.minCharges);
   const { data: items } = await db.from('items').select('*').eq('user_id', userId).neq('status', 'cancelled');
@@ -196,7 +197,10 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   if (!c || !s.gmail.on || !has(c.meta.scope as string, 'gmail')) return;
   const at = await refresh(await open(c.secret));
   const seen = new Set((c.meta.seenMail as string[] | undefined) ?? []);
-  const ids = (await findBillEmails(at, c.meta.gmailScanned ? 5 : 60, s.gmail.plusTag)).filter((id) => !seen.has(id));
+  // Look back to the last run that read everything (first time: 60 days), so a run stopped by limits loses nothing.
+  const last = c.meta.gmailDone as string | undefined;
+  const since = last ? Math.ceil((Date.now() - Date.parse(last)) / 86400_000) + 1 : 60;
+  const ids = (await findBillEmails(at, Math.min(60, Math.max(5, since)), s.gmail.plusTag)).filter((id) => !seen.has(id));
   const { data: items } = await db.from('items').select('*').eq('user_id', userId).neq('status', 'cancelled');
   let read = 0, bills = 0, skipped = 0;
   let stopped = '';
@@ -208,7 +212,7 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
       stopped = 'Gmail asked to slow down: the rest next time'; break;
     }
     if (!looksLikeBill(m) || !s.ai.readEmails) { seen.add(id); skipped++; continue; }
-    if (read >= s.ai.maxPerRun) break; // the rest next time
+    if (read >= s.ai.maxPerRun) { stopped = 'the rest next time'; break; }
     let x: Extracted;
     try {
       x = (await readWithAi(db, userId, s, { text: `From: ${m.from}\nSubject: ${m.subject}\nDate: ${m.date}\n\n${m.text}` })).data;
@@ -222,7 +226,9 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
     bills++;
     await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from }, (items as Item[]) ?? [], alerts);
   }
-  await saveConnection(db, userId, 'google', null, { seenMail: [...seen].slice(-1000), gmailScanned: new Date().toISOString() });
+  const now = new Date().toISOString();
+  const done = !stopped && ids.every((id) => seen.has(id));
+  await saveConnection(db, userId, 'google', null, { seenMail: [...seen].slice(-1000), gmailScanned: now, ...(done ? { gmailDone: now } : {}) });
   return `${ids.length} email(s) looked at: ${read} read by the AI, ${bills} bill(s), ${skipped} skipped for free${stopped ? `. Stopped: ${stopped}` : ''}`;
 }
 
@@ -263,8 +269,13 @@ export async function applyExtracted(db: SupabaseClient, userId: string, x: Extr
 
 // ---------- 📆 due dates roll forward ----------
 async function rollStep(db: SupabaseClient, userId: string): Promise<string | void> {
-  const { data } = await db.from('items').select('id, next_due, cycle').eq('user_id', userId).eq('status', 'active').lt('next_due', today()).neq('cycle', 'once');
-  for (const i of data ?? []) await db.from('items').update({ next_due: nextDue(i as Item) }).eq('id', i.id);
+  const { data } = await db.from('items').select('id, next_due, cycle, details').eq('user_id', userId).eq('status', 'active').lt('next_due', today()).neq('cycle', 'once');
+  for (const i of (data as Item[]) ?? []) {
+    // Keep the real day of a bill due on the 29th–31st, so a short month doesn't move it for good.
+    const want = dueDayOf(i);
+    const details = want && want >= 29 && i.details?.dueDay !== want ? { ...i.details, dueDay: want } : i.details;
+    await db.from('items').update({ next_due: nextDue(i), details }).eq('id', i.id);
+  }
   if (data?.length) return `${data.length} due date(s) moved to the next one`;
 }
 
@@ -322,7 +333,7 @@ async function lifeStep(db: SupabaseClient, userId: string, s: Settings, alerts:
   for (const d of (dates as LifeDate[]) ?? []) {
     let next = d.next_date;
     if (next < t && d.every_months) {
-      for (let i = 0; i < 500 && next < t; i++) { const x = parseDay(next); x.setUTCMonth(x.getUTCMonth() + d.every_months); next = iso(x); }
+      for (let k = 1; k <= 500 && next < t; k++) next = addCycle(d.next_date, 'monthly', d.every_months * k); // from the original day: the 31st stays the 31st
       await db.from('life_dates').update({ next_date: next }).eq('id', d.id);
     }
     const left = daysBetween(t, next);
@@ -332,7 +343,7 @@ async function lifeStep(db: SupabaseClient, userId: string, s: Settings, alerts:
   // Budgets: a heads-up at the warning level (80% by default) and when it's used up.
   if (Object.keys(s.spend.budgets).length) {
     const month = t.slice(0, 7);
-    const { data: tx } = await db.from('transactions').select('posted, amount, description, merchant, item_id').eq('user_id', userId).gte('posted', `${month}-01`).limit(5000);
+    const tx = await allRows<SpendTx>((a, b) => db.from('transactions').select('posted, amount, description, merchant, item_id').eq('user_id', userId).gte('posted', `${month}-01`).order('posted', { ascending: false }).order('external_id').range(a, b), 5000);
     const r = spendReport((tx as SpendTx[]) ?? [], s.spend.rules, month);
     for (const [cat, budget] of Object.entries(s.spend.budgets)) {
       if (!(budget > 0)) continue;
@@ -356,11 +367,11 @@ async function weekStep(db: SupabaseClient, userId: string, email: string, s: Se
     db.from('findings').select('*').eq('user_id', userId).neq('status', 'unknown'),
     db.from('senders').select('*').eq('user_id', userId).eq('status', 'unsubscribed'),
     db.from('papers').select('*').eq('user_id', userId),
-    db.from('transactions').select('posted, amount, description').eq('user_id', userId).gte('posted', since).limit(20000),
+    allRows<{ posted: string; amount: number; description: string | null; merchant: string | null; item_id: string | null }>((a, b) => db.from('transactions').select('posted, amount, description, merchant, item_id').eq('user_id', userId).gte('posted', since).order('posted', { ascending: false }).order('external_id').range(a, b)).then((data) => ({ data })),
     db.from('life_dates').select('*').eq('user_id', userId),
     db.from('purchases').select('*').eq('user_id', userId).eq('status', 'keep'),
   ]);
-  const lines = weekSummary({ items: (items.data as Item[]) ?? [], findings: (findings.data as Finding[]) ?? [], senders: (senders.data as Sender[]) ?? [], papers: s.papers.on ? (papers.data as Paper[]) ?? [] : [], settings: s, spent: spentOf((tx.data ?? []) as { posted: string; amount: number; description: string | null }[], t), dates: (dates.data as LifeDate[]) ?? [], purchases: (purchases.data ?? []) as WeekInput['purchases'] }, t);
+  const lines = weekSummary({ items: (items.data as Item[]) ?? [], findings: (findings.data as Finding[]) ?? [], senders: (senders.data as Sender[]) ?? [], papers: s.papers.on ? (papers.data as Paper[]) ?? [] : [], settings: s, spent: spentOf(tx.data ?? [], t, s.spend.rules), dates: (dates.data as LifeDate[]) ?? [], purchases: (purchases.data ?? []) as WeekInput['purchases'] }, t);
   const r = await sendEmail(email, `LifeTracker: your week (${t})`, ['Your week, in short:', '', ...lines.map((l) => `${l.icon} ${l.text}`)].join('\n'));
   if (r.startsWith('sent')) await saveConnection(db, userId, 'me', null, { weekSent: t });
   return r;

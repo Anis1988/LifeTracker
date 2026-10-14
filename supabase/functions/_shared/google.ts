@@ -164,8 +164,14 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
     existing.push(...(r.items ?? []).filter((e) => e.status !== 'cancelled'));
     page = r.nextPageToken;
   } while (page);
-  const have = new Map(existing.map((e) => [`${e.extendedProperties?.private?.item}:${e.extendedProperties?.private?.kind}`, e]));
+  // Two runs at once (hourly check + a text, or "Sync now") can add the same event twice: keep one, delete the rest.
+  const have = new Map<string, GEvent>();
   let added = 0, changed = 0, removed = 0;
+  for (const e of existing) {
+    const k = `${e.extendedProperties?.private?.item}:${e.extendedProperties?.private?.kind}`;
+    if (!have.has(k)) { have.set(k, e); continue; }
+    if (e.id) { await g(at, `${CAL}/calendars/${encodeURIComponent(calendarId)}/events/${e.id}`, { method: 'DELETE' }).catch(() => undefined); removed++; }
+  }
   const want = new Set<string>();
   const all = [...items.map((i) => ({ id: i.id, evs: eventsFor(i, s, site) })), ...papers.map((p) => ({ id: p.id, evs: paperEvents(p, site) })), ...dates.map((d) => ({ id: d.id, evs: lifeDateEvents(d, site) })), ...appts.map((a) => ({ id: a.id, evs: apptEvents(a, s, site) }))];
   for (const item of all) {
@@ -185,7 +191,7 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
 
 // ---------- ✉️ Gmail (read-only) ----------
 const GM = 'https://gmail.googleapis.com/gmail/v1/users/me';
-export interface Mail { id: string; from: string; subject: string; date: string; text: string }
+export interface Mail { id: string; from: string; subject: string; date: string; text: string; at: number } // date = UTC day; at = when it arrived (ms)
 
 /** Receipt / bill / renewal emails (and anything sent to you+lifetracker@…) from the last `days` days. */
 export async function findBillEmails(at: string, days: number, plusTag: string, max = 40): Promise<string[]> {
@@ -215,7 +221,7 @@ export async function readEmail(at: string, id: string): Promise<Mail> {
   const m = await g<{ id: string; payload: Part; internalDate: string }>(at, `${GM}/messages/${id}?format=full`);
   const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
   const t = textOf(m.payload);
-  return { id, from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000) };
+  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000) };
 }
 
 /** Free first look (no AI): does it talk about money and a bill? Skips most newsletters and shipping notices. */

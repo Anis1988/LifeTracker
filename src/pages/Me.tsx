@@ -28,7 +28,7 @@ export function Me(_: { go: (tab: string) => void }) {
   const newWeb = web.filter((f) => f.status === 'new').sort((a, b) => Number(b.verdict === 'worrying') - Number(a.verdict === 'worrying'));
   const brokers = st.findings.filter((f) => f.kind === 'broker');
   const breaches = st.findings.filter((f) => f.kind === 'breach');
-  const lines = useMemo(() => weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent, dates: st.dates, purchases: st.purchases }), [st.items, st.findings, st.senders, st.papers, s, st.spent]);
+  const lines = useMemo(() => weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent, dates: st.dates, purchases: st.purchases }), [st.items, st.findings, st.senders, st.papers, s, st.spent, st.dates, st.purchases]);
   const senders = st.senders.filter(senderFilter(view, s.unsub.days));
   const hasProfile = s.me.names.length > 0 || s.me.emails.length > 0;
 
@@ -85,7 +85,7 @@ export function Me(_: { go: (tab: string) => void }) {
 
       <Fold icon="🧹" title="People-search sites" subtitle={`${brokers.filter((b) => b.status === 'listed').length} list you · ${brokers.filter((b) => b.status === 'gone' || b.status === 'not-listed').length} clear`}>
         <p className="text-sm text-stone-600 dark:text-slate-300">These sites sell your address, phone and relatives. Removal is free but each site wants its own request (that’s why paid services exist). Found by the name search, or tap a site and set it yourself.</p>
-        <BrokerList rows={brokers} onSet={(f, p) => void st.setFinding(f.id, p).catch((e) => toast('err', errText(e)))} />
+        <BrokerList rows={brokers} onSet={(f, p) => void st.setFinding(f.id, p).catch((e) => toast('err', errText(e)))} onAdd={(b, p) => void st.addBroker(b, p).catch((e) => toast('err', errText(e)))} />
       </Fold>
 
       <Fold icon="🔓" title="Data breaches & passwords" subtitle={`${breaches.filter((b) => b.status === 'new').length} to handle`}>

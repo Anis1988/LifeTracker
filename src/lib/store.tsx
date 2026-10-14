@@ -4,6 +4,8 @@ import { api, supabase } from './supabase';
 import { withDefaults, type Alert, type Appointment, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings, type Suggestion } from '../../supabase/functions/_shared/model.ts';
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { spentOf, type WeekInput } from '../../supabase/functions/_shared/week.ts';
+import { today } from '../../supabase/functions/_shared/money.ts';
+import { allRows } from '../../supabase/functions/_shared/rows.ts';
 import { flushTexts } from './texts';
 
 /** What the server reports (bank, Google, AI use today, last automatic run, which keys are set). */
@@ -45,6 +47,7 @@ interface Store {
   setSuggestion: (id: string, patch: Partial<Suggestion>) => Promise<void>;
   seeAlert: (id: string) => Promise<void>;
   setFinding: (id: string, patch: Partial<Finding>) => Promise<void>;
+  addBroker: (b: { id: string; name: string; domain: string }, patch: Partial<Finding>) => Promise<void>;
   setSender: (id: string, patch: Partial<Sender>) => Promise<void>;
   savePaper: (p: Partial<Paper> & { name: string }) => Promise<Paper>;
   deletePaper: (p: Paper) => Promise<void>;
@@ -82,7 +85,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
 
   const reload = useCallback(async () => {
     const since = new Date(Date.now() - 200 * 86400_000).toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+    const yesterday = new Date(Date.parse(`${today()}T12:00:00Z`) - 86400_000).toISOString().slice(0, 10); // this phone's yesterday
     const [i, s, a, d, st, f, se, p, tx, pu, ld, ap] = await Promise.all([
       supabase.from('items').select('*').order('name'),
       supabase.from('suggestions').select('*').eq('status', 'new').order('created_at', { ascending: false }),
@@ -92,7 +95,8 @@ export function StoreProvider({ session, children }: { session: Session; childre
       supabase.from('findings').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('senders').select('*').order('emails', { ascending: false }).limit(500),
       supabase.from('papers').select('*').order('expires', { ascending: true, nullsFirst: false }),
-      supabase.from('transactions').select('posted, amount, description, merchant, item_id').gte('posted', since).order('posted', { ascending: false }).limit(10000),
+      // More than 1,000 rows come in pages (Supabase sends at most 1,000 at a time).
+      allRows<SpendTx>((a, b) => supabase.from('transactions').select('posted, amount, description, merchant, item_id').gte('posted', since).order('posted', { ascending: false }).order('external_id').range(a, b), 10000).then((data) => ({ data })),
       supabase.from('purchases').select('*').neq('status', 'ignored').order('bought', { ascending: false }).limit(300),
       supabase.from('life_dates').select('*').order('next_date'),
       supabase.from('appointments').select('*').eq('status', 'booked').gte('day', yesterday).order('day').order('time').limit(200),
@@ -105,7 +109,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
     setFindings((f.data as Finding[]) ?? []);
     setSenders((se.data as Sender[]) ?? []);
     setPapers((p.data as Paper[]) ?? []);
-    setSpent(spentOf((tx.data ?? []) as { posted: string; amount: number; description: string | null }[]));
+    setSpent(spentOf(tx.data ?? [], undefined, withDefaults((st.data?.data ?? null) as Partial<Settings> | null).spend.rules));
     setTx((tx.data as SpendTx[]) ?? []);
     setPurchases((pu.data as Purchase[]) ?? []);
     setDates((ld.data as LifeDate[]) ?? []);
@@ -142,8 +146,11 @@ export function StoreProvider({ session, children }: { session: Session; childre
   const store = useMemo<Store>(() => ({
     session, items, suggestions, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, settings, status, statusErr, loading, reload, reloadStatus,
     saveSettings: async (s) => {
+      const prev = settings;
       setSettings(s);
-      check(await supabase.from('settings').upsert({ user_id: session.user.id, data: s }));
+      const r = await supabase.from('settings').upsert({ user_id: session.user.id, data: s });
+      if (r.error) setSettings(prev); // not saved: show what is really saved
+      check(r);
     },
     saveItem: async (i) => {
       const row = { ...i, user_id: session.user.id };
@@ -168,6 +175,11 @@ export function StoreProvider({ session, children }: { session: Session; childre
     setFinding: async (id, patch) => {
       setFindings((cur) => cur.map((x) => (x.id === id ? { ...x, ...patch } : x)));
       check(await supabase.from('findings').update(patch).eq('id', id));
+    },
+    addBroker: async (b, patch) => {
+      // A people-search site not checked yet has no row: make it with the status you picked.
+      const row = check(await supabase.from('findings').upsert({ user_id: session.user.id, kind: 'broker', key: b.id, title: b.name, site: b.domain, url: null, ...patch }, { onConflict: 'user_id,kind,key' }).select().single()) as Finding;
+      setFindings((cur) => [row, ...cur.filter((x) => x.id !== row.id)]);
     },
     setSender: async (id, patch) => {
       setSenders((cur) => cur.map((x) => (x.id === id ? { ...x, ...patch } : x)));

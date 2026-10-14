@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { money } from '../../supabase/functions/_shared/money.ts';
 
 export function Money({ n, currency = 'USD', className = '' }: { n: number; currency?: string; className?: string }) {
@@ -62,7 +63,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
   }, [onClose]);
-  return (
+  // Drawn on the page itself (a portal): inside a glass card, "fixed" would be trapped in that card.
+  return createPortal(
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/40 backdrop-blur-md animate-[fade_.25s_ease-out] sm:items-center" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label={title} className="max-h-[92vh] w-full overflow-y-auto rounded-t-[30px] border border-white/70 bg-[#f4f7fb]/95 p-4 pb-8 shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl animate-[pop_.45s_cubic-bezier(.34,1.3,.64,1)] dark:border-white/10 dark:bg-[#0b1020]/95 dark:shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.12)] sm:max-w-lg sm:rounded-[30px]" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto -mt-1 mb-3 h-1.5 w-10 rounded-full bg-slate-900/15 dark:bg-white/20 sm:hidden" aria-hidden="true" />
@@ -72,7 +74,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

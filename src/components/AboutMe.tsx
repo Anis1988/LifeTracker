@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Settings } from '../../supabase/functions/_shared/model.ts';
 import { errText, toast } from './ui';
 
@@ -89,7 +90,7 @@ export function SavedPopup({ me, onClose, onCheck }: { me: Me; onClose: () => vo
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
   const n = FIELDS.reduce((a, f) => a + me[f.key].length, 0);
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-[fade_.2s_ease-out]" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-labelledby="saved-title" className="w-full max-w-sm space-y-4 rounded-3xl border border-white/60 bg-[#f8faf9] p-6 text-center shadow-2xl animate-[pop_.25s_ease-out] dark:border-white/10 dark:bg-[#0c1220]" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300" aria-hidden="true">✓</div>
@@ -110,6 +111,7 @@ export function SavedPopup({ me, onClose, onCheck }: { me: Me; onClose: () => vo
           <button className="btn w-full" onClick={onClose} autoFocus>Done</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
