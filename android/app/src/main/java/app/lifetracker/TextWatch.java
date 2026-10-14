@@ -39,9 +39,8 @@ public class TextWatch extends BroadcastReceiver {
         PendingResult done = goAsync();
         new Thread(() -> {
             try {
-                JSONArray all = TextSender.takeQueue(c);
-                for (int i = 0; i < texts.length(); i++) all.put(texts.opt(i));
-                TextSender.send(c, all);
+                TextSender.queue(c, texts); // saved first, so nothing is lost if Android stops this half-way
+                TextSender.sendQueued(c);
             } finally { done.finish(); }
         }).start();
     }

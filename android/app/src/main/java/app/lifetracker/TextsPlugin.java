@@ -98,7 +98,7 @@ public class TextsPlugin extends Plugin {
     @PluginMethod
     public void flush(PluginCall call) {
         new Thread(() -> {
-            int sent = TextSender.isOn(getContext()) ? TextSender.send(getContext(), TextSender.takeQueue(getContext())) : 0;
+            int sent = TextSender.sendQueued(getContext());
             JSObject r = new JSObject();
             r.put("sent", sent);
             call.resolve(r);

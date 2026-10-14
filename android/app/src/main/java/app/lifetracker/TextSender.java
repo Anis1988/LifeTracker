@@ -42,26 +42,47 @@ final class TextSender {
     static synchronized void queue(Context c, JSONArray texts) {
         try {
             JSONArray q = new JSONArray(prefs(c).getString("queue", "[]"));
-            for (int i = 0; i < texts.length(); i++) q.put(texts.get(i));
+            java.util.Set<String> have = new java.util.HashSet<>();
+            for (int i = 0; i < q.length(); i++) have.add(q.get(i).toString());
+            for (int i = 0; i < texts.length(); i++) if (have.add(texts.get(i).toString())) q.put(texts.get(i));
             while (q.length() > 50) q.remove(0);
-            prefs(c).edit().putString("queue", q.toString()).apply();
+            prefs(c).edit().putString("queue", q.toString()).commit(); // written now, before anything is sent
         } catch (Exception ignored) {}
     }
 
-    static synchronized JSONArray takeQueue(Context c) {
+    /** A copy of what is waiting (nothing is removed until it has really been sent: see sendQueued). */
+    static synchronized JSONArray peekQueue(Context c) {
+        try { return new JSONArray(prefs(c).getString("queue", "[]")); } catch (Exception e) { return new JSONArray(); }
+    }
+
+    /** Takes these (sent or given up) out of the queue; anything added meanwhile stays. */
+    static synchronized void dropFromQueue(Context c, java.util.Set<String> done) {
         try {
-            JSONArray q = new JSONArray(prefs(c).getString("queue", "[]"));
-            prefs(c).edit().putString("queue", "[]").apply();
-            return q;
-        } catch (Exception e) { return new JSONArray(); }
+            JSONArray q = new JSONArray(prefs(c).getString("queue", "[]")), keep = new JSONArray();
+            for (int i = 0; i < q.length(); i++) if (!done.contains(q.get(i).toString())) keep.put(q.get(i));
+            prefs(c).edit().putString("queue", keep.toString()).commit();
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Sends everything waiting. The texts stay saved on the phone until the server has them, so if Android stops the
+     * app half-way they are sent next time instead of being lost.
+     */
+    static synchronized int sendQueued(Context c) {
+        JSONArray q = peekQueue(c);
+        if (q.length() == 0 || !isOn(c)) return 0;
+        java.util.Set<String> done = new java.util.HashSet<>();
+        int sent = send(c, q, done);
+        dropFromQueue(c, done);
+        return sent;
     }
 
     static int queued(Context c) {
         try { return new JSONArray(prefs(c).getString("queue", "[]")).length(); } catch (Exception e) { return 0; }
     }
 
-    /** Sends (off the main thread). Returns how many were sent; anything that failed goes back in the queue. */
-    static int send(Context c, JSONArray texts) {
+    /** Sends (off the main thread). `done` gets every text the server answered for; the rest stays queued. */
+    private static int send(Context c, JSONArray texts, java.util.Set<String> done) {
         if (texts.length() == 0 || !isOn(c)) return 0;
         SharedPreferences p = prefs(c);
         int sent = 0;
@@ -79,20 +100,21 @@ final class TextSender {
                 try (OutputStream o = h.getOutputStream()) { o.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
                 int code = h.getResponseCode();
                 if (code == 401) { p.edit().putBoolean("on", false).apply(); return sent; } // key replaced: turn it on again in Settings
-                if (code < 200 || code >= 300) { queue(c, part); continue; }
+                if (code == 400) { for (int i = 0; i < part.length(); i++) done.add(part.get(i).toString()); continue; } // never accepted: don't retry forever
+                if (code < 200 || code >= 300) continue; // stays queued
                 JSONObject res = new JSONObject(read(h.getInputStream()));
                 JSONArray results = res.optJSONArray("results");
                 JSONArray retry = new JSONArray();
                 for (int i = 0; results != null && i < results.length(); i++) {
                     JSONObject r = results.getJSONObject(i);
                     String what = r.optString("result");
-                    if ("error".equals(what)) retry.put(part.opt(i)); // AI limits: try again later
-                    else if ("added".equals(what) || "moved".equals(what) || "cancelled".equals(what)) notify(c, what, r.optString("title"), r.optString("when"));
+                    if ("error".equals(what)) { retry.put(part.opt(i)); continue; } // AI limits: try again later
+                    done.add(part.get(i).toString());
+                    if ("added".equals(what) || "moved".equals(what) || "cancelled".equals(what)) notify(c, what, r.optString("title"), r.optString("when"));
                 }
-                if (retry.length() > 0) queue(c, retry);
                 sent += part.length() - retry.length();
             } catch (Exception e) {
-                queue(c, part);
+                // no internet: stays queued
             }
         }
         return sent;
