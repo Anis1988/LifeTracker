@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check:functions": "cd supabase/functions && deno check api/index.ts google-callback/index.ts cron/index.ts"
+    "check:functions": "cd supabase/functions && deno check api/index.ts google-callback/index.ts cron/index.ts texts/index.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

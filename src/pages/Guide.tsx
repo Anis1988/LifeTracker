@@ -10,8 +10,9 @@ import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
 import { AlertBanks } from '../components/Bank';
 import { AboutMe } from '../components/AboutMe';
 import { UpdateBanner } from '../components/AppUpdate';
+import { ApptCard } from '../components/Appointments';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
-import type { Alert, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
+import type { Alert, Appointment, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
 /* made-up examples, only for this guide */
@@ -59,6 +60,13 @@ const DATES: LifeDate[] = [
   { id: 'l1', kind: 'birthday', title: 'Example Mom’s birthday', next_date: d(5), every_months: 12, remind_days: 7, notes: null },
   { id: 'l2', kind: 'car', title: 'Oil change', next_date: d(21), every_months: 6, remind_days: 7, notes: 'every 5,000 miles' },
 ];
+const aBase = { status: 'booked' as const, minutes: null, notes: null, history: [] as Appointment['history'] };
+const APPTS: Appointment[] = [
+  { ...aBase, id: 'ap1', key: 'ap1', title: 'Dentist: cleaning', kind: 'dental', day: d(2), time: '15:30', place: '12 Example St', with_who: 'Example Dental', source: 'text', source_from: 'Example Dental', notes: 'Arrive 10 minutes early.' },
+  { ...aBase, id: 'ap2', key: 'ap2', title: 'Car service', kind: 'car', day: d(6), time: '09:00', place: null, with_who: 'Example Garage', source: 'email', source_from: 'Example Garage' },
+  { ...aBase, id: 'ap3', key: 'ap3', title: 'Dinner for 2', kind: 'food', day: d(9), time: '19:45', place: 'Example Bistro', with_who: null, source: 'email', source_from: 'Example Reservations' },
+] as Appointment[];
+const APPT_ALERT: Alert[] = [{ id: 'aa1', kind: 'appt', key: '', title: '📅 Added to your calendar: Dentist: cleaning · in 2 days, 3:30 PM', body: '12 Example St. Found in a text from Example Dental. Wrong? Remove it on Home.', item_id: null, seen: false, created_at: '' }];
 const BUYS: Purchase[] = [
   { id: 'u1', key: 'u1', store: 'Example Electronics', item: 'Headphones', amount: 149.99, bought: d(-12), return_by: d(2), warranty_ends: d(353), status: 'keep', notes: null },
   { id: 'u2', key: 'u2', store: 'Example Home', item: 'Desk lamp', amount: 39, bought: d(-5), return_by: d(25), warranty_ends: null, status: 'keep', notes: null },
@@ -90,7 +98,7 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you.</P>
+        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you. The one exception, your choice: <b>appointments</b> in your emails and texts go straight into your calendar (and you can remove them).</P>
         <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
           <div className="space-y-2">
@@ -140,6 +148,18 @@ export function Guide() {
         <P>In <b>Money → Returns</b>: tap <b>Returning it</b> or <b>Keeping it</b>. You get a heads-up 3 days before a return window closes and a month before a warranty ends. Add any purchase by hand with ＋ Add.</P>
         <Example caption="Made-up purchases: one return window closing in 2 days, one still open.">
           <div className="space-y-2">{BUYS.map((p) => <PurchaseRow key={p.id} p={p} />)}</div>
+        </Example>
+      </Fold>
+
+      <Fold icon="📆" title="Appointments (emails and texts)">
+        <P>When you book something (doctor, dentist, car service, haircut, a table at a restaurant), the confirmation email or text is enough: LifeTracker finds it and <b>puts it straight into your Google Calendar</b> (the LifeTracker calendar), at the right time, with the place and reminders (1 day and 2 hours before; change it in Settings → Appointments). You get a heads-up saying what was added.</P>
+        <P><b>Emails</b> are checked every hour. <b>Texts</b> work in the LifeTracker <b>Android app</b>: turn on “Read appointment texts” in Settings → Appointments and allow SMS. It also looks at your last 30 days of texts once. Your phone does a free check first, so other texts never leave it, and texts aren’t kept. Chat messages between Google Messages users (RCS) can’t be read; normal texts from businesses can.</P>
+        <P>Moved to another day? The calendar moves too. Cancelled? It’s taken off. The same appointment in an email and a text counts once. Something wrong? Tap it on Home → <b>Remove it</b>.</P>
+        <Example caption="Made-up appointments on Home, and the heads-up when one is added.">
+          <div className="space-y-2">
+            <ApptCard appts={APPTS} />
+            <AlertList alerts={APPT_ALERT} />
+          </div>
         </Example>
       </Fold>
 
@@ -241,7 +261,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📅" title="Google Calendar">
-        <P>Settings → <b>Connect Google Calendar</b>. LifeTracker makes its own <b>LifeTracker</b> calendar (it can’t see or change your other calendars) with each bill’s due date (repeating), renewals and trial ends, with a phone reminder a couple of days before. It updates itself every morning when your bills change.</P>
+        <P>Settings → <b>Connect Google Calendar</b>. LifeTracker makes its own <b>LifeTracker</b> calendar (it can’t see or change your other calendars) with each bill’s due date (repeating), renewals and trial ends, with a phone reminder a couple of days before, plus your appointments at their time. It updates itself every morning when your bills change, and within the hour for a new appointment.</P>
       </Fold>
 
       <Fold icon="✉️" title="Gmail receipts and forwarding">

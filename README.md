@@ -46,7 +46,7 @@ Google Cloud console → new project → enable **Google Calendar API** and **Gm
 
 ### 5. Morning run
 Supabase → **Vault** → add two secrets: `lt_project_url` = `https://<ref>.supabase.co` and `lt_cron_secret` = the same text as `CRON_SECRET`.
-The database runs it every day at 11:15 UTC (see `supabase/migrations/…_storage_cron.sql`).
+The database runs it every day at 11:15 UTC (see `supabase/migrations/…_storage_cron.sql`), and looks for new appointment emails every hour (`…_appointments.sql`).
 
 ### 6. Mailing lists (optional)
 Google Cloud → Google Auth Platform → **Data Access** → add the scope `https://www.googleapis.com/auth/gmail.modify`; then in the app, Settings → Mailing lists → Allow “Manage mailing lists” (to unsubscribe by email, block spam senders and tidy the inbox; nothing is ever deleted). One-tap unsubscribe works without it.

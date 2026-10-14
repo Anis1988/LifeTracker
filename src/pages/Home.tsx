@@ -3,6 +3,7 @@ import { useStore } from '../lib/store';
 import { ItemForm } from '../components/Items';
 import { AlertList } from '../components/Inbox';
 import { WeekCard } from '../components/Me';
+import { ApptCard, ApptDetails } from '../components/Appointments';
 import { AskBar, AskChat, MiniRings, MonthHero, TimelineList, askError, type Turn } from '../components/Dash';
 import { Sheet, errText, toast } from '../components/ui';
 import { api } from '../lib/supabase';
@@ -10,7 +11,7 @@ import { timeline } from '../lib/timeline';
 import { weekSummary } from '../../supabase/functions/_shared/week.ts';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import { monthly, today } from '../../supabase/functions/_shared/money.ts';
-import type { Item } from '../../supabase/functions/_shared/model.ts';
+import type { Appointment, Item } from '../../supabase/functions/_shared/model.ts';
 
 const ago = (iso?: string | null) => {
   if (!iso) return 'never';
@@ -34,13 +35,14 @@ export function Home({ go }: { go: (tab: string) => void }) {
   const st = useStore();
   const s = st.settings;
   const [open, setOpen] = useState<Item | null>(null);
+  const [appt, setAppt] = useState<Appointment | null>(null);
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [chat, setChat] = useState<Turn[] | null>(null);
   const [thinking, setThinking] = useState(false);
   const t = today();
   const r = useMemo(() => spendReport(st.tx, s.spend.rules, t.slice(0, 7), Number(t.slice(8, 10))), [st.tx, s.spend.rules, t]);
-  const moments = useMemo(() => timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases }, 30), [st.items, st.papers, st.dates, st.purchases, s.papers.on]);
+  const moments = useMemo(() => timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases }, 30), [st.items, st.papers, st.dates, st.purchases, s.papers.on]); // appointments have their own card
   const bills = billsThisMonth(st.items, t);
   const frozen = (['equifax', 'experian', 'transunion'] as const).filter((b) => s.credit[b] === 'frozen').length;
   const lines = weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent, dates: st.dates, purchases: st.purchases });
@@ -64,7 +66,12 @@ export function Home({ go }: { go: (tab: string) => void }) {
     } catch (e) { toast('err', errText(e)); }
     setBusy(false);
   };
-  const openMoment = (itemId?: string) => { const i = st.items.find((x) => x.id === itemId); if (i) setOpen(i); };
+  const openMoment = (m: { itemId?: string; apptId?: string }) => {
+    const a = st.appts.find((x) => x.id === m.apptId);
+    if (a) { setAppt(a); return; }
+    const i = st.items.find((x) => x.id === m.itemId);
+    if (i) setOpen(i);
+  };
   const empty = !st.items.length && !st.tx.length;
 
   return (
@@ -110,12 +117,14 @@ export function Home({ go }: { go: (tab: string) => void }) {
         <AlertList alerts={st.alerts} onSeen={(id) => void st.seeAlert(id)} />
       </div>
       <div className="space-y-4">
-        <TimelineList moments={moments} onAll={() => setAll(true)} onOpen={(m) => openMoment(m.itemId)} />
+        {(s.appts.on || st.appts.length > 0) && <ApptCard appts={st.appts} emailOn={s.appts.on} onRemove={(a) => st.removeAppt(a.id)} />}
+        <TimelineList moments={moments} onAll={() => setAll(true)} onOpen={(m) => openMoment(m)} />
         <WeekCard lines={lines} onOpen={() => go('me')} />
         <p className="text-center text-xs text-slate-500 dark:text-slate-400">🔄 Automatic check {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</p>
       </div>
-      {all && <Sheet title="Next 60 days" onClose={() => setAll(false)}><TimelineList moments={timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases }, 60)} max={200} title="Timeline" onOpen={(m) => { setAll(false); openMoment(m.itemId); }} /></Sheet>}
+      {all && <Sheet title="Next 60 days" onClose={() => setAll(false)}><TimelineList moments={timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases, appts: st.appts }, 60)} max={200} title="Timeline" onOpen={(m) => { setAll(false); openMoment(m); }} /></Sheet>}
       {chat && <Sheet title="Ask LifeTracker" onClose={() => setChat(null)}><AskChat turns={chat} busy={thinking} onAsk={(q) => void ask(q)} /><div className="mt-3"><AskBar onAsk={(q) => void ask(q)} disabled={thinking} /></div></Sheet>}
+      {appt && <Sheet title={appt.title} onClose={() => setAppt(null)}><ApptDetails a={appt} onRemove={async () => { await st.removeAppt(appt.id); setAppt(null); }} /></Sheet>}
       {open && (
         <Sheet title={open.name} onClose={() => setOpen(null)}>
           <ItemForm item={open} onSave={st.saveItem} onDelete={() => st.deleteItem(open.id)} onDone={() => setOpen(null)} />

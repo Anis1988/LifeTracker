@@ -28,6 +28,16 @@
             </intent-filter>
         </activity>
 
+        <!-- 💬 Appointment texts: runs when a text arrives (only does anything when "Read appointment texts" is on). -->
+        <receiver
+            android:name=".TextWatch"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -40,4 +50,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 💬 Appointment texts (asked only when you turn it on in Settings → Appointments) -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

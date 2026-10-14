@@ -102,7 +102,7 @@ export interface Suggestion {
   created_at: string;
 }
 
-export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
+export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
 
 // ---------- 👤 Me: name online, people-search sites, breaches, mailing lists, documents that expire ----------
 export interface Finding {
@@ -132,6 +132,30 @@ export const DATE_KINDS: { id: string; icon: string; label: string }[] = [
   { id: 'other', icon: '📌', label: 'Other' },
 ];
 export const dateKind = (id: string) => DATE_KINDS.find((k) => k.id === id) ?? DATE_KINDS[DATE_KINDS.length - 1];
+
+// ---------- 📅 appointments (found in emails and texts, put straight in the calendar: owner's choice) ----------
+export interface Appointment {
+  id: string; key: string; title: string; kind: string;
+  day: string; // YYYY-MM-DD
+  time: string | null; // HH:MM (24 h, your time zone); null = all day
+  minutes: number | null; place: string | null; with_who: string | null; notes: string | null;
+  source: 'email' | 'text' | 'hand'; source_from: string | null;
+  status: 'booked' | 'cancelled' | 'removed';
+  history: { at: string; what: string }[];
+  created_at?: string; updated_at?: string;
+}
+export const APPT_KINDS: { id: string; icon: string; label: string }[] = [
+  { id: 'health', icon: '🩺', label: 'Doctor & health' },
+  { id: 'dental', icon: '🦷', label: 'Dentist' },
+  { id: 'car', icon: '🚗', label: 'Car' },
+  { id: 'beauty', icon: '💇', label: 'Hair & beauty' },
+  { id: 'home', icon: '🏠', label: 'Home & repairs' },
+  { id: 'pet', icon: '🐾', label: 'Pet' },
+  { id: 'work', icon: '💼', label: 'Work & meetings' },
+  { id: 'food', icon: '🍽️', label: 'Restaurant' },
+  { id: 'other', icon: '📅', label: 'Other' },
+];
+export const apptKind = (id: string) => APPT_KINDS.find((k) => k.id === id) ?? APPT_KINDS[APPT_KINDS.length - 1];
 
 export interface Doc {
   id: string; path: string; file_name: string; mime: string; size: number;
@@ -209,6 +233,8 @@ export interface Settings {
   /** 💸 spending: monthly budgets per spending category, your own category for a shop, warn at this share of a budget. */
   spend: { budgets: Record<string, number>; rules: Record<string, string>; alertAt: number };
   purchases: { on: boolean; maxPerRun: number }; // 🧾 read order emails for returns & warranties
+  /** 📅 appointments in emails (and texts, Android app) → straight into the calendar; reminders in minutes before. */
+  appts: { on: boolean; timeZone: string; remind: number[] };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -236,6 +262,7 @@ export const DEFAULT_SETTINGS: Settings = {
   week: { on: true, day: 0 },
   spend: { budgets: {}, rules: {}, alertAt: 0.8 },
   purchases: { on: true, maxPerRun: 8 },
+  appts: { on: true, timeZone: '', remind: [1440, 120] },
 };
 
 /** Saved settings merged over the defaults (new options get their default). */
@@ -261,5 +288,6 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     week: { ...d.week, ...s?.week },
     spend: { ...d.spend, ...s?.spend, budgets: { ...s?.spend?.budgets }, rules: { ...s?.spend?.rules } },
     purchases: { ...d.purchases, ...s?.purchases },
+    appts: { ...d.appts, ...s?.appts },
   };
 }

@@ -32,7 +32,7 @@ export function SuggestionCard({ s, onAdd, onIgnore }: { s: Suggestion; onAdd?: 
 }
 
 // '' = the title already starts with its own icon (documents, credit, breaches).
-const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭', budget: '', return: '', warranty: '', date: '' };
+const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭', budget: '', return: '', warranty: '', date: '', appt: '' };
 export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: string) => void }) {
   if (!alerts.length) return null;
   return (
