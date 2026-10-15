@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { App as NativeApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
+import { registerPlugin } from '@capacitor/core';
+import { toast } from './ui';
 import { isNative } from '../lib/native';
 
 /** The Android app's build number (GitHub run number), set when GitHub builds the app. 0 on the website. */
@@ -37,6 +39,22 @@ export function UpdateBanner({ have, next, onUpdate, onLater }: { have: number; 
   );
 }
 
+/**
+ * ⬆️ Update: the app downloads the new version itself and opens Android's installer (UpdatePlugin.java). Opening the
+ * .apk link in the in-app browser did nothing on many phones. Older app versions without the plugin: the browser.
+ */
+const Updater = registerPlugin<{ install(o: { url: string }): Promise<{ status: 'downloading' | 'allow' | 'browser' }> }>('Update');
+export async function installUpdate(url: string): Promise<void> {
+  try {
+    const r = await Updater.install({ url });
+    if (r.status === 'downloading') toast('info', 'Downloading the update (see the notification). The installer opens when it’s ready: tap Update there.');
+    else if (r.status === 'allow') toast('info', 'Allow LifeTracker to install updates (switch it on), come back, and tap Update again.');
+    else toast('info', 'The update opens in your browser: tap the downloaded file to install it.');
+  } catch {
+    await Browser.open({ url });
+  }
+}
+
 /** In the Android app: looks for a newer version when the app opens or comes back (at most every 30 minutes). */
 export function AppUpdateCheck() {
   const [next, setNext] = useState<AppRelease | null>(null);
@@ -61,7 +79,7 @@ export function AppUpdateCheck() {
   if (!next) return null;
   return (
     <UpdateBanner have={APP_BUILD} next={next.build}
-      onUpdate={() => void Browser.open({ url: next.url })}
+      onUpdate={() => void installUpdate(next.url)}
       onLater={() => { try { localStorage.setItem(SKIP_KEY, String(next.build)); } catch { /* ignore */ } setNext(null); }} />
   );
 }

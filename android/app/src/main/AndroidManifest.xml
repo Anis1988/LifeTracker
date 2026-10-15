@@ -50,6 +50,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- ⬆️ Update button: open the installer for the downloaded new version (Android asks you once) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 💬 Appointment texts (asked only when you turn it on in Settings → Appointments) -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />

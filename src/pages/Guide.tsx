@@ -298,7 +298,7 @@ export function Guide() {
           <li>Android asks to allow installing from your browser: tap <b>Settings → Allow</b>, then <b>Install</b>.</li>
           <li>Sign in with Google or your email: the browser opens a small LifeTracker page, tap <b>Open in the LifeTracker app</b> and you’re in.</li>
         </ol>
-        <P>When a new version is ready, a banner at the top says so: tap <b>Update</b> and install it over the old one (your data stays). Connecting Google Calendar or Gmail opens your browser; when it says “connected”, come back to the app.</P>
+        <P>When a new version is ready, a banner at the top says so: tap <b>Update</b>. The app downloads it (a notification shows the progress) and opens Android’s installer: tap <b>Update</b> there (your data stays). The very first time, Android asks you to allow LifeTracker to install updates: switch it on, come back and tap Update again. Connecting Google Calendar or Gmail opens your browser; when it says “connected”, come back to the app.</P>
         <Example caption="Made-up example of the update banner.">
           <UpdateBanner have={12} next={14} />
         </Example>
