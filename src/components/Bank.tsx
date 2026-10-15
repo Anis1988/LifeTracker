@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Chevron } from './ui';
 
 /** How to turn on purchase-alert emails at each bank (menus can move a little; the words to look for stay). */
 export const BANK_STEPS: { bank: string; steps: string[] }[] = [
@@ -37,13 +38,13 @@ export function AlertBanks({ gmail, read, banks, last, onConnect }: { gmail: boo
       <p className="text-sm font-medium">Turn on purchase alerts by email, once per bank:</p>
       {BANK_STEPS.map((b) => (
         <div key={b.bank} className="panel !p-0">
-          <button className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium" aria-expanded={open === b.bank} onClick={() => setOpen(open === b.bank ? null : b.bank)}>
-            <span>{banks.includes(b.bank) ? '✅' : '🏦'} {b.bank}</span><span aria-hidden="true" className="text-stone-400">{open === b.bank ? '⌃' : '⌄'}</span>
+          <button className="tap flex min-h-[48px] w-full items-center justify-between rounded-[20px] px-3 py-2 text-left text-sm font-semibold" aria-expanded={open === b.bank} onClick={() => setOpen(open === b.bank ? null : b.bank)}>
+            <span>{banks.includes(b.bank) ? '✅' : '🏦'} {b.bank}</span><Chevron open={open === b.bank} />
           </button>
-          {open === b.bank && <ol className="list-decimal space-y-1 px-3 pb-3 pl-8 text-sm text-stone-700 dark:text-slate-300">{b.steps.map((s) => <li key={s}>{s}</li>)}</ol>}
+          {open === b.bank && <ol className="list-decimal space-y-1 px-3 pb-3 pl-8 text-sm text-slate-700 dark:text-slate-300">{b.steps.map((s) => <li key={s}>{s}</li>)}</ol>}
         </div>
       ))}
-      <p className="text-xs text-stone-500">Other banks work too if they email you for each purchase. Only purchases are read (deposits, payments and statements are skipped), with free patterns: no AI, nothing paid. A ✅ shows a bank whose alerts were read.</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">Other banks work too if they email you for each purchase. Only purchases are read (deposits, payments and statements are skipped), with free patterns: no AI, nothing paid. A ✅ shows a bank whose alerts were read.</p>
     </div>
   );
 }

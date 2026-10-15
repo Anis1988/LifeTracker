@@ -3,7 +3,7 @@ import type { Moment, Tone } from '../lib/timeline';
 import { Money, shortDate, errText } from './ui';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 
-/** Home's "life at a glance" pieces (Liquid Glass look). Each is also drawn in the Guide with made-up data. */
+/** Home's "life at a glance" pieces (Liquid Glass 2 look). Each is also drawn in the Guide with made-up data. */
 
 /** A progress ring: `value` 0..1 (capped), centre text, colour by tone. */
 export function Ring({ value, size = 56, stroke = 6, tone = 'emerald', children, label }: { value: number; size?: number; stroke?: number; tone?: 'emerald' | 'teal' | 'amber' | 'red'; children?: React.ReactNode; label: string }) {
@@ -33,14 +33,14 @@ export function MonthHero({ total, usual, soFarUsual, bills, monthName }: { tota
   const share = usual ? total / usual : 0;
   const diff = soFarUsual != null ? soFarUsual - total : null;
   return (
-    <section className="card rise flex items-center gap-4">
+    <section className="card rise flex items-center gap-4 !p-5">
       <Ring value={share} size={124} stroke={10} tone={share > 1 ? 'red' : share > 0.9 ? 'amber' : 'emerald'} label={usual ? `${Math.round(share * 100)}% of a usual month` : 'No usual month yet'}>
         <span className="num text-[22px] font-semibold">{usual ? `${Math.round(share * 100)}%` : '—'}</span>
         <span className="text-[11px] text-slate-500 dark:text-slate-400">{usual ? 'of a usual month' : 'first month'}</span>
       </Ring>
       <div className="min-w-0 space-y-1">
         <p className="label">Spent in {monthName}</p>
-        <Money n={total} className="block text-[30px] font-semibold tracking-tight text-slate-900 dark:text-white" />
+        <Money n={total} className="block text-[32px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white" />
         {diff != null && <p className={`w-fit rounded-full px-2.5 py-1 text-xs font-extrabold ${diff >= 0 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}><Money n={Math.abs(diff)} /> {diff >= 0 ? 'under' : 'over'} a usual month so far</p>}
         <p className="text-xs text-slate-500 dark:text-slate-400">Bills: <Money n={bills} className="text-slate-800 dark:text-slate-200" /> a month</p>
       </div>
@@ -54,7 +54,7 @@ export function MiniRings({ rings }: { rings: { label: string; sub: string; valu
       {rings.map((r) => (
         <button key={r.label} onClick={r.onClick} className="card tap flex flex-col items-center gap-1.5 !rounded-[22px] !px-2 !py-3 text-center">
           <Ring value={r.value} tone={r.tone} label={`${r.label}: ${r.text}`}><span className="num text-[13px] font-semibold">{r.text}</span></Ring>
-          <span className="text-xs font-bold">{r.label}</span>
+          <span className="text-[13px] font-bold">{r.label}</span>
           <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">{r.sub}</span>
         </button>
       ))}
@@ -72,16 +72,16 @@ export function TimelineList({ moments, max = 6, onAll, onOpen, title = 'Coming 
   const t = today();
   return (
     <section className="card rise rise-3 space-y-1">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-center justify-between">
         <p className="label">{title}</p>
-        {onAll && moments.length > max && <button className="chip border-teal-500/30 px-2.5 py-1 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={onAll}>See all {moments.length}</button>}
+        {onAll && moments.length > max && <button className="chip -my-2 border-teal-500/30 px-2.5 py-1 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={onAll}>See all {moments.length}</button>}
       </div>
       {moments.length ? (
         <ul>
           {moments.slice(0, max).map((m, i) => {
             const left = daysBetween(t, m.date);
             return (
-              <li key={`${m.date}${m.title}${i}`} className="border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]">
+              <li key={`${m.date}${m.title}${i}`} className="rise border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]" style={{ animationDelay: `${0.12 + i * 0.04}s` }}>
                 <button className="tap -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-2xl px-2 py-2.5 text-left" onClick={() => onOpen?.(m)}>
                   <span className="w-11 shrink-0 text-center">
                     <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{left === 0 ? 'Today' : left === 1 ? 'Tmrw' : new Date(`${m.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}</span>

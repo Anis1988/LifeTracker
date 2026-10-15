@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { Bills } from './Bills';
 import { PurchaseForm, PurchaseRow, SpendingView } from '../components/Spending';
-import { Seg, Sheet, errText, toast } from '../components/ui';
+import { Empty, Seg, Sheet, errText, toast } from '../components/ui';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
@@ -33,9 +33,9 @@ function Spending() {
   const r = useMemo(() => spendReport(st.tx, s.spend.rules, month, month === now ? Number(t.slice(8, 10)) : 31), [st.tx, s.spend.rules, month, now]);
   const save = (spend: typeof s.spend) => void st.saveSettings({ ...s, spend }).catch((e) => toast('err', errText(e)));
   return (
-    <div className="space-y-3">
+    <div className="stagger space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-2xl font-semibold">Spending</h1>
+        <h1 className="mr-auto text-[28px] font-semibold leading-tight">Spending</h1>
         <Seg label="Month" options={[[now, 'This month'], [last, 'Last month']]} value={month} onChange={setMonth} />
       </div>
       <SpendingView r={r} budgets={s.spend.budgets} alertAt={s.spend.alertAt} monthName={monthName(month)}
@@ -63,15 +63,15 @@ function Returns() {
     setBusy(false);
   };
   return (
-    <div className="space-y-3">
+    <div className="stagger space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-2xl font-semibold">Returns & warranties</h1>
-        <button className="btn" disabled={busy || !st.status?.google.gmail} onClick={() => void scan()}>{busy ? <><span className="spinner" /> Reading…</> : 'Check Gmail'}</button>
-        <button className="btn-primary" onClick={() => setOpen({})}>＋ Add</button>
+        <h1 className="w-full text-[28px] font-semibold leading-tight sm:mr-auto sm:w-auto">Returns & warranties</h1>
+        <button className="btn flex-1 sm:flex-none" disabled={busy || !st.status?.google.gmail} onClick={() => void scan()}>{busy ? <><span className="spinner" /> Reading…</> : 'Check Gmail'}</button>
+        <button className="btn-primary flex-1 sm:flex-none" onClick={() => setOpen({})}>＋ Add</button>
       </div>
       <p className="text-sm text-slate-600 dark:text-slate-300">Order emails in Gmail are read every morning (a free check first, then the AI). You get a heads-up 3 days before a return window closes, and a month before a warranty ends.</p>
       {list.length ? <div className="space-y-2">{list.map((p) => <PurchaseRow key={p.id} p={p} onOpen={() => setOpen(p)} onSet={(patch) => void st.savePurchase({ ...p, ...patch }).catch((e) => toast('err', errText(e)))} />)}</div>
-        : <p className="card text-sm text-slate-500 dark:text-slate-400">Nothing yet. Purchases appear here from your order emails, or tap ＋ Add.</p>}
+        : <Empty icon="🧾">Nothing yet. Purchases appear here from your order emails, or tap ＋ Add.</Empty>}
       {open && (
         <Sheet title={open.id ? open.store ?? 'Purchase' : 'Add a purchase'} onClose={() => setOpen(null)}>
           <PurchaseForm p={open} onSave={st.savePurchase} onDelete={open.id ? () => st.deletePurchase(open.id!) : undefined} onDone={() => setOpen(null)} />

@@ -76,18 +76,19 @@ export function Home({ go }: { go: (tab: string) => void }) {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div className="space-y-4">
+      <div className="stagger space-y-4">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="label">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
-            <h1 className="text-[26px] font-semibold">{hello()}</h1>
+            <h1 className="text-[28px] font-semibold leading-tight">{hello()}</h1>
           </div>
-          <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-900/10 bg-white/60 text-slate-700 dark:border-white/10 dark:bg-white/[0.05] dark:text-slate-200" disabled={busy} onClick={() => void sync()} aria-label="Sync now" title={`Checked ${ago(st.status?.lastRun?.lastRun)}`}>
+          <button className="btn h-11 w-11 !p-0 text-slate-700 dark:text-slate-200" disabled={busy} onClick={() => void sync()} aria-label="Sync now" title={`Checked ${ago(st.status?.lastRun?.lastRun)}`}>
             {busy ? <span className="spinner" /> : <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12A9 9 0 0 1 18.5 5.8M18 2v4h-4M6 22v-4h4" /></svg>}
           </button>
         </div>
         {empty ? (
-          <div className="card rise space-y-3 text-center">
+          <div className="card space-y-3 py-6 text-center">
+            <span className="orb mx-auto" aria-hidden="true">🧾</span>
             <h2 className="text-xl font-semibold">Let’s find your bills</h2>
             <p className="text-sm text-slate-600 dark:text-slate-300">Connect Gmail (bank alert emails) and LifeTracker finds your subscriptions, mortgage, insurance and spending by itself. Or add a bill by hand.</p>
             <div className="flex flex-wrap justify-center gap-2">
@@ -108,15 +109,15 @@ export function Home({ go }: { go: (tab: string) => void }) {
         )}
         <AskBar onAsk={(q) => void ask(q)} disabled={thinking} />
         {st.suggestions.length > 0 && (
-          <button className="card flex w-full items-center gap-3 text-left tap !border-teal-400/50" onClick={() => go('inbox')}>
-            <span className="text-2xl" aria-hidden="true">🔎</span>
+          <button className="card tap flex w-full items-center gap-3 text-left !border-teal-400/50 shadow-[0_0_30px_-12px_#5eead4]" onClick={() => go('inbox')}>
+            <span className="tile" aria-hidden="true">🔎</span>
             <span className="flex-1 text-sm"><b>{st.suggestions.length} found</b> automatically: add them or ignore them.</span>
-            <span aria-hidden="true">→</span>
+            <span aria-hidden="true" className="text-teal-600 dark:text-teal-300">→</span>
           </button>
         )}
         <AlertList alerts={st.alerts} onSeen={(id) => void st.seeAlert(id)} />
       </div>
-      <div className="space-y-4">
+      <div className="stagger space-y-4">
         {(s.appts.on || st.appts.length > 0) && <ApptCard appts={st.appts} emailOn={s.appts.on} onRemove={(a) => st.removeAppt(a.id)} />}
         <TimelineList moments={moments} onAll={() => setAll(true)} onOpen={(m) => openMoment(m)} />
         <WeekCard lines={lines} onOpen={() => go('me')} />
