@@ -6,7 +6,7 @@ import { AppUpdateCheck } from './components/AppUpdate';
 import type { Session } from '@supabase/supabase-js';
 import { configured, secretKey, siteUrl, supabase } from './lib/supabase';
 import { StoreProvider, useStore } from './lib/store';
-import { Toasts, errText, toast } from './components/ui';
+import { Skeleton, Toasts, errText, toast } from './components/ui';
 import { Home } from './pages/Home';
 import { MoneyPage } from './pages/Money';
 import { Inbox } from './pages/Inbox';
@@ -62,7 +62,7 @@ export function App() {
   }, []);
   if (secretKey) return <Shell><p className="card text-sm text-red-700 dark:text-red-300">This site was built with the Supabase <b>secret</b> key. Replace VITE_SUPABASE_ANON_KEY with the publishable (anon) key, revoke the secret key in Supabase, and deploy again.</p></Shell>;
   if (!configured) return <Shell><p className="card text-sm">This copy isn’t linked to Supabase yet: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (see README).</p></Shell>;
-  if (session === undefined) return <Shell><p className="text-sm text-stone-500"><span className="spinner" /> Loading…</p></Shell>;
+  if (session === undefined) return <Shell><Skeleton /></Shell>;
   if (!session) return <Shell><Login /></Shell>;
   return <StoreProvider session={session}><Main /></StoreProvider>;
 }
@@ -73,7 +73,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <Aurora />
       <div className="mb-6 flex items-center gap-2"><img src="./icon.svg" alt="" className="h-9 w-9" /><span className="font-display text-2xl font-semibold">LifeTracker</span></div>
       {children}
-      <p className="mt-6 text-center text-xs text-stone-500"><a className="underline" href="./privacy.html">Privacy</a> · <a className="underline" href="./terms.html">Terms</a></p>
+      <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400"><a className="underline" href="./privacy.html">Privacy</a> · <a className="underline" href="./terms.html">Terms</a></p>
       <Toasts />
     </div>
   );
@@ -106,12 +106,12 @@ function Login() {
   return (
     <div className="card space-y-3">
       <h1 className="text-xl font-semibold">Sign in</h1>
-      <p className="text-sm text-stone-600 dark:text-slate-300">Your bills, subscriptions, mortgage and insurance, all in one place.</p>
+      <p className="text-sm text-slate-600 dark:text-slate-300">Your bills, subscriptions, mortgage and insurance, all in one place.</p>
       <button className="btn w-full" onClick={() => void google()}>Continue with Google</button>
-      <div className="flex items-center gap-2 text-xs text-stone-400"><span className="h-px flex-1 bg-stone-200 dark:bg-slate-800" />or<span className="h-px flex-1 bg-stone-200 dark:bg-slate-800" /></div>
+      <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500"><span className="h-px flex-1 bg-slate-900/[0.07] dark:bg-white/[0.08]" />or<span className="h-px flex-1 bg-slate-900/[0.07] dark:bg-white/[0.08]" /></div>
       {sent ? (
         <div className="space-y-2">
-          <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{isNative() ? 'Check your email on this phone: tap the link, then “Open in the LifeTracker app”. (Or type the code if the email has one.)' : 'Check your email: tap the link, or type the code from the email here.'}</p>
+          <p className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-900 dark:bg-emerald-400/10 dark:text-emerald-100">{isNative() ? 'Check your email on this phone: tap the link, then “Open in the LifeTracker app”. (Or type the code if the email has one.)' : 'Check your email: tap the link, or type the code from the email here.'}</p>
           <input className="input num w-full text-center text-xl tracking-[0.4em]" inputMode="numeric" autoComplete="one-time-code" placeholder="123456" maxLength={10} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => e.key === 'Enter' && code.length >= 6 && void verify()} aria-label="Code from the email" />
           <button className="btn-primary w-full" disabled={busy || code.length < 6} onClick={() => void verify()}>{busy ? <span className="spinner" /> : 'Sign in with the code'}</button>
           <button className="btn-ghost w-full justify-center text-xs" onClick={() => { setSent(false); setCode(''); }}>Use another email or send again</button>
@@ -153,7 +153,7 @@ function Main() {
   const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
   const badge = (t: Tab): number => (t === 'inbox' ? st.suggestions.length : t === 'me' ? meCount : 0);
   return (
-    <div className="min-h-screen pb-28 sm:pb-10">
+    <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom,0px))] sm:pb-10">
       <Aurora />
       <header className="sticky top-0 z-30 border-b border-slate-900/5 bg-[#eaeff6]/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#060912]/70" style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }}>
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
@@ -171,18 +171,18 @@ function Main() {
           </button>
         </div>
       </header>
-      <main key={tab} className="rise mx-auto max-w-5xl px-4 py-5">
+      <main key={tab} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         <AppUpdateCheck />
-        {st.loading ? <p className="text-sm text-slate-500"><span className="spinner" /> Loading…</p>
+        {st.loading ? <Skeleton />
           : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <Me go={go} /> : tab === 'settings' ? <Settings /> : <Guide />}
       </main>
       {/* Phones: a floating glass tab bar within thumb reach; a glass pill slides to the open tab. */}
-      <nav aria-label="Tabs" style={{ bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className="glass fixed inset-x-3 z-30 flex rounded-[28px] p-1.5 sm:hidden">
+      <nav aria-label="Tabs" style={{ bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className="glass tabbar fixed inset-x-3 z-30 mx-auto flex max-w-md rounded-[30px] p-1.5 sm:hidden">
         <span aria-hidden="true" className="tabpill" style={{ '--i': Math.max(0, TABS.findIndex((t) => t.id === tab)), opacity: tab === 'guide' ? 0 : 1 } as React.CSSProperties} />
         {TABS.map((t) => (
           <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`tap tabbtn z-[1] flex h-[54px] flex-1 basis-0 flex-col items-center justify-center gap-0.5 rounded-[22px] text-[10.5px] font-bold ${tab === t.id ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
             <Icon d={t.icon} />{t.label}
-            {badge(t.id) ? <span className="absolute right-[14%] top-1 rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-900 animate-[pulse_2.4s_ease-in-out_infinite]">{badge(t.id)}</span> : null}
+            {badge(t.id) ? <span className="absolute right-[14%] top-1 min-w-[18px] rounded-full bg-amber-400 px-1.5 text-center text-[10px] font-bold leading-[18px] text-slate-900 shadow-[0_0_12px_-2px_rgba(251,191,36,0.9)] ring-2 ring-white/70 animate-[pulse_2.4s_ease-in-out_infinite] dark:ring-[#0b1020]/80">{badge(t.id)}</span> : null}
           </button>
         ))}
       </nav>

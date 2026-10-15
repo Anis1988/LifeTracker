@@ -15,9 +15,9 @@ export function ApptCard({ appts, onRemove, max = 5, emailOn = true }: { appts: 
   const list = appts.filter((a) => a.status === 'booked' && a.day >= t);
   return (
     <section className="card rise space-y-1">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-center justify-between">
         <p className="label">📅 Appointments</p>
-        {list.length > max && <button className="chip border-teal-500/30 px-2.5 py-1 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={() => setAll(true)}>See all {list.length}</button>}
+        {list.length > max && <button className="chip -my-2 border-teal-500/30 px-2.5 py-1 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={() => setAll(true)}>See all {list.length}</button>}
       </div>
       {list.length ? <ApptList list={list.slice(0, max)} onOpen={setOpen} /> : (
         <p className="py-2 text-sm text-slate-500 dark:text-slate-400">{emailOn ? 'Appointments in your emails (and texts, in the Android app) show up here and go straight into your calendar.' : 'Off: turn it on in Settings → Appointments.'}</p>

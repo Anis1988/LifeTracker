@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { CsvImport, DocRow, SuggestionCard, Uploader } from '../components/Inbox';
 import { ItemForm } from '../components/Items';
-import { Sheet, errText, toast } from '../components/ui';
+import { Empty, Sheet, errText, toast } from '../components/ui';
 import type { Item, Suggestion } from '../../supabase/functions/_shared/model.ts';
 
 /** What was found automatically (bank, email, documents), waiting for your OK, and your documents. */
@@ -19,19 +19,19 @@ export function Inbox() {
     try { await st.setSuggestion(s.id, { status: 'ignored' }); toast('info', `${s.name}: ignored. It won’t be suggested again.`); } catch (e) { toast('err', errText(e)); }
   };
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Inbox</h1>
+    <div className="stagger mx-auto max-w-2xl space-y-4">
+      <h1 className="text-[28px] font-semibold leading-tight">Inbox</h1>
       <section className="space-y-3">
         <p className="label">Found for you ({st.suggestions.length})</p>
         {st.suggestions.length ? st.suggestions.map((s) => <SuggestionCard key={s.id} s={s} onAdd={() => setAdding(s)} onIgnore={() => void ignore(s)} />)
-          : <p className="card text-sm text-stone-500">Nothing waiting. New bills found in your bank, Gmail or documents show up here for your OK; nothing is added without it.</p>}
+          : <Empty icon="📬">Nothing waiting. New bills found in your bank, Gmail or documents show up here for your OK; nothing is added without it.</Empty>}
       </section>
       <section className="space-y-3">
         <p className="label">Documents</p>
         <Uploader userId={st.session.user.id} onDone={() => void st.reload()} />
-        <div className="flex flex-wrap items-center gap-2 text-sm text-stone-600 dark:text-slate-300">
+        <div className="panel flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
           <CsvImport onDone={() => void st.reload()} />
-          <span>No bank link? Download your transactions as CSV and the recurring ones are found.</span>
+          <span className="min-w-0 flex-1 basis-48">No bank link? Download your transactions as CSV and the recurring ones are found.</span>
         </div>
         {st.docs.map((d) => <DocRow key={d.id} d={d} onChange={() => void st.reload()} />)}
       </section>

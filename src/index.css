@@ -2,83 +2,139 @@
 @tailwind components;
 @tailwind utilities;
 
-/* "Liquid Glass": frosted glass with a soft shine over a slow teal / violet / amber glow. Pearl by day, deep night
-   at night. Taps: the button sinks, a glow spreads from it and it springs back. Every animation only moves, scales
-   or fades (cheap for phones), and all of it stops when the phone asks for less motion. */
+/* "Liquid Glass 2": frosted glass with a light-catching rim and a soft shine over a slow teal / violet / amber glow.
+   Pearl by day, deep night at night. Cards rise in one after the other, panels slide up from the bottom, loading
+   shows a shimmering outline of the page. Taps: the button sinks, a glow spreads from it and it springs back.
+   Every animation only moves, scales or fades (cheap for phones), and all of it stops when the phone asks for less motion. */
 :root {
   --a: #5eead4; --a2: #a78bfa; --ink: #04121a;
-  --gl: rgba(255, 255, 255, .72); --gl2: rgba(255, 255, 255, .4); --bd: rgba(15, 23, 42, .08); --hi: rgba(255, 255, 255, .95);
-  --sh: 0 18px 40px -24px rgba(30, 41, 59, .38); --trk: rgba(15, 23, 42, .08);
-  --spring: cubic-bezier(.34, 1.56, .64, 1); --soft: cubic-bezier(.2, .8, .2, 1);
+  --gl: rgba(255, 255, 255, .74); --gl2: rgba(255, 255, 255, .42); --bd: rgba(15, 23, 42, .08); --hi: rgba(255, 255, 255, .95); --lo: rgba(15, 23, 42, .04);
+  --sheen: rgba(255, 255, 255, .6); --rim1: rgba(255, 255, 255, .95); --rim2: rgba(167, 139, 250, .35);
+  --tile1: rgba(255, 255, 255, .95); --tile2: rgba(241, 245, 249, .6);
+  --sh: 0 18px 40px -24px rgba(30, 41, 59, .38), 0 2px 6px -4px rgba(30, 41, 59, .12); --trk: rgba(15, 23, 42, .07);
+  --shimmer: rgba(255, 255, 255, .75); --hair: rgba(15, 23, 42, .07);
+  --spring: cubic-bezier(.34, 1.56, .64, 1); --soft: cubic-bezier(.2, .8, .2, 1); --sheet: cubic-bezier(.32, .72, 0, 1);
+  --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --gl: rgba(255, 255, 255, .085); --gl2: rgba(255, 255, 255, .025); --bd: rgba(255, 255, 255, .12); --hi: rgba(255, 255, 255, .2);
-    --sh: 0 22px 50px -24px rgba(0, 0, 0, .8); --trk: rgba(255, 255, 255, .09);
+    --gl: rgba(255, 255, 255, .085); --gl2: rgba(255, 255, 255, .025); --bd: rgba(255, 255, 255, .1); --hi: rgba(255, 255, 255, .16); --lo: rgba(0, 0, 0, .3);
+    --sheen: rgba(255, 255, 255, .06); --rim1: rgba(255, 255, 255, .28); --rim2: rgba(94, 234, 212, .3);
+    --tile1: rgba(255, 255, 255, .12); --tile2: rgba(255, 255, 255, .03);
+    --sh: 0 22px 50px -24px rgba(0, 0, 0, .85), 0 2px 8px -4px rgba(0, 0, 0, .5); --trk: rgba(255, 255, 255, .08);
+    --shimmer: rgba(255, 255, 255, .09); --hair: rgba(255, 255, 255, .07);
   }
 }
 
 @layer base {
   html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
-  body { @apply bg-[#eaeff6] text-slate-800 antialiased dark:bg-[#060912] dark:text-slate-200; font-family: Manrope, system-ui, sans-serif; }
+  body { @apply bg-[#eaeff6] text-slate-800 antialiased dark:bg-[#060912] dark:text-slate-200; font-family: Manrope, system-ui, sans-serif; overflow-x: hidden; }
   h1, h2, h3 { @apply font-display tracking-tight text-slate-900 dark:text-slate-50; }
   ::selection { @apply bg-teal-300/60 dark:bg-teal-500/40; }
+  /* A glowing ring for keyboard focus, everywhere. */
+  :where(a, button, summary, select, [role="tab"], [tabindex]):focus-visible { outline: 2px solid #2dd4bf; outline-offset: 2px; border-radius: 14px; }
+  input[type="date"].input { -webkit-appearance: none; appearance: none; }
+  /* "More…" sections: a tappable row with a turning chevron. */
+  details > summary { @apply flex min-h-[44px] cursor-pointer items-center gap-2 rounded-2xl; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: ''; flex: none; width: 8px; height: 8px; margin: 0 4px 0 2px; border-right: 2px solid #94a3b8; border-bottom: 2px solid #94a3b8; transform: rotate(-45deg); transition: transform .45s var(--spring); }
+  details[open] > summary::before { transform: rotate(45deg); }
 }
 @layer components {
-  .glass { position: relative; background: linear-gradient(155deg, var(--gl), var(--gl2)); border: 1px solid var(--bd); box-shadow: inset 0 1px 0 var(--hi), var(--sh); -webkit-backdrop-filter: blur(22px) saturate(170%); backdrop-filter: blur(22px) saturate(170%); }
+  /* Glass: a soft corner sheen + a faint diagonal shine, a bright top edge and a darker bottom edge for depth. */
+  .glass { position: relative; border: 1px solid var(--bd);
+    background: radial-gradient(130% 80% at 0% 0%, var(--sheen), transparent 55%), linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, .06) 50%, transparent 62%), linear-gradient(155deg, var(--gl), var(--gl2));
+    box-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 var(--lo), var(--sh); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); }
   .card { @apply glass rounded-[26px] p-4; }
-  .card::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, .07) 48%, transparent 62%); }
-  .panel { @apply rounded-2xl border border-slate-900/[0.07] bg-white/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.04]; }
+  /* The rim catches the light: bright at the top-left, a hint of violet/teal at the bottom-right (refraction). */
+  .card::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: linear-gradient(140deg, var(--rim1), transparent 32%, transparent 68%, var(--rim2));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+  .panel { @apply rounded-[20px] border bg-white/60 p-3 dark:bg-white/[0.04]; border-color: var(--bd); box-shadow: inset 0 1px 0 var(--hi); }
   .label { @apply font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400; }
-  .input { @apply min-h-[44px] rounded-2xl border border-slate-900/10 bg-white/80 px-3 text-[15px] text-slate-900 outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-500/15 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-100 dark:focus:border-teal-300 dark:focus:ring-teal-300/15; }
-  .btn { @apply tap inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-2xl border px-4 text-sm font-bold text-slate-800 disabled:opacity-50 dark:text-slate-100; background: var(--gl); border-color: var(--bd); box-shadow: inset 0 1px 0 var(--hi); }
-  .btn-primary { @apply tap inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-2xl border-0 px-4 text-sm font-extrabold disabled:opacity-50; color: var(--ink); background: linear-gradient(135deg, var(--a), var(--a2)); box-shadow: 0 10px 26px -12px var(--a); }
+  /* Small icon tile (bills, documents, alerts…). */
+  .tile { @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-xl; border-color: var(--bd); background: linear-gradient(145deg, var(--tile1), var(--tile2)); box-shadow: inset 0 1px 0 var(--hi), 0 8px 16px -12px rgba(0, 0, 0, .45); }
+  .input { @apply min-h-[44px] rounded-2xl border border-slate-900/10 bg-white/80 px-3 text-[16px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-teal-300;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, .05); }
+  .input:focus { box-shadow: 0 0 0 4px rgba(45, 212, 191, .16), 0 0 28px -8px rgba(45, 212, 191, .75); }
+  /* Native-feeling pickers: our own chevron, no grey browser box. */
+  select.input { -webkit-appearance: none; appearance: none; padding-right: 2.25rem; background-repeat: no-repeat; background-position: right .8rem center; background-size: 14px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
+  .btn { @apply tap inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border px-4 text-sm font-bold text-slate-800 disabled:opacity-50 dark:text-slate-100; background: linear-gradient(160deg, var(--gl), var(--gl2)); border-color: var(--bd); box-shadow: inset 0 1px 0 var(--hi), 0 6px 14px -10px rgba(0, 0, 0, .35); }
+  .btn-primary { @apply tap inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border-0 px-4 text-sm font-extrabold disabled:opacity-50; color: var(--ink); background: linear-gradient(135deg, var(--a), var(--a2)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 10px 26px -12px var(--a); }
   .btn-primary:not(:disabled):active { box-shadow: 0 0 0 6px rgba(167, 139, 250, .22), 0 0 32px var(--a); }
-  .btn-ghost { @apply tap inline-flex items-center gap-1 rounded-xl px-2 py-1 text-sm text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/[0.06]; }
-  .chip { @apply tap inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold; }
+  .btn:focus-visible, .btn-primary:focus-visible { box-shadow: 0 0 0 4px rgba(94, 234, 212, .25), 0 0 26px -4px #5eead4; }
+  .btn-ghost { @apply tap inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-xl px-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/[0.06]; }
+  .chip { @apply tap inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold; }
+  button.chip { @apply min-h-[44px] px-3.5; }
   .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
   .spinner { @apply inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px]; }
-  .rise { animation: rise .5s var(--soft) backwards; }
+  .rise { animation: rise .55s var(--soft) backwards; }
   .rise-1 { animation-delay: .06s; } .rise-2 { animation-delay: .12s; } .rise-3 { animation-delay: .18s; }
+  /* Cards come in one after the other. */
+  .stagger > * { animation: rise .6s var(--soft) backwards; }
+  .stagger > :nth-child(2) { animation-delay: .05s; } .stagger > :nth-child(3) { animation-delay: .1s; } .stagger > :nth-child(4) { animation-delay: .15s; }
+  .stagger > :nth-child(5) { animation-delay: .2s; } .stagger > :nth-child(6) { animation-delay: .25s; } .stagger > :nth-child(7) { animation-delay: .3s; }
+  .stagger > :nth-child(n+8) { animation-delay: .34s; }
+  /* Settings-style rows: a hairline between neighbours. */
+  .field + .field { border-top: 1px solid var(--hair); }
+
+  /* Loading: a shimmering outline of the page. */
+  .skel { position: relative; overflow: hidden; border-radius: 12px; background: var(--trk); }
+  .skel::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--shimmer), transparent); animation: shimmer 1.5s ease-in-out infinite; }
+  /* Empty states: a small floating glass orb. */
+  .orb { @apply flex h-16 w-16 items-center justify-center rounded-full border text-3xl; border-color: var(--bd); background: radial-gradient(circle at 30% 25%, var(--tile1), var(--tile2) 70%); box-shadow: inset 0 1px 0 var(--hi), 0 0 40px -10px var(--a), 0 0 60px -20px var(--a2); animation: float 5s ease-in-out infinite; }
 
   /* Tap effect: sink + spreading glow while held, spring back + fade on release. */
   .tap { position: relative; overflow: hidden; isolation: isolate; cursor: pointer; transition: transform .5s var(--spring), box-shadow .4s, background-color .3s, border-color .3s, color .3s; }
-  .tap:not(:disabled):active { transform: scale(.95); transition-duration: .12s; }
+  .tap:not(:disabled):active { transform: scale(.96); transition-duration: .12s; }
   .tap::after { content: ''; position: absolute; left: 50%; top: 50%; width: 220%; aspect-ratio: 1; margin: -110% 0 0 -110%; border-radius: 50%; pointer-events: none; z-index: -1;
     background: radial-gradient(circle, rgba(94, 234, 212, .45), rgba(94, 234, 212, 0) 60%); opacity: 0; transform: scale(.2); transition: opacity .7s ease, transform 0s .7s; }
   .tap:not(:disabled):active::after { opacity: 1; transform: scale(1); transition: opacity .05s, transform .55s var(--soft); }
   @media (prefers-color-scheme: dark) { .tap::after { background: radial-gradient(circle, rgba(255, 255, 255, .4), rgba(255, 255, 255, 0) 60%); } }
+  /* A card that is also a button keeps its glass rim (the glow is drawn by the rim layer's sibling). */
+  .card.tap { overflow: hidden; }
 
   /* Segmented switch with a sliding glass thumb (Seg in ui.tsx sets --i and --n). */
-  .seg { @apply relative flex rounded-[18px] border p-1; background: var(--trk); border-color: var(--bd); }
-  .seg > .thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / var(--n, 2)); transform: translateX(calc(var(--i, 0) * 100%)); border-radius: 14px; border: 1px solid var(--bd);
-    @apply bg-white dark:bg-white/[0.1]; box-shadow: inset 0 1px 0 var(--hi), 0 6px 16px -8px rgba(0, 0, 0, .45); transition: transform .5s cubic-bezier(.34, 1.4, .64, 1); }
-  .seg > button { @apply tap relative z-[1] min-h-[40px] flex-1 basis-0 whitespace-nowrap rounded-[14px] px-3 text-sm font-bold text-slate-500 dark:text-slate-400; }
+  .seg { @apply relative flex rounded-[20px] border p-1; background: var(--trk); border-color: var(--bd); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08); }
+  .seg > .thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / var(--n, 2)); transform: translateX(calc(var(--i, 0) * 100%)); border-radius: 16px; border: 1px solid var(--bd);
+    @apply bg-white dark:bg-white/[0.12]; box-shadow: inset 0 1px 0 var(--hi), 0 6px 16px -8px rgba(0, 0, 0, .45), 0 0 20px -8px var(--a); transition: transform .5s cubic-bezier(.34, 1.4, .64, 1); }
+  .seg > button { @apply tap relative z-[1] min-h-[44px] flex-1 basis-0 whitespace-nowrap rounded-[16px] px-3 text-sm font-bold text-slate-500 dark:text-slate-400; }
   .seg > button[aria-selected="true"] { @apply text-slate-900 dark:text-white; }
 
   /* Glass switch with a springy knob. */
-  .switch { @apply relative h-8 w-[54px] shrink-0 rounded-full border p-0 disabled:opacity-40; background: var(--trk); border-color: var(--bd); transition: background .35s; }
+  .switch { @apply relative h-8 w-[54px] shrink-0 rounded-full border p-0 disabled:opacity-40; background: var(--trk); border-color: var(--bd); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .12); transition: background .35s, box-shadow .35s; }
   .switch[aria-checked="true"] { background: linear-gradient(135deg, var(--a), var(--a2)); border-color: transparent; box-shadow: 0 0 18px -6px var(--a); }
   .switch > span { position: absolute; top: 3px; left: 3px; height: 24px; width: 24px; border-radius: 9999px; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); transition: transform .5s var(--spring); }
+  .switch:not(:disabled):active > span { transform: scaleX(1.18); transform-origin: left; }
   .switch[aria-checked="true"] > span { transform: translateX(22px); }
+  .switch[aria-checked="true"]:not(:disabled):active > span { transform: translateX(18px) scaleX(1.18); }
 
   /* Phone tab bar: a glass pill slides to the open tab; its icon lifts and glows. */
+  .tabbar { -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%); box-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 var(--lo), 0 20px 50px -18px rgba(15, 23, 42, .55); }
   .tabpill { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / 5); transform: translateX(calc(var(--i, 0) * 100%)); border-radius: 22px; border: 1px solid var(--bd);
     @apply bg-white/90 dark:bg-white/[0.1]; box-shadow: inset 0 1px 0 var(--hi), 0 0 24px -6px var(--a); transition: transform .55s cubic-bezier(.34, 1.4, .64, 1), opacity .3s; }
   .tabbtn svg { transition: transform .5s var(--spring), filter .3s; }
   .tabbtn[aria-current="page"] svg { transform: translateY(-1px) scale(1.12); filter: drop-shadow(0 0 7px rgba(45, 212, 191, .8)); }
 
+  /* Panels: slide up from the bottom on phones, pop in on big screens. */
+  .sheet { animation: sheetup .55s var(--sheet) both; }
+  @media (min-width: 640px) { .sheet { animation: pop .45s cubic-bezier(.34, 1.3, .64, 1) both; } }
+
   .ring-arc { animation: draw 1.3s var(--soft) both; }
   .bar-grow { transform-origin: left center; animation: grow .9s var(--soft) both; }
   .pop-in { animation: popin .5s var(--spring) both; }
 }
-@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes drift1 { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(40px, 50px, 0) scale(1.15); } }
 @keyframes drift2 { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.1); } 50% { transform: translate3d(-50px, 30px, 0) scale(.95); } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop { from { opacity: 0; transform: translateY(40px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes sheetup { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes popin { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
 @keyframes draw { from { stroke-dasharray: 0 999; } }
 @keyframes grow { from { transform: scaleX(0); } }
-@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, .6); } 50% { box-shadow: 0 0 0 6px rgba(251, 191, 36, 0); } }
+@keyframes shimmer { to { transform: translateX(100%); } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

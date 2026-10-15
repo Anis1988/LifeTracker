@@ -3,13 +3,13 @@ import type { Finding, Paper, Sender, Settings } from '../../supabase/functions/
 import { BROKERS, BUREAUS, FREE_REPORTS, PAPER_KINDS, paperKind } from '../../supabase/functions/_shared/people.ts';
 import type { WeekLine } from '../../supabase/functions/_shared/week.ts';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
-import { shortDate, toast, errText } from './ui';
+import { Chevron, shortDate, toast, errText } from './ui';
 import { supabase } from '../lib/supabase';
 
 /** Pieces of the "Me" tab. Each one is also drawn in the Guide with made-up data (no working buttons there). */
 
 const plus = (d: string, days: number) => new Date(Date.parse(`${d}T12:00:00Z`) + days * 86400_000).toISOString().slice(0, 10);
-const tone = (t?: WeekLine['tone']) => t === 'warn' ? 'text-amber-800 dark:text-amber-200' : t === 'good' ? 'text-emerald-800 dark:text-emerald-300' : 'text-stone-700 dark:text-slate-300';
+const tone = (t?: WeekLine['tone']) => t === 'warn' ? 'text-amber-800 dark:text-amber-200' : t === 'good' ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-300';
 
 // ---------- 📊 My week ----------
 export function WeekCard({ lines, onOpen }: { lines: WeekLine[]; onOpen?: () => void }) {
@@ -32,7 +32,7 @@ const VERDICT: Record<string, { label: string; cls: string }> = {
   'people-search': { label: 'People-search', cls: 'border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-200' },
   profile: { label: 'Your profile', cls: 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' },
   news: { label: 'News', cls: 'border-sky-300 text-sky-800 dark:border-sky-800 dark:text-sky-200' },
-  other: { label: 'Mentions you', cls: 'border-stone-300 text-stone-600 dark:border-slate-700 dark:text-slate-300' },
+  other: { label: 'Mentions you', cls: 'border-slate-900/10 dark:border-white/10 text-slate-600 dark:text-slate-300 dark:border-slate-700 dark:text-slate-300' },
 };
 export function FindingRow({ f, onSet }: { f: Finding; onSet?: (patch: Partial<Finding>) => void }) {
   const v = VERDICT[f.verdict ?? 'other'] ?? VERDICT.other;
@@ -40,20 +40,20 @@ export function FindingRow({ f, onSet }: { f: Finding; onSet?: (patch: Partial<F
     <article className={`panel space-y-1.5 ${f.verdict === 'worrying' && f.status === 'new' ? '!border-red-300 dark:!border-red-800' : ''}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className={`chip ${v.cls}`}>{v.label}</span>
-        <span className="text-xs text-stone-500 dark:text-slate-400">{f.site} · found {shortDate(f.found_at)}</span>
-        {f.status !== 'new' && <span className="chip border-stone-300 text-stone-500 dark:border-slate-700 dark:text-slate-400">{f.status === 'ok' ? '✓ Fine' : f.status === 'not-me' ? 'Not me' : 'Done'}</span>}
+        <span className="text-xs text-slate-500 dark:text-slate-400">{f.site} · found {shortDate(f.found_at)}</span>
+        {f.status !== 'new' && <span className="chip border-slate-900/10 dark:border-white/10 text-slate-500 dark:text-slate-400 dark:border-slate-700 dark:text-slate-400">{f.status === 'ok' ? '✓ Fine' : f.status === 'not-me' ? 'Not me' : 'Done'}</span>}
       </div>
-      <p className="text-sm font-medium">{f.url ? <a className="underline decoration-stone-300 underline-offset-2 dark:decoration-slate-600" href={f.url} target="_blank" rel="noopener noreferrer nofollow">{f.title}</a> : f.title}</p>
-      {f.snippet && <p className="text-xs text-stone-600 dark:text-slate-300">{f.snippet}</p>}
-      {f.why && <p className="text-xs text-stone-500 dark:text-slate-400">Why: {f.why}</p>}
+      <p className="text-sm font-medium">{f.url ? <a className="underline decoration-slate-300 underline-offset-2 dark:decoration-slate-600" href={f.url} target="_blank" rel="noopener noreferrer nofollow">{f.title}</a> : f.title}</p>
+      {f.snippet && <p className="text-xs text-slate-600 dark:text-slate-300">{f.snippet}</p>}
+      {f.why && <p className="text-xs text-slate-500 dark:text-slate-400">Why: {f.why}</p>}
       {f.verdict === 'worrying' && f.status === 'new' && (
-        <p className="text-xs text-stone-600 dark:text-slate-300">What to do: report the page to the site, and ask Google to hide it with <a className="underline" href="https://myactivity.google.com/results-about-you" target="_blank" rel="noopener noreferrer">Results about you</a>. Fake profile or someone pretending to be you: report it as impersonation.</p>
+        <p className="text-xs text-slate-600 dark:text-slate-300">What to do: report the page to the site, and ask Google to hide it with <a className="underline" href="https://myactivity.google.com/results-about-you" target="_blank" rel="noopener noreferrer">Results about you</a>. Fake profile or someone pretending to be you: report it as impersonation.</p>
       )}
       {f.status === 'new' && (
         <div className="flex flex-wrap gap-2 pt-0.5">
-          <button className="btn !min-h-[36px] text-xs" onClick={() => onSet?.({ status: 'ok' })}>✓ It’s fine</button>
-          <button className="btn !min-h-[36px] text-xs" onClick={() => onSet?.({ status: 'not-me' })}>Not me</button>
-          {f.verdict === 'worrying' && <button className="btn !min-h-[36px] text-xs" onClick={() => onSet?.({ status: 'done' })}>Reported / handled</button>}
+          <button className="btn text-xs" onClick={() => onSet?.({ status: 'ok' })}>✓ It’s fine</button>
+          <button className="btn text-xs" onClick={() => onSet?.({ status: 'not-me' })}>Not me</button>
+          {f.verdict === 'worrying' && <button className="btn text-xs" onClick={() => onSet?.({ status: 'done' })}>Reported / handled</button>}
         </div>
       )}
     </article>
@@ -62,7 +62,7 @@ export function FindingRow({ f, onSet }: { f: Finding; onSet?: (patch: Partial<F
 
 // ---------- 🧹 people-search sites ----------
 const BROKER_STATUS: Record<string, { label: string; cls: string }> = {
-  unknown: { label: 'Not checked', cls: 'border-stone-300 text-stone-500 dark:border-slate-700 dark:text-slate-400' },
+  unknown: { label: 'Not checked', cls: 'border-slate-900/10 dark:border-white/10 text-slate-500 dark:text-slate-400 dark:border-slate-700 dark:text-slate-400' },
   listed: { label: 'Lists you', cls: 'border-red-300 text-red-800 dark:border-red-800 dark:text-red-200' },
   requested: { label: 'Removal sent', cls: 'border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-200' },
   gone: { label: 'Removed', cls: 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' },
@@ -85,25 +85,25 @@ export function BrokerList({ rows, onSet, onAdd }: { rows: Finding[]; onSet?: (f
         const st = BROKER_STATUS[f?.status ?? 'unknown'] ?? BROKER_STATUS.unknown;
         return (
           <div key={b.id} className="panel !p-0">
-            <button className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm" aria-expanded={open === b.id} onClick={() => setOpen(open === b.id ? null : b.id)}>
+            <button className="tap flex min-h-[48px] w-full items-center gap-2 rounded-[20px] px-3 py-2 text-left text-sm" aria-expanded={open === b.id} onClick={() => setOpen(open === b.id ? null : b.id)}>
               <span className="min-w-0 flex-1 font-medium">{b.name}</span>
               <span className={`chip shrink-0 ${st.cls}`}>{st.label}</span>
-              <span aria-hidden="true" className="text-stone-400">{open === b.id ? '⌃' : '⌄'}</span>
+              <Chevron open={open === b.id} />
             </button>
             {open === b.id && (
               <div className="space-y-2 px-3 pb-3 text-sm">
                 {f?.url && f.status === 'listed' && <p>Your listing: <a className="break-all underline" href={f.url} target="_blank" rel="noopener noreferrer nofollow">{f.url}</a></p>}
-                <ol className="list-decimal space-y-1 pl-5 text-stone-700 dark:text-slate-300">
+                <ol className="list-decimal space-y-1 pl-5 text-slate-700 dark:text-slate-300">
                   <li>Search your name on {b.domain} and copy your listing’s address.</li>
                   <li>Open the <a className="underline" href={b.remove} target="_blank" rel="noopener noreferrer">removal page</a> and send the request.{'note' in b && b.note ? ` ${b.note}` : ''}</li>
                   <li>Tap “Removal sent”. LifeTracker reminds you to look again in 3 months (they often add you back).</li>
                 </ol>
                 <div className="flex flex-wrap gap-1.5">
                   {(['listed', 'requested', 'gone', 'not-listed'] as const).map((s) => (
-                    <button key={s} className={`btn !min-h-[36px] text-xs ${f?.status === s ? '!border-emerald-600' : ''}`} onClick={() => set(f, s, b)}>{BROKER_STATUS[s].label}</button>
+                    <button key={s} className={`btn text-xs ${f?.status === s ? '!border-emerald-600' : ''}`} onClick={() => set(f, s, b)}>{BROKER_STATUS[s].label}</button>
                   ))}
                 </div>
-                {f?.check_after && (f.status === 'requested' || f.status === 'gone') && <p className="text-xs text-stone-500">Look again from {shortDate(f.check_after)}.</p>}
+                {f?.check_after && (f.status === 'requested' || f.status === 'gone') && <p className="text-xs text-slate-500 dark:text-slate-400">Look again from {shortDate(f.check_after)}.</p>}
               </div>
             )}
           </div>
@@ -115,14 +115,14 @@ export function BrokerList({ rows, onSet, onAdd }: { rows: Finding[]; onSet?: (f
 
 // ---------- 🔓 data breaches + password check ----------
 export function BreachList({ rows, onSet }: { rows: Finding[]; onSet?: (f: Finding, patch: Partial<Finding>) => void }) {
-  if (!rows.length) return <p className="text-sm text-stone-500 dark:text-slate-400">No breach alerts so far.</p>;
+  if (!rows.length) return <p className="text-sm text-slate-500 dark:text-slate-400">No breach alerts so far.</p>;
   return (
     <ul className="space-y-1.5">
       {rows.map((f) => (
         <li key={f.id} className="panel flex flex-wrap items-center gap-2 text-sm">
           <span aria-hidden="true">🔓</span>
-          <span className="min-w-0 flex-1"><b>{f.key}</b> <span className="text-xs text-stone-500 dark:text-slate-400">· {shortDate(f.found_at)}</span><br /><span className="text-xs text-stone-600 dark:text-slate-300">Change that password (and anywhere you reused it), turn on two-step sign-in.</span></span>
-          {f.status === 'new' ? <button className="btn !min-h-[36px] text-xs" onClick={() => onSet?.(f, { status: 'done' })}>✓ Password changed</button> : <span className="chip border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200">✓ Done</span>}
+          <span className="min-w-0 flex-1"><b>{f.key}</b> <span className="text-xs text-slate-500 dark:text-slate-400">· {shortDate(f.found_at)}</span><br /><span className="text-xs text-slate-600 dark:text-slate-300">Change that password (and anywhere you reused it), turn on two-step sign-in.</span></span>
+          {f.status === 'new' ? <button className="btn text-xs" onClick={() => onSet?.(f, { status: 'done' })}>✓ Password changed</button> : <span className="chip border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200">✓ Done</span>}
         </li>
       ))}
     </ul>
@@ -154,7 +154,7 @@ export function PasswordCheck() {
         <button className="btn" disabled={!pw || busy} onClick={() => void check()}>{busy ? <span className="spinner" /> : 'Check'}</button>
       </div>
       {res && <p className={`text-sm ${res.startsWith('⚠') ? 'text-red-700 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'}`}>{res}</p>}
-      <p className="text-xs text-stone-500 dark:text-slate-400">The password never leaves your phone and isn’t saved: only the first 5 characters of a scrambled code are sent to Have I Been Pwned.</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">The password never leaves your phone and isn’t saved: only the first 5 characters of a scrambled code are sent to Have I Been Pwned.</p>
     </div>
   );
 }
@@ -165,20 +165,20 @@ export function SenderRow({ x, days, busy, onUnsub, onKeep, onBlock }: { x: Send
   const opened = x.last_opened ? `opened ${shortDate(x.last_opened)}` : 'never opened';
   const stale = !x.last_opened || daysBetween(x.last_opened, today()) > days;
   const how = x.unsub.oneClick ? 'one tap' : x.unsub.mailto ? 'by email' : x.unsub.web ? 'on their page' : null;
-  const chip = { unsubscribed: ['✓ Unsubscribed', 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200'], web: ['Finish on their page', 'border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-200'], kept: ['Kept', 'border-stone-300 text-stone-500 dark:border-slate-700 dark:text-slate-400'], blocked: ['⛔ Blocked', 'border-stone-300 text-stone-600 dark:border-slate-700 dark:text-slate-300'], failed: ['Failed', 'border-red-300 text-red-800 dark:border-red-800 dark:text-red-200'], subscribed: null }[x.status];
+  const chip = { unsubscribed: ['✓ Unsubscribed', 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200'], web: ['Finish on their page', 'border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-200'], kept: ['Kept', 'border-slate-900/10 dark:border-white/10 text-slate-500 dark:text-slate-400 dark:border-slate-700 dark:text-slate-400'], blocked: ['⛔ Blocked', 'border-slate-900/10 dark:border-white/10 text-slate-600 dark:text-slate-300 dark:border-slate-700 dark:text-slate-300'], failed: ['Failed', 'border-red-300 text-red-800 dark:border-red-800 dark:text-red-200'], subscribed: null }[x.status];
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
       <div className="min-w-0 flex-1 basis-52">
-        <p className="truncate text-sm font-medium">{x.name || x.address} {x.spam && <span className="chip border-red-300 text-red-800 dark:border-red-800 dark:text-red-200">Spam</span>} {x.auto && <span className="chip border-stone-300 text-stone-500 dark:border-slate-700 dark:text-slate-400">auto</span>}</p>
-        <p className="truncate text-xs text-stone-500 dark:text-slate-400">{x.address} · {x.emails} email{x.emails === 1 ? '' : 's'} · <span className={stale ? 'text-amber-700 dark:text-amber-300' : ''}>{opened}</span></p>
-        {x.sample && <p className="truncate text-xs text-stone-500 dark:text-slate-400">“{x.sample}”</p>}
+        <p className="truncate text-sm font-medium">{x.name || x.address} {x.spam && <span className="chip border-red-300 text-red-800 dark:border-red-800 dark:text-red-200">Spam</span>} {x.auto && <span className="chip border-slate-900/10 dark:border-white/10 text-slate-500 dark:text-slate-400 dark:border-slate-700 dark:text-slate-400">auto</span>}</p>
+        <p className="truncate text-xs text-slate-500 dark:text-slate-400">{x.address} · {x.emails} email{x.emails === 1 ? '' : 's'} · <span className={stale ? 'text-amber-700 dark:text-amber-300' : ''}>{opened}</span></p>
+        {x.sample && <p className="truncate text-xs text-slate-500 dark:text-slate-400">“{x.sample}”</p>}
         {x.error && <p className="text-xs text-red-700 dark:text-red-300">{x.error}</p>}
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         {chip && <span className={`chip ${chip[1]}`}>{chip[0]}</span>}
-        {x.status === 'web' && x.unsub.web && <a className="btn !min-h-[36px] text-xs" href={x.unsub.web} target="_blank" rel="noopener noreferrer nofollow">Open their page</a>}
-        {(x.status === 'subscribed' || x.status === 'failed') && !x.spam && how && <button className="btn-primary !min-h-[36px] text-xs" disabled={busy} onClick={onUnsub}>{busy ? <span className="spinner" /> : `Unsubscribe (${how})`}</button>}
-        {(x.status === 'subscribed' || x.status === 'failed') && (x.spam || !how) && <button className="btn !min-h-[36px] text-xs" disabled={busy} onClick={onBlock}>⛔ Block</button>}
+        {x.status === 'web' && x.unsub.web && <a className="btn text-xs" href={x.unsub.web} target="_blank" rel="noopener noreferrer nofollow">Open their page</a>}
+        {(x.status === 'subscribed' || x.status === 'failed') && !x.spam && how && <button className="btn-primary text-xs" disabled={busy} onClick={onUnsub}>{busy ? <span className="spinner" /> : `Unsubscribe (${how})`}</button>}
+        {(x.status === 'subscribed' || x.status === 'failed') && (x.spam || !how) && <button className="btn text-xs" disabled={busy} onClick={onBlock}>⛔ Block</button>}
         {x.status === 'subscribed' && <button className="btn-ghost text-xs" onClick={onKeep}>Keep</button>}
         {(x.status === 'kept' || x.status === 'blocked') && <button className="btn-ghost text-xs" onClick={onKeep}>Undo</button>}
       </div>
@@ -194,13 +194,13 @@ export function senderFilter(view: SenderView, days: number) {
 export function PaperRow({ p, onOpen }: { p: Paper; onOpen?: () => void }) {
   const k = paperKind(p.kind);
   const left = p.expires ? daysBetween(today(), p.expires) : null;
-  const cls = left == null ? 'text-stone-500' : left < 0 ? 'text-red-700 dark:text-red-300' : left <= 30 ? 'text-amber-700 dark:text-amber-300' : left <= 90 ? 'text-amber-700/80 dark:text-amber-200/80' : 'text-stone-500 dark:text-slate-400';
+  const cls = left == null ? 'text-slate-500 dark:text-slate-400' : left < 0 ? 'text-red-700 dark:text-red-300' : left <= 30 ? 'text-amber-700 dark:text-amber-300' : left <= 90 ? 'text-amber-700/80 dark:text-amber-200/80' : 'text-slate-500 dark:text-slate-400';
   return (
-    <button className="tap flex w-full items-center gap-3 rounded-2xl px-1 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
-      <span className="text-2xl" aria-hidden="true">{k.icon}</span>
+    <button className="tap flex min-h-[60px] w-full items-center gap-3 rounded-[20px] px-1 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
+      <span className="tile" aria-hidden="true">{k.icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{p.name}</span>
-        <span className="block truncate text-xs text-stone-500 dark:text-slate-400">{[k.label, p.holder, p.number_end && `…${p.number_end}`].filter(Boolean).join(' · ')}</span>
+        <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{[k.label, p.holder, p.number_end && `…${p.number_end}`].filter(Boolean).join(' · ')}</span>
       </span>
       <span className={`shrink-0 text-right text-xs ${cls}`}>
         {p.expires ? <>{shortDate(p.expires)}<br />{left! < 0 ? 'expired' : `${left} day${left === 1 ? '' : 's'}`}</> : 'no date'}
@@ -252,7 +252,7 @@ export function PaperForm({ paper, userId, onSave, onDelete, onDone, read }: {
   };
   return (
     <div className="space-y-3">
-      <label className="btn w-full cursor-pointer">
+      <label className="btn w-full cursor-pointer focus-within:shadow-[0_0_0_4px_rgba(94,234,212,0.25)]">
         {busy === 'photo' ? <><span className="spinner" /> Reading the photo…</> : p.photo ? '📷 Photo saved · take another' : '📷 Take or pick a photo (the AI fills the form)'}
         <input type="file" accept="image/*,application/pdf"  className="sr-only" onChange={(e) => void photo(e.target.files?.[0])} disabled={!!busy} />
       </label>
@@ -278,7 +278,7 @@ export function PaperForm({ paper, userId, onSave, onDelete, onDone, read }: {
       <label className="block text-sm">Notes
         <input className="input mt-1 w-full" value={p.notes ?? ''} onChange={(e) => set({ notes: e.target.value || null })} />
       </label>
-      <p className="text-xs text-stone-500 dark:text-slate-400">Only the last 4 characters of the number are kept. The photo stays private in your own storage.</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">Only the last 4 characters of the number are kept. The photo stays private in your own storage.</p>
       <div className="flex gap-2">
         <button className="btn-primary flex-1" disabled={!!busy} onClick={() => void save()}>{busy === 'save' ? <span className="spinner" /> : 'Save'}</button>
         {onDelete && <button className="btn text-red-700 dark:text-red-300" disabled={!!busy} onClick={() => void (confirm('Delete this document?') && onDelete().then(onDone))}>Delete</button>}
@@ -293,12 +293,12 @@ export function CreditCard({ c, onChange }: { c: Settings['credit']; onChange?: 
   const reportDue = !c.lastReport || daysBetween(c.lastReport, today()) >= c.reportMonths * 30;
   return (
     <div className="space-y-2">
-      <p className="text-sm text-stone-700 dark:text-slate-300">A <b>credit freeze</b> is free and stops anyone from opening a loan or card in your name. You can lift it for a day when you apply for credit yourself. <b>{done} of 3</b> done.</p>
+      <p className="text-sm text-slate-700 dark:text-slate-300">A <b>credit freeze</b> is free and stops anyone from opening a loan or card in your name. You can lift it for a day when you apply for credit yourself. <b>{done} of 3</b> done.</p>
       <ul className="space-y-1.5">
         {BUREAUS.map((b) => (
           <li key={b.id} className="panel flex flex-wrap items-center gap-2 text-sm">
             <span className="min-w-0 flex-1"><b>{b.name}</b> · <a className="underline" href={b.freeze} target="_blank" rel="noopener noreferrer">freeze page</a></span>
-            <select className="input !min-h-[36px] py-0 text-sm" value={c[b.id]} onChange={(e) => onChange?.({ ...c, [b.id]: e.target.value })} aria-label={`${b.name} freeze`}>
+            <select className="input py-0 text-sm" value={c[b.id]} onChange={(e) => onChange?.({ ...c, [b.id]: e.target.value })} aria-label={`${b.name} freeze`}>
               <option value="unknown">Not sure</option>
               <option value="not">Not frozen</option>
               <option value="frozen">🔒 Frozen</option>
@@ -308,7 +308,7 @@ export function CreditCard({ c, onChange }: { c: Settings['credit']; onChange?: 
       </ul>
       <div className={`panel flex flex-wrap items-center gap-2 text-sm ${reportDue ? '!border-amber-300 dark:!border-amber-700' : ''}`}>
         <span className="min-w-0 flex-1">🔎 Free credit reports at <a className="underline" href={FREE_REPORTS} target="_blank" rel="noopener noreferrer">annualcreditreport.com</a>: look for accounts you don’t know. {c.lastReport ? `Last checked ${shortDate(c.lastReport)}.` : 'Not checked yet.'}</span>
-        <button className="btn !min-h-[36px] text-xs" onClick={() => onChange?.({ ...c, lastReport: today() })}>✓ Checked today</button>
+        <button className="btn text-xs" onClick={() => onChange?.({ ...c, lastReport: today() })}>✓ Checked today</button>
       </div>
     </div>
   );

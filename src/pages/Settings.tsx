@@ -14,7 +14,7 @@ const REMINDS: [string, string][] = [['1440,120', '1 day and 2 hours before'], [
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const Ready = ({ ok, label }: { ok: boolean; label: string }) => (
-  <span className={`chip ${ok ? 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' : 'border-stone-300 text-stone-500 dark:border-slate-700'}`}>{ok ? '✓' : '○'} {label}</span>
+  <span className={`chip ${ok ? 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' : 'border-slate-900/10 dark:border-white/10 text-slate-500 dark:text-slate-400 dark:border-slate-700'}`}>{ok ? '✓' : '○'} {label}</span>
 );
 
 export function Settings() {
@@ -87,12 +87,12 @@ export function Settings() {
   const plus = gEmail.includes('@') ? `${gEmail.split('@')[0]}+${s.gmail.plusTag}@${gEmail.split('@')[1]}` : `you+${s.gmail.plusTag}@gmail.com`;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-3">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+    <div className="stagger mx-auto max-w-2xl space-y-3">
+      <h1 className="text-[28px] font-semibold leading-tight">Settings</h1>
       {st.statusErr && <p className="card text-sm text-amber-800 dark:text-amber-200">The server didn’t answer: {st.statusErr}</p>}
 
       <Fold icon="👤" title="About me" subtitle={s.me.names.length ? `${s.me.names[0]}${s.me.places[0] ? ` · ${s.me.places[0]}` : ''}` : 'What to look for online (private to you)'}>
-        <p className="text-sm text-stone-600 dark:text-slate-300">Used to look for you online (Me → Your name online). Private: only you can see it. It is sent to the free Gemini only to run the searches.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Used to look for you online (Me → Your name online). Private: only you can see it. It is sent to the free Gemini only to run the searches.</p>
         <AboutMe me={s.me} onSave={(me) => st.saveSettings({ ...s, me })} onCheck={() => { location.hash = '#/me'; window.scrollTo(0, 0); void api('run', { part: 'online' }).then(() => Promise.all([st.reload(), st.reloadStatus()])).catch((e) => toast('err', errText(e))); toast('info', 'Searching for you online… results appear in Me in a minute.'); }} />
         <Field label="Look for me online" hint="Free (Gemini with Google Search), a few searches each time.">
           <Toggle on={s.online.on} onChange={(v) => save({ online: { ...s.online, on: v } })} label="Look for me online" />
@@ -164,12 +164,12 @@ export function Settings() {
       </Fold>
 
       <Fold icon="🏦" title="Bank & cards" subtitle={status?.google.gmail && s.bank.alerts ? `Bank alert emails: ${status.google.alertsRead ?? 0} purchases read` : 'Free: read your bank’s purchase-alert emails'}>
-        <p className="text-sm text-stone-700 dark:text-slate-300">Free and automatic: your banks email you each purchase, and LifeTracker reads those emails in Gmail every morning to find your bills and subscriptions. It only reads; nothing can be paid or moved.</p>
+        <p className="text-sm text-slate-700 dark:text-slate-300">Free and automatic: your banks email you each purchase, and LifeTracker reads those emails in Gmail every morning to find your bills and subscriptions. It only reads; nothing can be paid or moved.</p>
         <Field label="Read bank alert emails"><Toggle on={s.bank.alerts} onChange={(v) => save({ bank: { ...s.bank, alerts: v } })} label="Read bank alert emails" /></Field>
         <AlertBanks gmail={!!status?.google.gmail} read={status?.google.alertsRead ?? 0} banks={status?.google.alertBanks ?? []} last={status?.google.alertsScanned} onConnect={status?.keys.google ? () => void google(['gmail']) : undefined} />
         {status?.google.gmail && <button className="btn" disabled={!!busy} onClick={() => void sync()}>{busy === 'sync' ? <span className="spinner" /> : 'Read now'}</button>}
         <details className="pt-1">
-          <summary className="cursor-pointer text-sm text-stone-600 dark:text-slate-300">Other option: a direct bank link with SimpleFIN (paid, about $15/year)</summary>
+          <summary className="cursor-pointer text-sm text-slate-600 dark:text-slate-300">Other option: a direct bank link with SimpleFIN (paid, about $15/year)</summary>
           <div className="space-y-2 pt-2">
         {status?.bank.connected ? (
           <>
@@ -185,7 +185,7 @@ export function Settings() {
           </>
         ) : (
           <>
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-stone-700 dark:text-slate-300">
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
               <li>Open <a className="underline" href="https://bridge.simplefin.org" target="_blank" rel="noopener noreferrer">bridge.simplefin.org</a> (about $15 a year), sign up and connect your banks and cards there.</li>
               <li>Tap <b>New connection</b> → copy the <b>setup token</b>.</li>
               <li>Paste it here. It is used once; LifeTracker keeps only a read-only access link, encrypted.</li>
@@ -196,7 +196,7 @@ export function Settings() {
         )}
           </div>
         </details>
-        <p className="text-xs text-stone-500">Read-only: nothing can be paid or moved. Read every morning. No link? Import a bank CSV in Inbox.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Read-only: nothing can be paid or moved. Read every morning. No link? Import a bank CSV in Inbox.</p>
       </Fold>
 
       <Fold icon="📅" title="Google Calendar & Gmail" subtitle={status?.google.connected ? `Connected${status.google.email ? ` as ${status.google.email}` : ''} · ${[status.google.calendar && 'Calendar', status.google.gmail && 'Gmail'].filter(Boolean).join(' + ')}` : 'Not connected'}>
@@ -221,12 +221,12 @@ export function Settings() {
         </Field>
         <div className="panel text-sm">
           <p className="font-medium">✉️ Forward a bill by email</p>
-          <p className="text-stone-600 dark:text-slate-300">Forward any bill or receipt to <b className="select-all break-all">{plus}</b>: it lands in your own Gmail and is read the next morning (Gmail reading must be on).</p>
+          <p className="text-slate-600 dark:text-slate-300">Forward any bill or receipt to <b className="select-all break-all">{plus}</b>: it lands in your own Gmail and is read the next morning (Gmail reading must be on).</p>
         </div>
       </Fold>
 
       <Fold icon="📅" title="Appointments" subtitle={s.appts.on ? `Emails${status?.phone?.since ? ' + texts' : ''} → straight into your calendar` : 'Off'}>
-        <p className="text-sm text-stone-600 dark:text-slate-300">Appointments in your emails and texts (doctor, dentist, car, haircut, reservations…) go <b>straight into your LifeTracker calendar</b>, with a heads-up. Moved or cancelled? The calendar follows. Wrong one? Remove it on Home.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Appointments in your emails and texts (doctor, dentist, car, haircut, reservations…) go <b>straight into your LifeTracker calendar</b>, with a heads-up. Moved or cancelled? The calendar follows. Wrong one? Remove it on Home.</p>
         <Field label="Find appointments in my emails" hint={status?.google.gmail ? `Every hour. Free check first; only emails that look like appointments go to the AI.${status.mail?.apptsScanned ? ` Last look: ${new Date(status.mail.apptsScanned).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}.` : ''}` : 'Needs Gmail: Google Calendar & Gmail → “Also read Gmail receipts”.'}>
           <Toggle on={s.appts.on} onChange={(v) => save({ appts: { ...s.appts, on: v } })} label="Appointments" />
         </Field>
@@ -239,7 +239,7 @@ export function Settings() {
         <Field label="Time zone" hint="Times in emails and texts are read as this time zone.">
           <span className="flex items-center gap-2 text-sm">
             <b>{s.appts.timeZone || 'not set'}</b>
-            {s.appts.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone && <button className="btn !min-h-9 text-xs" onClick={() => save({ appts: { ...s.appts, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } })}>Use {Intl.DateTimeFormat().resolvedOptions().timeZone}</button>}
+            {s.appts.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone && <button className="btn text-xs" onClick={() => save({ appts: { ...s.appts, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } })}>Use {Intl.DateTimeFormat().resolvedOptions().timeZone}</button>}
           </span>
         </Field>
         <TextsSetup phone={status?.phone} getKey={async () => { const r = await api<{ key: string; url: string }>('phone-key'); await st.reloadStatus(); return r; }} />
@@ -251,7 +251,7 @@ export function Settings() {
       </Fold>
 
       <Fold icon="🤖" title="AI that reads bills" subtitle={`Free first (${free.map((p) => providerOf(p).name).join(' → ')}), then Claude if they can’t`}>
-        <p className="text-sm text-stone-600 dark:text-slate-300">Tried in this order. The free ones go first; <b>Claude (paid)</b> only reads when they are over their daily limit, not set up, can’t read that file, or fail.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Tried in this order. The free ones go first; <b>Claude (paid)</b> only reads when they are over their daily limit, not set up, can’t read that file, or fail.</p>
         {[...free, 'claude' as Provider].map((p, idx) => {
           const info = PROVIDERS.find((x) => x.id === p)!;
           const sl = s.ai.slots[p];
@@ -260,7 +260,7 @@ export function Settings() {
           return (
             <div key={p} className="panel space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="num text-xs text-stone-500">{idx + 1}</span>
+                <span className="num text-xs text-slate-500 dark:text-slate-400">{idx + 1}</span>
                 <b className="flex-1">{info.name} {info.paid ? <span className="chip border-amber-300 text-amber-800 dark:text-amber-200">paid · last</span> : <span className="chip border-emerald-300 text-emerald-800 dark:text-emerald-200">free</span>}</b>
                 {!info.paid && <><button className="btn-ghost" aria-label={`Move ${info.name} up`} onClick={() => move(p, -1)}>↑</button><button className="btn-ghost" aria-label={`Move ${info.name} down`} onClick={() => move(p, 1)}>↓</button></>}
                 <Toggle on={sl.on} onChange={(v) => slot(p, { on: v })} label={info.name} />
@@ -269,11 +269,11 @@ export function Settings() {
                 <select className="input min-w-0 flex-1" value={sl.model} onChange={(e) => slot(p, { model: e.target.value })} aria-label={`${info.name} model`}>
                   {info.models.map((m) => <option key={m.id} value={m.id}>{m.name}{!m.pdf ? ' (no PDFs)' : ''}{!m.pictures ? ' (text only)' : ''}</option>)}
                 </select>
-                <label className="flex items-center gap-1 text-xs text-stone-500">a day
+                <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">a day
                   <input className="input w-20" type="number" min={0} placeholder="no limit" value={sl.dailyLimit ?? ''} onChange={(e) => slot(p, { dailyLimit: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} aria-label={`${info.name} daily limit`} />
                 </label>
               </div>
-              <p className="text-xs text-stone-500">{key === false ? `Not set up: add ${info.env} in Supabase → Edge Functions → Secrets.` : `Used today: ${used}${sl.dailyLimit != null ? ` of ${sl.dailyLimit}` : ''}.`}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{key === false ? `Not set up: add ${info.env} in Supabase → Edge Functions → Secrets.` : `Used today: ${used}${sl.dailyLimit != null ? ` of ${sl.dailyLimit}` : ''}.`}</p>
             </div>
           );
         })}
@@ -303,7 +303,7 @@ export function Settings() {
             <Ready ok={status.keys.email} label="Email" />
           </div>
         )}
-        {status?.lastRun?.lastRun && <p className="text-xs text-stone-500">Last automatic run {new Date(status.lastRun.lastRun).toLocaleString()}: {[...(status.lastRun.steps ?? []), ...(status.lastRun.errors ?? []).map((e) => `⚠ ${e}`)].join(' · ') || 'nothing to do'}</p>}
+        {status?.lastRun?.lastRun && <p className="text-xs text-slate-500 dark:text-slate-400">Last automatic run {new Date(status.lastRun.lastRun).toLocaleString()}: {[...(status.lastRun.steps ?? []), ...(status.lastRun.errors ?? []).map((e) => `⚠ ${e}`)].join(' · ') || 'nothing to do'}</p>}
         <div className="flex flex-wrap gap-2">
           <button className="btn" onClick={() => void exportAll()}>⬇ Download all my data</button>
           <button className="btn" onClick={() => void supabase.auth.signOut()}>Sign out</button>

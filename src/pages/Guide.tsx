@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Fold, Seg, Toggle } from '../components/ui';
+import { Empty, Fold, Seg, Toggle } from '../components/ui';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
 import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
 import { PurchaseRow, SpendingView } from '../components/Spending';
@@ -84,17 +84,20 @@ const REPORT = spendReport(TX, RULES, ym(0), 31);
 
 const Example = ({ children, caption }: { children: ReactNode; caption: string }) => (
   <figure className="space-y-1.5">
-    <div className="pointer-events-none select-none rounded-2xl border border-dashed border-stone-300 p-2 dark:border-slate-700" aria-hidden="true">{children}</div>
-    <figcaption className="text-xs text-stone-500">{caption}</figcaption>
+    <div className="pointer-events-none relative select-none space-y-2 rounded-[24px] border border-dashed border-teal-600/25 bg-white/30 p-2.5 pt-7 dark:border-teal-300/20 dark:bg-white/[0.02]" aria-hidden="true">
+      <span className="label absolute left-3 top-2 !text-[9.5px] !text-teal-700/80 dark:!text-teal-300/70">Example</span>
+      {children}
+    </div>
+    <figcaption className="px-1 text-xs text-slate-500 dark:text-slate-400">{caption}</figcaption>
   </figure>
 );
-const P = ({ children }: { children: ReactNode }) => <p className="text-[15px] leading-relaxed text-stone-700 dark:text-slate-300">{children}</p>;
+const P = ({ children }: { children: ReactNode }) => <p className="text-[15px] leading-relaxed text-slate-700 dark:text-slate-300">{children}</p>;
 
 export function Guide() {
   return (
-    <div className="mx-auto max-w-2xl space-y-3">
-      <h1 className="text-2xl font-semibold">Guide</h1>
-      <p className="text-sm text-stone-500">How LifeTracker works, in plain words. Tap a topic.</p>
+    <div className="stagger mx-auto max-w-2xl space-y-3">
+      <h1 className="text-[28px] font-semibold leading-tight">Guide</h1>
+      <p className="text-sm text-slate-500 dark:text-slate-400">How LifeTracker works, in plain words. Tap a topic.</p>
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
@@ -111,17 +114,20 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🫧" title="How it looks and feels">
-        <P>Everything sits on frosted glass over a slow, soft glow. When you tap a button it sinks a little, a glow spreads from your finger and it springs back. The tab bar at the bottom has a glass bubble that slides to the tab you open, and switches (like Bills | Spending | Returns) slide the same way.</P>
-        <P>Rings and bars draw themselves in when a page opens. It follows your phone: light by day, dark at night. If your phone is set to <b>reduce motion</b>, all the movement stops and everything simply appears.</P>
-        <Example caption="Made-up example: a switch, an on/off switch, a ring and a button, as they look in the app.">
+        <P>Everything sits on frosted glass over a slow, soft glow. The edge of each card catches the light like real glass: bright at the top, a hint of colour at the bottom. When a page opens, its cards float in one after the other. When you tap a button or a row it sinks a little, a glow spreads from your finger and it springs back. The tab bar at the bottom has a glass bubble that slides to the tab you open, and switches (like Bills | Spending | Returns) slide the same way.</P>
+        <P>Panels (a bill, a date, Ask) slide up from the bottom; their title and ✕ stay at the top while you scroll. While your data loads you see a soft shimmering outline of the page instead of a spinner, and an empty list shows a small floating bubble with a word on what to do. Rings and bars draw themselves in. Big numbers are big, labels are small, and everything you tap is at least a fingertip tall.</P>
+        <P>It follows your phone: light by day, dark at night. If your phone is set to <b>reduce motion</b>, all the movement stops and everything simply appears.</P>
+        <Example caption="Made-up example: a switch, an on/off switch, a ring, a button, a loading outline and an empty list, as they look in the app.">
           <div className="space-y-3">
             <Seg label="Example" options={[['a', 'Bills'], ['b', 'Spending'], ['c', 'Returns']]} value="b" onChange={() => undefined} />
-            <div className="flex items-center gap-3">
+            <div className="card flex items-center gap-3 !py-3">
               <Ring value={0.72} size={64} stroke={7} label="Example ring 72%"><span className="num text-[13px] font-semibold">72%</span></Ring>
-              <span className="flex-1 text-sm">Daily check</span>
+              <span className="flex-1 text-sm font-semibold">Daily check</span>
               <Toggle on label="Example switch" onChange={() => undefined} />
             </div>
             <span className="btn-primary w-full">Run the check now</span>
+            <div className="card flex items-center gap-3 !py-3"><div className="skel h-11 w-11 shrink-0 !rounded-2xl" /><div className="flex-1 space-y-2"><div className="skel h-3.5 w-2/3" /><div className="skel h-3 w-1/3" /></div></div>
+            <Empty icon="📬">Nothing waiting. New bills show up here for your OK.</Empty>
           </div>
         </Example>
         <P>The app icon is a small glowing planet with a ring and an amber moon: your life in the middle, with what’s coming up going around it.</P>
@@ -242,14 +248,14 @@ export function Guide() {
         <P><b>Unsubscribe</b> uses the official unsubscribe that real newsletters must include (the same one as Gmail’s Unsubscribe button). Most go with one tap, quietly, without opening any page. Some need an email (LifeTracker sends it from your Gmail) or a click on their page (it opens for you).</P>
         <P><b>Automatic</b> (Settings → Mailing lists): unsubscribes by itself from lists you haven’t opened in 60 days (you choose), listed in your morning email. Never from <b>Spam</b> (that would tell spammers your address works): <b>Block</b> those instead, so their emails go out of your inbox under the label “LifeTracker/Blocked”. Nothing is ever deleted. Tap <b>Keep</b> on any list you want to stay on.</P>
         <Example caption="Made-up mailing lists: never opened, opened often, unsubscribed automatically, and spam.">
-          <ul className="divide-y divide-stone-200 dark:divide-slate-800">{SENDERS.map((x) => <SenderRow key={x.id} x={x} days={60} />)}</ul>
+          <ul className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{SENDERS.map((x) => <SenderRow key={x.id} x={x} days={60} />)}</ul>
         </Example>
       </Fold>
 
       <Fold icon="🪪" title="Documents that expire">
         <P>In Me, <b>Add a document</b>: passport, driver’s licence, ID, car registration or inspection, insurance card, Global Entry, visa… Take a photo and the AI fills in the kind, name and expiry date (free AIs first); check it and save. Only the last 4 characters of the number are kept.</P>
         <P>You get heads-ups 90, 30 and 7 days before, and on the day. With Google Calendar connected, a “Start renewing” day is added 90 days before (passports take weeks) and the expiry day itself.</P>
-        <Example caption="Made-up documents."><div className="divide-y divide-stone-200 dark:divide-slate-800">{PAPERS.map((p) => <PaperRow key={p.id} p={p} />)}</div></Example>
+        <Example caption="Made-up documents."><div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{PAPERS.map((p) => <PaperRow key={p.id} p={p} />)}</div></Example>
       </Fold>
 
       <Fold icon="🔒" title="Credit freeze and reports">
@@ -305,7 +311,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🛠️" title="Setting it up (one time)">
-        <ol className="list-decimal space-y-1.5 pl-5 text-sm text-stone-700 dark:text-slate-300">
+        <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-700 dark:text-slate-300">
           <li><b>Supabase</b>: the project is linked to GitHub; pushing to <code>main</code> updates the database, the server functions and the website (see README).</li>
           <li><b>Sign-in code (optional)</b>: Supabase only lets you edit its emails once you use your own email sender (Authentication → Emails → SMTP settings, e.g. Resend). Then, in the <b>Magic Link</b> email, add <code>Or type this code: {'{{ .Token }}'}</code> to sign in with a 6-digit code too.</li>
           <li><b>Sign-in</b>: Supabase → Authentication → URL configuration: Site URL = the website address. For “Continue with Google”, turn on the Google provider with the same Google client.</li>

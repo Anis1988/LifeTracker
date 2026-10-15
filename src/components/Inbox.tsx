@@ -12,15 +12,15 @@ export function SuggestionCard({ s, onAdd, onIgnore }: { s: Suggestion; onAdd?: 
     <article className="card space-y-2">
       <p className="label">{SOURCE[s.source]}</p>
       <div className="flex items-start gap-3">
-        <span className="text-2xl" aria-hidden="true">{catOf(s.category ?? 'other').icon}</span>
+        <span className="tile" aria-hidden="true">{catOf(s.category ?? 'other').icon}</span>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">{s.name}</p>
-          <p className="text-sm text-stone-600 dark:text-slate-300">
+          <p className="text-[17px] font-semibold leading-snug">{s.name}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             {s.amount != null ? <Money n={Number(s.amount)} /> : 'Amount unknown'}{cyc ? ` ${cyc}` : ''}{s.next_due ? ` · next ${shortDate(s.next_due)}` : ''}{s.trial_ends ? ` · trial ends ${shortDate(s.trial_ends)}` : ''}{s.ends_on ? ` · renews ${shortDate(s.ends_on)}` : ''}
           </p>
-          {s.evidence?.charges?.length ? <p className="mt-1 text-xs text-stone-500">Charges: {s.evidence.charges.map((c) => `${shortDate(c.date)} $${c.amount.toFixed(2)}`).join(' · ')}</p> : null}
-          {s.evidence?.subject && <p className="mt-1 truncate text-xs text-stone-500">“{s.evidence.subject}”</p>}
-          {s.evidence?.note && <p className="mt-1 text-xs text-stone-600 dark:text-slate-300">{s.evidence.note}</p>}
+          {s.evidence?.charges?.length ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Charges: {s.evidence.charges.map((c) => `${shortDate(c.date)} $${c.amount.toFixed(2)}`).join(' · ')}</p> : null}
+          {s.evidence?.subject && <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">“{s.evidence.subject}”</p>}
+          {s.evidence?.note && <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{s.evidence.note}</p>}
         </div>
       </div>
       <div className="flex gap-2">
@@ -38,15 +38,15 @@ export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: s
   return (
     <section className="card space-y-1">
       <p className="label">Heads-ups</p>
-      <ul className="divide-y divide-stone-200 dark:divide-slate-800">
+      <ul className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">
         {alerts.slice(0, 12).map((a) => (
-          <li key={a.id} className="flex items-start gap-2 py-2">
-            {ALERT_ICON[a.kind] && <span aria-hidden="true">{ALERT_ICON[a.kind]}</span>}
+          <li key={a.id} className="flex items-start gap-3 py-2.5">
+            {ALERT_ICON[a.kind] && <span aria-hidden="true" className="tile !h-9 !w-9 !rounded-xl !text-base">{ALERT_ICON[a.kind]}</span>}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{a.title}</p>
-              {a.body && <p className="text-xs text-stone-500 dark:text-slate-400">{a.body}</p>}
+              <p className="text-sm font-semibold leading-snug">{a.title}</p>
+              {a.body && <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">{a.body}</p>}
             </div>
-            {onSeen && <button className="btn-ghost text-xs" onClick={() => onSeen(a.id)} aria-label="Got it">✓</button>}
+            {onSeen && <button className="btn-ghost -my-1 -mr-1 shrink-0 rounded-full text-base text-teal-700 dark:text-teal-300" onClick={() => onSeen(a.id)} aria-label="Got it">✓</button>}
           </li>
         ))}
       </ul>
@@ -82,10 +82,11 @@ export function Uploader({ userId, onDone }: { userId: string; onDone: () => voi
     onDone();
   };
   return (
-    <div className="rounded-2xl border-2 border-dashed border-stone-300 p-4 text-center dark:border-slate-700"
+    <div className="glass rounded-[26px] border-2 !border-dashed !border-teal-500/30 px-4 py-6 text-center dark:!border-teal-300/25"
       onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void send(e.dataTransfer.files); }}>
-      <p className="text-sm text-stone-600 dark:text-slate-300">A bill, statement, insurance policy or renewal letter: photo or PDF.</p>
-      <button className="btn-primary mt-2" disabled={!!busy} onClick={() => ref.current?.click()}>{busy ? <><span className="spinner" /> Reading {busy.slice(0, 24)}…</> : '📄 Add a bill or document'}</button>
+      <span className="orb mx-auto mb-3" aria-hidden="true">📄</span>
+      <p className="text-sm text-slate-600 dark:text-slate-300">A bill, statement, insurance policy or renewal letter: photo or PDF.</p>
+      <button className="btn-primary mt-3" disabled={!!busy} onClick={() => ref.current?.click()}>{busy ? <><span className="spinner" /> Reading {busy.slice(0, 24)}…</> : '📄 Add a bill or document'}</button>
       <input ref={ref} type="file" accept={ACCEPT} multiple hidden onChange={(e) => { void send(e.target.files); e.target.value = ''; }} />
     </div>
   );
@@ -113,27 +114,27 @@ export function DocRow({ d, onChange }: { d: Doc; onChange?: () => void }) {
   return (
     <article className="card space-y-1.5">
       <div className="flex items-start gap-3">
-        <span className="text-2xl" aria-hidden="true">{d.mime === 'application/pdf' ? '📄' : d.mime.startsWith('image/') ? '🖼️' : '📝'}</span>
+        <span className="tile" aria-hidden="true">{d.mime === 'application/pdf' ? '📄' : d.mime.startsWith('image/') ? '🖼️' : '📝'}</span>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{x?.name || d.file_name}</p>
-          <p className="text-xs text-stone-500">{d.file_name} · {shortDate(d.created_at.slice(0, 10))}{d.ai_by ? ` · read by ${d.ai_by}` : ''}</p>
+          <p className="truncate font-semibold">{x?.name || d.file_name}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{d.file_name} · {shortDate(d.created_at.slice(0, 10))}{d.ai_by ? ` · read by ${d.ai_by}` : ''}</p>
         </div>
-        <span className={`chip ${d.status === 'done' ? 'border-emerald-300 text-emerald-800 dark:text-emerald-200' : d.status === 'failed' ? 'border-red-300 text-red-700 dark:text-red-300' : 'border-stone-300 text-stone-600'}`}>
+        <span className={`chip ${d.status === 'done' ? 'border-emerald-300 text-emerald-800 dark:text-emerald-200' : d.status === 'failed' ? 'border-red-300 text-red-700 dark:text-red-300' : 'border-slate-900/10 dark:border-white/10 text-slate-600 dark:text-slate-300'}`}>
           {d.status === 'done' ? (x?.isBill ? (d.item_id ? 'linked' : 'in Inbox') : 'not a bill') : d.status === 'failed' ? 'failed' : 'reading…'}
         </span>
       </div>
-      {x?.summary && <p className="text-sm text-stone-700 dark:text-slate-300">{x.summary}</p>}
+      {x?.summary && <p className="text-sm text-slate-700 dark:text-slate-300">{x.summary}</p>}
       {x && (x.amount != null || x.nextDue || x.endsOn) && (
-        <p className="text-xs text-stone-600 dark:text-slate-400">{x.amount != null ? `$${x.amount}` : ''}{x.cycle ? ` ${x.cycle}` : ''}{x.nextDue ? ` · due ${shortDate(x.nextDue)}` : ''}{x.endsOn ? ` · renews ${shortDate(x.endsOn)}` : ''}{x.policyNumber ? ` · policy ${x.policyNumber}` : ''}</p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">{x.amount != null ? `$${x.amount}` : ''}{x.cycle ? ` ${x.cycle}` : ''}{x.nextDue ? ` · due ${shortDate(x.nextDue)}` : ''}{x.endsOn ? ` · renews ${shortDate(x.endsOn)}` : ''}{x.policyNumber ? ` · policy ${x.policyNumber}` : ''}</p>
       )}
-      {x?.coverage && <p className="text-xs text-stone-600 dark:text-slate-400">🛡️ {x.coverage}</p>}
+      {x?.coverage && <p className="text-xs text-slate-600 dark:text-slate-400">🛡️ {x.coverage}</p>}
       {!!x?.warnings?.length && <p className="text-xs text-amber-800 dark:text-amber-200">⚠ {x.warnings.join(' · ')}</p>}
-      {d.error && <p className="text-xs text-stone-500">{d.error}</p>}
+      {d.error && <p className="text-xs text-slate-500 dark:text-slate-400">{d.error}</p>}
       {onChange && (
         <div className="flex flex-wrap gap-2 pt-1">
-          <button className="btn !min-h-9 text-xs" onClick={() => void view()}>Open</button>
-          <button className="btn !min-h-9 text-xs" disabled={busy} onClick={() => void reread()}>{busy ? <span className="spinner" /> : '↻ Read again'}</button>
-          <button className="btn !min-h-9 text-xs text-red-700 dark:text-red-300" onClick={() => void remove()}>🗑</button>
+          <button className="btn text-xs" onClick={() => void view()}>Open</button>
+          <button className="btn text-xs" disabled={busy} onClick={() => void reread()}>{busy ? <span className="spinner" /> : '↻ Read again'}</button>
+          <button className="btn text-xs text-red-700 dark:text-red-300" onClick={() => void remove()}>🗑</button>
         </div>
       )}
     </article>

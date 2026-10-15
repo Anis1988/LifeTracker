@@ -9,8 +9,8 @@ export function DateRow({ d, onOpen }: { d: LifeDate; onOpen?: () => void }) {
   const k = dateKind(d.kind);
   const when = left < 0 ? 'passed' : left === 0 ? 'today' : left === 1 ? 'tomorrow' : `in ${left} days`;
   return (
-    <button className="tap flex w-full items-center gap-3 rounded-2xl px-1 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-pink-500/10 text-xl" aria-hidden="true">{k.icon}</span>
+    <button className="tap flex min-h-[60px] w-full items-center gap-3 rounded-[20px] px-1 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
+      <span className="tile !bg-pink-500/10" aria-hidden="true">{k.icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-semibold">{d.title}</span>
         <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{k.label} · {d.every_months ? (d.every_months === 12 ? 'every year' : `every ${d.every_months} months`) : 'once'}{d.notes ? ` · ${d.notes}` : ''}</span>

@@ -65,8 +65,8 @@ export function AboutMe({ me, onSave, onCheck, example }: { me: Me; onSave?: (me
           {draft[f.key].length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {draft[f.key].map((v) => (
-                <span key={v} className="chip border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100">
-                  {v}<button className="ml-0.5 text-emerald-700/60 hover:text-red-600 dark:text-emerald-300/60" aria-label={`Remove ${v}`} onClick={() => remove(f.key, v)}>×</button>
+                <span key={v} className="chip py-0 pl-3 border-emerald-300 bg-emerald-500/10 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-100">
+                  {v}<button className="-mr-1 ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-base text-emerald-700/60 hover:text-red-600 dark:text-emerald-300/60" aria-label={`Remove ${v}`} onClick={() => remove(f.key, v)}>×</button>
                 </span>
               ))}
             </div>
@@ -75,7 +75,7 @@ export function AboutMe({ me, onSave, onCheck, example }: { me: Me; onSave?: (me
       ))}
       <div className="flex flex-wrap items-center gap-3 pt-1">
         <button className="btn-primary" disabled={busy || !dirty || example} onClick={() => void save()}>{busy ? <><span className="spinner" /> Saving…</> : '💾 Save'}</button>
-        <span className={`text-xs ${dirty ? 'text-amber-700 dark:text-amber-300' : 'text-stone-500 dark:text-slate-400'}`}>{dirty ? 'Not saved yet' : '✓ Saved'}</span>
+        <span className={`text-xs ${dirty ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>{dirty ? 'Not saved yet' : '✓ Saved'}</span>
       </div>
       {saved && <SavedPopup me={saved} onClose={() => setSaved(null)} onCheck={onCheck ? () => { setSaved(null); onCheck(); } : undefined} />}
     </div>
@@ -96,7 +96,7 @@ export function SavedPopup({ me, onClose, onCheck }: { me: Me; onClose: () => vo
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300" aria-hidden="true">✓</div>
         <div className="space-y-1">
           <h2 id="saved-title" className="text-xl font-semibold">About me saved</h2>
-          <p className="text-sm text-stone-600 dark:text-slate-300">{n} detail{n === 1 ? '' : 's'} kept privately. LifeTracker will look for these online:</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">{n} detail{n === 1 ? '' : 's'} kept privately. LifeTracker will look for these online:</p>
         </div>
         <ul className="space-y-1 text-left text-sm">
           {FIELDS.filter((f) => me[f.key].length).map((f) => (

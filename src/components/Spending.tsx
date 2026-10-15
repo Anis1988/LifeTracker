@@ -24,7 +24,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
         </Ring>
         <div className="min-w-0">
           <p className="label">{monthName}</p>
-          <Money n={r.total} className="block text-3xl font-semibold tracking-tight" />
+          <Money n={r.total} className="block text-[32px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white" />
           <p className="text-xs text-slate-500 dark:text-slate-400">{r.count} purchase{r.count === 1 ? '' : 's'}{r.usual ? ` · a usual month ${money(r.usual)}` : ''} · transfers not counted</p>
         </div>
       </section>
@@ -38,7 +38,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
           const bar = over >= 1 ? 'bg-red-500 dark:bg-red-400' : b && over >= alertAt ? 'bg-amber-500 dark:bg-amber-300' : 'bg-gradient-to-r from-teal-400 to-violet-400';
           return (
             <div key={c.id} className="space-y-1">
-              <button className="flex w-full items-baseline justify-between gap-2 text-left text-sm" onClick={() => { setEdit(edit === c.id ? null : c.id); setVal(b ? String(b) : ''); }} aria-expanded={edit === c.id}>
+              <button className="tap -mx-2 flex min-h-[44px] w-[calc(100%+1rem)] items-center justify-between gap-2 rounded-xl px-2 text-left text-sm" onClick={() => { setEdit(edit === c.id ? null : c.id); setVal(b ? String(b) : ''); }} aria-expanded={edit === c.id}>
                 <span className="min-w-0 truncate font-semibold"><span aria-hidden="true">{cat.icon}</span> {cat.label}</span>
                 <span className="num shrink-0 text-slate-700 dark:text-slate-200">{money(c.amount)}{b ? <span className="text-slate-500 dark:text-slate-400"> / {money(b)}</span> : ''}</span>
               </button>
@@ -51,7 +51,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <label className="text-xs text-slate-600 dark:text-slate-300" htmlFor={`b-${c.id}`}>Monthly budget $</label>
                   <input id={`b-${c.id}`} className="input w-28" type="number" inputMode="decimal" min={0} placeholder="none" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save(c.id)} />
-                  <button className="btn-primary !min-h-[40px]" onClick={() => save(c.id)}>Save</button>
+                  <button className="btn-primary" onClick={() => save(c.id)}>Save</button>
                   {b ? <button className="btn-ghost text-xs" onClick={() => { onBudget(c.id, null); setEdit(null); }}>Remove budget</button> : null}
                 </div>
               )}
@@ -71,7 +71,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
                   <span className="block text-xs text-slate-500 dark:text-slate-400">{s.count} time{s.count === 1 ? '' : 's'}</span>
                 </span>
                 {onMove ? (
-                  <select className="input !min-h-[36px] py-0 text-xs" value={s.cat} onChange={(e) => onMove(s.key, e.target.value)} aria-label={`Category for ${s.name}`}>
+                  <select className="input py-0 text-sm" value={s.cat} onChange={(e) => onMove(s.key, e.target.value)} aria-label={`Category for ${s.name}`}>
                     {SPEND_CATS.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
                   </select>
                 ) : <span className="text-xs text-slate-500 dark:text-slate-400">{spendCat(s.cat).icon} {spendCat(s.cat).label}</span>}
@@ -94,8 +94,8 @@ export function PurchaseRow({ p, onSet, onOpen }: { p: Purchase; onSet?: (patch:
   const tone = left == null || left < 0 || p.status !== 'keep' ? 'border-slate-900/10 text-slate-500 dark:border-white/10 dark:text-slate-400' : left <= 3 ? 'border-red-300 text-red-800 dark:border-red-800 dark:text-red-200' : left <= 10 ? 'border-amber-300 text-amber-800 dark:border-amber-700 dark:text-amber-200' : 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200';
   return (
     <div className="panel space-y-2">
-      <button className="flex w-full items-start gap-3 text-left" onClick={onOpen}>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-teal-500/10 text-xl" aria-hidden="true">🧾</span>
+      <button className="tap -m-1 flex w-[calc(100%+0.5rem)] items-center gap-3 rounded-2xl p-1 text-left" onClick={onOpen}>
+        <span className="tile" aria-hidden="true">🧾</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{p.store}{p.item ? ` · ${p.item}` : ''}</span>
           <span className="block text-xs text-slate-500 dark:text-slate-400">Bought {shortDate(p.bought)}{p.amount != null ? ` · ${money(Number(p.amount))}` : ''}{p.status === 'returning' ? ' · returning' : p.status === 'returned' ? ' · returned' : p.status === 'kept' ? ' · kept' : ''}</span>
@@ -108,11 +108,11 @@ export function PurchaseRow({ p, onSet, onOpen }: { p: Purchase; onSet?: (patch:
       </div>
       {onSet && p.status === 'keep' && left != null && left >= 0 && (
         <div className="flex flex-wrap gap-1.5">
-          <button className="btn !min-h-[36px] text-xs" onClick={() => onSet({ status: 'returning' })}>Returning it</button>
-          <button className="btn !min-h-[36px] text-xs" onClick={() => onSet({ status: 'kept' })}>Keeping it</button>
+          <button className="btn text-xs" onClick={() => onSet({ status: 'returning' })}>Returning it</button>
+          <button className="btn text-xs" onClick={() => onSet({ status: 'kept' })}>Keeping it</button>
         </div>
       )}
-      {onSet && p.status === 'returning' && <button className="btn !min-h-[36px] text-xs" onClick={() => onSet({ status: 'returned' })}>✓ Returned</button>}
+      {onSet && p.status === 'returning' && <button className="btn text-xs" onClick={() => onSet({ status: 'returned' })}>✓ Returned</button>}
       {p.notes && <p className="text-[11px] text-slate-500 dark:text-slate-400">{p.notes}</p>}
     </div>
   );
