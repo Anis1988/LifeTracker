@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { Finding, Paper, Sender, Settings } from '../../supabase/functions/_shared/model.ts';
-import { BROKERS, BUREAUS, FREE_REPORTS, PAPER_KINDS, paperKind } from '../../supabase/functions/_shared/people.ts';
+import { BROKERS, BUREAUS, FREE_REPORTS, paperKind } from '../../supabase/functions/_shared/people.ts';
+import { folderOf } from '../../supabase/functions/_shared/model.ts';
+import { docIcon } from '../../supabase/functions/_shared/vaultText.ts';
 import type { WeekLine } from '../../supabase/functions/_shared/week.ts';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 import { Chevron, shortDate, toast, errText } from './ui';
-import { supabase } from '../lib/supabase';
 
 /** Pieces of the "Me" tab. Each one is also drawn in the Guide with made-up data (no working buttons there). */
 
@@ -192,98 +193,20 @@ export function senderFilter(view: SenderView, days: number) {
 
 // ---------- 🪪 documents that expire ----------
 export function PaperRow({ p, onOpen }: { p: Paper; onOpen?: () => void }) {
-  const k = paperKind(p.kind);
+  const k = p.kind && p.kind !== 'other' ? paperKind(p.kind) : { ...folderOf(p.folder), icon: docIcon(p) };
   const left = p.expires ? daysBetween(today(), p.expires) : null;
   const cls = left == null ? 'text-slate-500 dark:text-slate-400' : left < 0 ? 'text-red-700 dark:text-red-300' : left <= 30 ? 'text-amber-700 dark:text-amber-300' : left <= 90 ? 'text-amber-700/80 dark:text-amber-200/80' : 'text-slate-500 dark:text-slate-400';
   return (
     <button className="tap flex min-h-[60px] w-full items-center gap-3 rounded-[20px] px-1 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
-      <span className="tile" aria-hidden="true">{k.icon}</span>
+      <span className="tile" aria-hidden="true">{docIcon(p)}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{p.name}</span>
         <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{[k.label, p.holder, p.number_end && `…${p.number_end}`].filter(Boolean).join(' · ')}</span>
       </span>
       <span className={`shrink-0 text-right text-xs ${cls}`}>
-        {p.expires ? <>{shortDate(p.expires)}<br />{left! < 0 ? 'expired' : `${left} day${left === 1 ? '' : 's'}`}</> : 'no date'}
+        {p.expires ? <>{p.due_kind === 'due' ? 'Due ' : ''}{shortDate(p.expires)}<br />{left! < 0 ? (p.due_kind === 'due' ? 'overdue' : 'expired') : `${left} day${left === 1 ? '' : 's'}`}</> : 'no date'}
       </span>
     </button>
-  );
-}
-
-export function PaperForm({ paper, userId, onSave, onDelete, onDone, read }: {
-  paper: Partial<Paper>; userId: string; onSave: (p: Partial<Paper> & { name: string }) => Promise<unknown>; onDelete?: () => Promise<void>; onDone: () => void;
-  read: (path: string) => Promise<{ kind: string; name: string; holder: string | null; numberEnd: string | null; expires: string | null; by: string }>;
-}) {
-  const [p, setP] = useState<Partial<Paper>>({ kind: 'passport', ...paper });
-  const [busy, setBusy] = useState('');
-  const set = (patch: Partial<Paper>) => setP((c) => ({ ...c, ...patch }));
-  // A new photo that is never saved (panel closed) is deleted, so ID photos don't pile up in storage.
-  const latest = useRef<string | null | undefined>(paper.photo);
-  const savedOk = useRef(false);
-  useEffect(() => () => {
-    if (!savedOk.current && latest.current && latest.current !== paper.photo) void supabase.storage.from('docs').remove([latest.current]);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const photo = async (f: File | undefined) => {
-    if (!f) return;
-    if (f.size > 15 * 1024 * 1024) return toast('err', '15 MB at most.');
-    setBusy('photo');
-    try {
-      const ext = (f.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'jpg';
-      const path = `${userId}/papers/${crypto.randomUUID()}.${ext}`;
-      const up = await supabase.storage.from('docs').upload(path, f, { contentType: f.type || 'image/jpeg' });
-      if (up.error) throw new Error(up.error.message);
-      if (p.photo && p.photo !== paper.photo) await supabase.storage.from('docs').remove([p.photo]);
-      latest.current = path;
-      set({ photo: path });
-      const r = await read(path);
-      set({ kind: r.kind, name: r.name || p.name || paperKind(r.kind).label, holder: r.holder ?? p.holder ?? null, number_end: r.numberEnd ?? p.number_end ?? null, expires: r.expires ?? p.expires ?? null });
-      toast('ok', `Read by ${r.by}. Check the date before saving.`);
-    } catch (e) { toast('err', errText(e)); }
-    setBusy('');
-  };
-  const save = async () => {
-    setBusy('save');
-    try {
-      await onSave({ ...p, name: (p.name || paperKind(p.kind ?? 'other').label).trim() });
-      savedOk.current = true;
-      if (paper.photo && paper.photo !== p.photo) await supabase.storage.from('docs').remove([paper.photo]).catch(() => undefined); // the old photo it replaced
-      onDone();
-    } catch (e) { toast('err', errText(e)); }
-    setBusy('');
-  };
-  return (
-    <div className="space-y-3">
-      <label className="btn w-full cursor-pointer focus-within:shadow-[0_0_0_4px_rgba(94,234,212,0.25)]">
-        {busy === 'photo' ? <><span className="spinner" /> Reading the photo…</> : p.photo ? '📷 Photo saved · take another' : '📷 Take or pick a photo (the AI fills the form)'}
-        <input type="file" accept="image/*,application/pdf"  className="sr-only" onChange={(e) => void photo(e.target.files?.[0])} disabled={!!busy} />
-      </label>
-      <label className="block text-sm">Kind
-        <select className="input mt-1 w-full" value={p.kind} onChange={(e) => set({ kind: e.target.value })}>
-          {PAPER_KINDS.map((k) => <option key={k.id} value={k.id}>{k.icon} {k.label}</option>)}
-        </select>
-      </label>
-      <label className="block text-sm">Name
-        <input className="input mt-1 w-full" value={p.name ?? ''} placeholder={paperKind(p.kind ?? 'other').label} onChange={(e) => set({ name: e.target.value })} />
-      </label>
-      <div className="grid grid-cols-2 gap-2">
-        <label className="block text-sm">Expires
-          <input className="input mt-1 w-full" type="date" value={p.expires ?? ''} onChange={(e) => set({ expires: e.target.value || null })} />
-        </label>
-        <label className="block text-sm">Number (last 4)
-          <input className="input mt-1 w-full" maxLength={4} value={p.number_end ?? ''} onChange={(e) => set({ number_end: e.target.value.slice(-4) || null })} />
-        </label>
-      </div>
-      <label className="block text-sm">Whose (optional)
-        <input className="input mt-1 w-full" value={p.holder ?? ''} placeholder="Me, a child, the car…" onChange={(e) => set({ holder: e.target.value || null })} />
-      </label>
-      <label className="block text-sm">Notes
-        <input className="input mt-1 w-full" value={p.notes ?? ''} onChange={(e) => set({ notes: e.target.value || null })} />
-      </label>
-      <p className="text-xs text-slate-500 dark:text-slate-400">Only the last 4 characters of the number are kept. The photo stays private in your own storage.</p>
-      <div className="flex gap-2">
-        <button className="btn-primary flex-1" disabled={!!busy} onClick={() => void save()}>{busy === 'save' ? <span className="spinner" /> : 'Save'}</button>
-        {onDelete && <button className="btn text-red-700 dark:text-red-300" disabled={!!busy} onClick={() => void (confirm('Delete this document?') && onDelete().then(onDone))}>Delete</button>}
-      </div>
-    </div>
   );
 }
 

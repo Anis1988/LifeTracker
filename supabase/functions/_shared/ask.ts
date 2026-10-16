@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@4.1.12';
-import type { Finding, Item, LifeDate, Paper, Purchase, Sender, Settings } from './model.ts';
+import { folderOf, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings } from './model.ts';
 import { iso, monthly, nextDue, today } from './money.ts';
 import { askAi } from './ai.ts';
 import { categorize, spendCat, spendReport, type SpendTx } from './spend.ts';
@@ -24,7 +24,7 @@ export async function ask(db: SupabaseClient, userId: string, s: Settings, quest
   const [items, tx, papers, dates, purchases, findings, senders] = await Promise.all([
     db.from('items').select('*').eq('user_id', userId),
     db.from('transactions').select('posted, amount, description, merchant, item_id').eq('user_id', userId).gte('posted', since).order('posted', { ascending: false }).limit(5000),
-    db.from('papers').select('*').eq('user_id', userId),
+    db.from('papers').select('name, holder, folder, doc_date, expires, due_kind').eq('user_id', userId).order('expires', { ascending: true, nullsFirst: false }).limit(200),
     db.from('life_dates').select('*').eq('user_id', userId),
     db.from('purchases').select('*').eq('user_id', userId).neq('status', 'ignored').order('bought', { ascending: false }).limit(60),
     db.from('findings').select('kind, status, title, verdict').eq('user_id', userId).neq('status', 'unknown'),
@@ -50,7 +50,8 @@ export async function ask(db: SupabaseClient, userId: string, s: Settings, quest
     for (const x of rows.filter((r) => r.posted >= cut).slice(0, 400)) lines.push(`${x.posted} | ${(x.description ?? '').slice(0, 30)} | ${Number(x.amount).toFixed(2)} | ${categorize(x, s.spend.rules)}`);
   } else lines.push('\nSPENDING: no purchases read yet (bank alert emails or a bank CSV are needed).');
   const ps = (papers.data as Paper[]) ?? [];
-  if (ps.length) lines.push(`\nDOCUMENTS THAT EXPIRE: ${ps.map((p) => `${p.name}${p.holder ? ` (${p.holder})` : ''} expires ${p.expires ?? '?'}`).join('; ')}`);
+  // 📁 Vault: titles, folders, who and dates only, never what is inside the files (owner's rule).
+  if (ps.length) lines.push(`\nDOCUMENTS IN THE VAULT (title | folder | for whom | date | expires or next due): ${ps.slice(0, 200).map((p) => `${p.name} | ${folderOf(p.folder).label} | ${p.holder ?? '-'} | ${p.doc_date ?? '-'} | ${p.expires ? `${p.due_kind === 'due' ? 'next due' : 'expires'} ${p.expires}` : '-'}`).join('; ')}`);
   const ds = (dates.data as LifeDate[]) ?? [];
   if (ds.length) lines.push(`\nIMPORTANT DATES: ${ds.map((d) => `${d.title} (${d.kind}) next ${d.next_date}${d.every_months ? `, every ${d.every_months} months` : ''}`).join('; ')}`);
   const pu = (purchases.data as Purchase[]) ?? [];

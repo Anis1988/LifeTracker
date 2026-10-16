@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(TextsPlugin.class); // 💬 appointment texts (Settings → Appointments)
         registerPlugin(UpdatePlugin.class); // ⬆️ the update banner's Update button
         registerPlugin(WidgetPlugin.class); // 🗓️ the "Coming up" home-screen widget
+        registerPlugin(BiometricPlugin.class); // 🔒 fingerprint / face unlock for the Vault
         super.onCreate(savedInstanceState);
     }
 }

@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
-import { Field, Fold, Toggle, errText, toast } from '../components/ui';
+import { Field, Fold, Sheet, Toggle, errText, toast } from '../components/ui';
+import { NewPin, PeopleEditor, PinPad } from '../components/Vault';
+import { hashPin, lockVault, pinOk, unlockVault } from '../lib/vault';
+import { personIcon } from '../../supabase/functions/_shared/model.ts';
 import { AboutMe } from '../components/AboutMe';
 import { Browser } from '@capacitor/browser';
 import { isNative } from '../lib/native';
@@ -76,12 +79,34 @@ export function Settings() {
 
   const exportAll = async () => {
     // Every row, page by page (Supabase sends at most 1,000 at a time).
-    const [i, sg, d, tx, co] = await Promise.all(['items', 'suggestions', 'documents', 'transactions', 'contacts'].map((t) => allRows((a, b) => supabase.from(t).select('*').order('id').range(a, b), 100000).then((data) => ({ data }))));
-    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), items: i.data, suggestions: sg.data, documents: d.data, transactions: tx.data, contacts: co.data, settings: s }, null, 2)], { type: 'application/json' });
+    const [i, sg, d, tx, co, pa] = await Promise.all(['items', 'suggestions', 'documents', 'transactions', 'contacts', 'papers'].map((t) => allRows((a, b) => supabase.from(t).select('*').order('id').range(a, b), 100000).then((data) => ({ data }))));
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), items: i.data, suggestions: sg.data, documents: d.data, transactions: tx.data, contacts: co.data, vault: pa.data, settings: { ...s, vault: { ...s.vault, lock: { ...s.vault.lock, hash: '', salt: '' } } } }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `lifetracker-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
+  };
+
+  // 🔒 Vault lock: turning it off or changing the PIN needs the PIN (else anyone holding the phone could switch it off here).
+  const [pin, setPin] = useState<null | 'set' | 'off' | 'change' | 'change2'>(null);
+  const [pinErr, setPinErr] = useState(0);
+  const lock = s.vault.lock;
+  const saveVault = (patch: Partial<S['vault']>) => save({ vault: { ...s.vault, ...patch } });
+  const newPin = async (p: string) => {
+    const h = await hashPin(p);
+    await st.saveSettings({ ...s, vault: { ...s.vault, lock: { ...lock, ...h, on: true, len: p.length, resetAsked: null } } });
+    unlockVault(lock.minutes);
+    setPin(null);
+    toast('ok', pin === 'set' ? `Vault lock on: it locks after ${lock.minutes} min and when you leave the app.` : 'New PIN saved.');
+  };
+  const checkPin = async (p: string) => {
+    if (!(await pinOk(p, lock))) { setPinErr((x) => x + 1); toast('err', 'Wrong PIN.'); return; }
+    if (pin === 'off') {
+      await st.saveSettings({ ...s, vault: { ...s.vault, lock: { ...lock, on: false, hash: '', salt: '', len: 0, resetAsked: null } } });
+      lockVault();
+      setPin(null);
+      toast('ok', 'Vault lock off.');
+    } else setPin('change2');
   };
 
   const gEmail = status?.google.email ?? st.session.user.email ?? '';
@@ -151,10 +176,50 @@ export function Settings() {
         </Field>
       </Fold>
 
-      <Fold icon="🪪" title="Documents & My week" subtitle={s.week.on ? `My week: ${DAYS[s.week.day]}` : 'My week: off'}>
-        <Field label="Heads-ups for documents that expire" hint={`${s.papers.remind.join(', ')} days before, and on the day. Add them in Me.`}>
+      <Fold icon="📁" title="Vault" subtitle={`${st.papers.length} document${st.papers.length === 1 ? '' : 's'} · ${lock.on ? '🔒 PIN lock on' : 'no lock'} · ${s.vault.emails ? 'found in emails too' : 'only what you add'}`}>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Your documents (pet records, medical, IDs, home, car, school, taxes, contracts…), kept privately in your own storage. Scan them in 📁 Vault, or let LifeTracker find them in Gmail.</p>
+        <Field label="Find documents in my emails" hint={status?.google.gmail ? `Every morning: files attached to emails (vaccine records, certificates, policies, contracts, tax forms…) are saved straight in, with the email in the note. Receipts and bills go to Money instead. Newsletters are skipped. A free check first; the AI (free ones first) only reads what’s left, and never the same file twice.${status.mail?.vaultScanned ? ` Last look: ${new Date(status.mail.vaultScanned).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.` : ''}` : 'Needs Gmail: Google Calendar & Gmail → “Also read Gmail receipts”.'}>
+          <Toggle on={s.vault.emails} onChange={(v) => saveVault({ emails: v })} label="Find documents in my emails" />
+        </Field>
+        <Field label="Most attachments read by the AI per morning">
+          <select className="input" value={s.vault.maxPerRun} onChange={(e) => saveVault({ maxPerRun: Number(e.target.value) })} aria-label="Most attachments per morning">
+            {[2, 4, 6, 10, 15].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </Field>
+        <Field label="Heads-ups for documents that expire or are due" hint={`${s.papers.remind.join(', ')} days before (30 and 7 for things due again, like a vaccine), and on the day; in your calendar too.`}>
           <Toggle on={s.papers.on} onChange={(v) => save({ papers: { ...s.papers, on: v } })} label="Documents" />
         </Field>
+        <p className="pt-2 text-[15px] font-semibold">People & pets</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Who documents can be for: {s.vault.people.map((p) => `${p.name} ${personIcon(p)}`).join(', ')}. The AI picks one of these when it reads a document.</p>
+        <PeopleEditor people={s.vault.people} onChange={(people) => saveVault({ people })} />
+        <p className="pt-2 text-[15px] font-semibold">🔒 Lock</p>
+        <Field label="Lock the Vault with a PIN" hint="A privacy screen on this phone (4–6 digits): asked when you open the Vault. Your documents are always protected by your sign-in; only a scrambled copy of the PIN is kept.">
+          <Toggle on={lock.on} onChange={(v) => setPin(v ? 'set' : 'off')} label="Lock the Vault" />
+        </Field>
+        {lock.on && (
+          <>
+            <Field label="Lock again after" hint="And every time you leave the app.">
+              <select className="input" value={lock.minutes} onChange={(e) => saveVault({ lock: { ...lock, minutes: Number(e.target.value) } })} aria-label="Lock again after">
+                {[1, 5, 15, 30, 60].map((n) => <option key={n} value={n}>{n} min</option>)}
+              </select>
+            </Field>
+            <button className="btn" onClick={() => setPin('change')}>Change the PIN</button>
+          </>
+        )}
+        <button className="btn" disabled={!!busy || !s.vault.emails || !status?.google.gmail} onClick={() => void run('vault', async () => {
+          const r = await api<{ log: { steps: string[]; errors: string[] } }>('run', { part: 'vault' });
+          toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'Nothing new in your emails.');
+          await Promise.all([st.reload(), st.reloadStatus()]);
+        })}>{busy === 'vault' ? <span className="spinner" /> : '✉️ Look in my emails now'}</button>
+      </Fold>
+      {pin && (
+        <Sheet title={pin === 'set' ? 'Choose a PIN' : pin === 'change2' ? 'Choose a new PIN' : 'Type your PIN'} onClose={() => setPin(null)}>
+          {pin === 'set' || pin === 'change2' ? <NewPin onDone={(p) => newPin(p).catch((e) => toast('err', errText(e)))} />
+            : <div className="space-y-4 text-center"><p className="text-sm text-slate-600 dark:text-slate-300">{pin === 'off' ? 'To turn the lock off, type your PIN.' : 'First, your PIN now.'}</p><PinPad fixed={lock.len || 4} shake={pinErr} onPin={(p) => void checkPin(p)} /></div>}
+        </Sheet>
+      )}
+
+      <Fold icon="📊" title="My week" subtitle={s.week.on ? `Email on ${DAYS[s.week.day]}` : 'Email off'}>
         <Field label="“My week” email" hint={status?.keys.email ? `A short summary to ${st.session.user.email}: money, bills coming, your name online, mailing lists, documents, credit.` : 'Needs RESEND_API_KEY on the server (free at resend.com). The same summary is always on Home.'}>
           <Toggle on={s.week.on} onChange={(v) => save({ week: { ...s.week, on: v } })} label="My week" />
         </Field>
@@ -202,7 +267,7 @@ export function Settings() {
         )}
           </div>
         </details>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Read-only: nothing can be paid or moved. Read every morning. No link? Import a bank CSV in Inbox.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Read-only: nothing can be paid or moved. Read every morning. No link? Import a bank CSV in Inbox (the 🔔 bell at the top).</p>
       </Fold>
 
       <Fold icon="📅" title="Google Calendar & Gmail" subtitle={status?.google.connected ? `Connected${status.google.email ? ` as ${status.google.email}` : ''} · ${[status.google.calendar && 'Calendar', status.google.gmail && 'Gmail'].filter(Boolean).join(' + ')}` : 'Not connected'}>

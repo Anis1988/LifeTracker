@@ -15,7 +15,8 @@ import { ScriptView } from '../components/Negotiate';
 import { ContactDetails, ContactGroup, KindChips, SearchBox, arrange, kindOptions } from '../components/Contacts';
 import { APPS, AppCard, TotalCard, type AppSummary } from '../components/Apps';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
-import type { Alert, Appointment, Contact, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
+import { LockScreen, PeopleEditor, VaultDetails, VaultForm, VaultGroup, arrangeVault, vaultChips } from '../components/Vault';
+import { PAPER_DEFAULTS, withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
 /* made-up examples, only for this guide */
@@ -55,9 +56,22 @@ const SENDERS: Sender[] = [
   { ...sBase, id: 'm4', address: 'winner@example.biz', name: 'Prize Center', sample: 'You won!!!', emails: 6, unread: 6, last_seen: d(-4), last_opened: null, spam: true, unsub: {} },
 ] as Sender[];
 const PAPERS: Paper[] = [
-  { id: 'p1', kind: 'passport', name: 'Passport', holder: 'Me', number_end: '4821', expires: d(52), notes: null, photo: null },
-  { id: 'p2', kind: 'registration', name: 'Car registration', holder: 'Example car', number_end: null, expires: d(140), notes: null, photo: null },
+  { ...PAPER_DEFAULTS, id: 'p1', kind: 'passport', folder: 'ids', name: 'Passport', holder: 'Me', number_end: '4821', expires: d(52) },
+  { ...PAPER_DEFAULTS, id: 'p2', kind: 'registration', folder: 'car', name: 'Car registration', holder: 'Example car', expires: d(140) },
 ];
+// 📁 A made-up Vault: Daizy the dog's vaccines (one found in an email), IDs, the car, a lease, a tax form.
+const VS = withDefaults({ vault: { emails: true, maxPerRun: 6, people: [{ name: 'Me', kind: 'me' }, { name: 'Daizy', kind: 'pet', emoji: '🐶' }, { name: 'Sam', kind: 'family', emoji: '👦' }], lock: { on: true, hash: '', salt: '', len: 4, minutes: 5, resetAsked: null } } });
+const VAULT: Paper[] = [
+  { ...PAPER_DEFAULTS, id: 'v1', folder: 'pets', name: 'Rabies vaccine certificate', holder: 'Daizy', doc_date: d(-325), expires: d(40), due_kind: 'due', tags: ['rabies', 'vet'], files: ['ex/1.pdf'], source: 'email',
+    notes: 'From email: Daizy’s vaccine records — Example Pet Clinic, 2025-11-25', summary: 'Rabies vaccine given to Daizy (dog) at Example Pet Clinic. The next one is due in a year.', ai_by: 'Gemini Flash (free)' },
+  { ...PAPER_DEFAULTS, id: 'v2', folder: 'pets', name: 'Vet check-up and DHPP booster', holder: 'Daizy', doc_date: d(-60), expires: d(305), due_kind: 'due', tags: ['vet', 'dhpp'], files: ['ex/1.jpg', 'ex/2.jpg'], source: 'scan' },
+  { ...PAPER_DEFAULTS, id: 'v3', folder: 'ids', kind: 'passport', name: 'Passport', holder: 'Me', number_end: '4821', expires: d(52), files: ['ex/p.jpg'], source: 'scan' },
+  { ...PAPER_DEFAULTS, id: 'v4', folder: 'car', kind: 'registration', name: 'Car registration', holder: 'Me', expires: d(140), files: ['ex/c.jpg'] },
+  { ...PAPER_DEFAULTS, id: 'v5', folder: 'legal', name: 'Apartment lease', holder: 'Me', doc_date: d(-200), expires: d(165), tags: ['lease', 'home'], files: ['ex/l.pdf'], source: 'email' },
+  { ...PAPER_DEFAULTS, id: 'v6', folder: 'school', name: 'Report card, spring', holder: 'Sam', doc_date: d(-130), tags: ['school'], files: ['ex/r.jpg'], source: 'scan' },
+  { ...PAPER_DEFAULTS, id: 'v7', folder: 'taxes', name: '2025 W-2', holder: 'Me', doc_date: d(-250), tags: ['tax', '2025'], files: ['ex/w.pdf'], source: 'email', body: 'Wage and tax statement 2025 Example Employer' },
+];
+const VAULT_ALERT: Alert[] = [{ id: 'va1', kind: 'vault', key: '', title: '📁 Saved to your Vault: Rabies vaccine certificate (Daizy)', body: `From email: Daizy’s vaccine records — Example Pet Clinic. Next due ${d(40)}: you’ll get a heads-up.`, item_id: null, seen: false, created_at: '' }];
 
 const DATES: LifeDate[] = [
   { id: 'l1', kind: 'birthday', title: 'Example Mom’s birthday', next_date: d(5), every_months: 12, remind_days: 7, notes: null },
@@ -126,8 +140,9 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you. The exceptions, your choice: <b>appointments</b> in your emails and texts go straight into your calendar, and the places you deal with (dentist, garage, insurer…) go straight into <b>Contacts</b> (you can remove either).</P>
-        <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
+        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> (the 🔔 bell at the top, with a number when something is waiting) for your OK: nothing is added, paid or cancelled without you. The exceptions, your choice: <b>appointments</b> in your emails and texts go straight into your calendar, the places you deal with (dentist, garage, insurer…) go straight into <b>Contacts</b>, and important documents attached to your emails go straight into your <b>Vault</b> (you can remove any of them).</P>
+        <P>The tabs at the bottom: <b>Home</b>, <b>Money</b> (bills, spending, returns), <b>Contacts</b>, <b>Vault</b> (your documents), <b>Me</b> and <b>Settings</b>. At the top: My apps, the 🔔 Inbox and this Guide.</P>
+        <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…, kept in your Vault) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
           <div className="space-y-2">
             <MonthHero total={1842} usual={2120} soFarUsual={2120} bills={2940} monthName="October" />
@@ -217,6 +232,39 @@ export function Guide() {
         </Example>
       </Fold>
 
+      <Fold icon="📁" title="Vault (your documents)">
+        <P>The <b>Vault</b> tab keeps your important papers in one safe place: your pet’s vaccines and vet records (like Daizy 🐶), medical papers, IDs and passports, the house (deed, lease, warranties, manuals), the car (registration, title, insurance card), school, taxes, contracts, certificates… Bills and receipts are not kept here: they belong in <b>Money</b>.</P>
+        <P><b>📷 Scan</b>: take a photo of each page with the camera (or pick photos or a PDF). The pages are made smaller on your phone and can become <b>one PDF</b>. Tap <b>✨ Read it and fill in for me</b>: the AI reads it once and fills in the title, the folder, who it’s for, the date on it, and when it expires or is <b>due again</b> (like Daizy’s next rabies shot). Check it (filled-in boxes say ✨ suggested) and tap <b>Save</b>. It uses the free AIs first, Claude only if they can’t, and the same file is never read (or paid for) twice. Only the last 4 characters of any number are kept.</P>
+        <Example caption="Made-up scan: two pages, read by the AI and filled in, ready to save.">
+          <div className="card"><VaultForm s={VS} userId="" doc={{ ...PAPER_DEFAULTS, name: 'Rabies vaccine certificate', folder: 'pets', holder: 'Daizy', doc_date: d(-325), expires: d(40), due_kind: 'due', tags: ['rabies', 'vet'], summary: 'Rabies vaccine given to Daizy (dog). The next one is due in a year.' }} example={{ filled: ['name', 'folder', 'holder', 'doc_date', 'expires', 'tags'], pages: 2 }} /></div>
+        </Example>
+        <P><b>Find anything</b>: the search looks in the title, who it’s for, the folder, tags, your notes and the words read from the document (“rabies”, “Daizy”, “W-2”). The chips show one folder, or one person or pet. A date coming up shows on the right (amber when it’s close); you get a heads-up before it (30 and 7 days for something due again, 90, 30 and 7 for something that expires), it’s on Home’s timeline, and it goes in your LifeTracker calendar (you can turn either off per document).</P>
+        <Example caption="Made-up Vault: folders, people and pets, Daizy’s vaccines on top.">
+          <div className="space-y-2">
+            <KindChips options={vaultChips(VAULT, VS).folders} value="all" onChange={() => undefined} label="Folder" />
+            <KindChips options={vaultChips(VAULT, VS).people} value="all" onChange={() => undefined} label="For whom" />
+            {arrangeVault(VAULT, { q: '', folder: 'all', who: 'all' }).slice(0, 3).map((g) => <VaultGroup key={g.title} title={g.title} list={g.list} s={VS} />)}
+          </div>
+        </Example>
+        <Example caption="Made-up search: “daizy” finds both of her records.">
+          <div className="space-y-2">
+            <SearchBox q="daizy" onChange={() => undefined} placeholder="Title, Daizy, vaccine, tag…" label="Search documents" />
+            {arrangeVault(VAULT, { q: 'daizy', folder: 'all', who: 'all' }).map((g) => <VaultGroup key={g.title} title={g.title} list={g.list} s={VS} />)}
+          </div>
+        </Example>
+        <P>Tap a document to see it: <b>👁 Open</b> shows the pages full screen (tap a page to zoom in, then move around; a PDF opens in your phone’s viewer), <b>⬇ Save</b> downloads it, <b>↗ Share</b> sends it (to the vet, a school…), <b>✎ Edit</b> and <b>🗑 Delete</b> (the files go too).</P>
+        <Example caption="Made-up document card, found in an email.">
+          <div className="card"><VaultDetails p={VAULT[0]} s={VS} example onEdit={() => undefined} onDelete={() => undefined} /></div>
+        </Example>
+        <P><b>From your emails</b> (Gmail, read-only): every morning, files attached to your emails are looked at. A free check first (the file name, the subject, the words): vaccine and vet records, medical results, certificates, insurance policies, contracts, leases, tax forms, registrations, tickets and permits are <b>saved straight into the Vault</b> (your choice), with <b>“From email: subject — sender, date”</b> in the note and a heads-up. <b>Receipts, invoices and bills go to Money instead</b>: a bill shows up in Inbox to add (like one you upload), and a receipt from a business is kept in <b>Money → Returns</b> with the receipt attached (📎 Receipt). Newsletters, ads and logos are skipped. Only files the free check can’t place go to the AI (free ones first, 6 a morning by default), and the same file is never saved twice. <b>✉️ Look in my emails now</b> (in the Vault) runs it at once; turn it off in Settings → Vault.</P>
+        <Example caption="Made-up heads-up when a document is found in an email."><AlertList alerts={VAULT_ALERT} /></Example>
+        <P><b>People & pets</b> (Settings → Vault): the names documents can be for, each with an icon (pets get a paw, or 🐶, 🐱…). The AI picks one of them when it reads a document.</P>
+        <Example caption="Made-up list: you, Daizy the dog and Sam."><PeopleEditor people={VS.vault.people} onChange={() => undefined} /></Example>
+        <P><b>🔒 Lock</b> (optional, Settings → Vault): a 4–6 digit PIN asked when you open the Vault. It locks again after a few minutes (you choose) and every time you leave the app. In the Android app you can also use your fingerprint or face. To be honest about it: the lock is a <b>privacy screen</b> for when someone else holds your phone. Your documents are always protected by your sign-in (nobody else can open them), and only a scrambled copy of the PIN is kept. Forgot it? Tap <b>Forgot your PIN?</b>: you’re signed out, and after signing in again with your email you choose a new one. Turning the lock off or changing the PIN asks for the PIN.</P>
+        <Example caption="Made-up lock screen."><LockScreen len={4} onPin={() => undefined} onForgot={() => undefined} /></Example>
+        <P><b>Safe and private</b>: the files are in your own private storage. They’re opened with links that work for 2 minutes only, never public. Ask LifeTracker can see your documents’ titles and dates (to answer “when is Daizy’s next shot?”), never what’s inside them.</P>
+      </Fold>
+
       <Fold icon="💬" title="Get a lower price on a bill">
         <P>Internet, phone, TV, insurance, utilities and subscriptions often lower the price if you ask. Open the bill (Money → Bills) and tap <b>💬 Get a lower price</b>. The AI writes a short script in plain words to read on the phone or in their chat: what to say first, the ask, and what to say if they say no. It uses the bill’s name, its price, how long you’ve had it and any price rises. It never makes up other companies’ prices: it tells you to look them up yourself before you call.</P>
         <P>Turn on <b>I’m OK to switch company</b> only if you really would: then the script also says, calmly, that you’re looking at other companies. Afterwards write how it went and the new price, and tap <b>Save</b>: only then does the bill change (the new price shows in its price changes).</P>
@@ -255,7 +303,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🔎" title="Found for you (Inbox)">
-        <P>When your bank shows the same company charging about the same amount at a steady rhythm (every week, month, quarter or year), or an email or document looks like a bill, it appears in <b>Inbox</b>. Tap <b>Add to my bills</b> (you can change anything first) or <b>Not a bill</b> (it won’t come back).</P>
+        <P><b>Inbox</b> is the 🔔 bell at the top of the screen; the number on it is how many are waiting (Home shows them too). When your bank shows the same company charging about the same amount at a steady rhythm (every week, month, quarter or year), or an email or document looks like a bill, it appears in <b>Inbox</b>. Tap <b>Add to my bills</b> (you can change anything first) or <b>Not a bill</b> (it won’t come back).</P>
         <Example caption="Made-up example found in a bank account.">
           <SuggestionCard s={SUGG} />
         </Example>
@@ -273,7 +321,7 @@ export function Guide() {
         <Example caption="Made-up example of Settings → Bank & cards.">
           <AlertBanks gmail read={128} banks={['Bank of America', 'Capital One']} />
         </Example>
-        <P>No alerts yet? Download your transactions as a <b>CSV</b> from your bank and use <b>Import a bank CSV</b> in Inbox. A paid direct bank link (SimpleFIN) is also in Settings.</P>
+        <P>No alerts yet? Download your transactions as a <b>CSV</b> from your bank and use <b>Import a bank CSV</b> in Inbox (the 🔔 bell at the top). A paid direct bank link (SimpleFIN) is also in Settings.</P>
       </Fold>
 
       <Fold icon="📊" title="My week">
@@ -323,7 +371,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🪪" title="Documents that expire">
-        <P>In Me, <b>Add a document</b>: passport, driver’s licence, ID, car registration or inspection, insurance card, Global Entry, visa… Take a photo and the AI fills in the kind, name and expiry date (free AIs first); check it and save. Only the last 4 characters of the number are kept.</P>
+        <P>Your passport, driver’s licence, ID, car registration or inspection, insurance card, Global Entry, visa… are kept in the <b>📁 Vault</b> (scan them there; the AI fills in the kind, name and expiry date). Me → Documents that expire lists the ones with a date, soonest first. Only the last 4 characters of the number are kept.</P>
         <P>You get heads-ups 90, 30 and 7 days before, and on the day. With Google Calendar connected, a “Start renewing” day is added 90 days before (passports take weeks) and the expiry day itself.</P>
         <Example caption="Made-up documents."><div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{PAPERS.map((p) => <PaperRow key={p.id} p={p} />)}</div></Example>
       </Fold>
@@ -346,7 +394,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📄" title="Documents (bills, policies, statements)">
-        <P>In Inbox, <b>Add a bill or document</b>: a photo or PDF of a bill, an insurance policy, a mortgage statement or a renewal letter. It is kept privately (only you can open it), and the AI reads the amount, dates, policy number, coverage and anything to watch out for.</P>
+        <P>In Inbox (the 🔔 bell at the top), <b>Add a bill or document</b>: a photo or PDF of a bill, an insurance policy, a mortgage statement or a renewal letter. It is kept privately (only you can open it), and the AI reads the amount, dates, policy number, coverage and anything to watch out for. Bill files found attached to your emails show up here too, marked ✉️ with the email they came from. A paper that turns out not to be a bill (a contract, a certificate) can go to your Vault with <b>📁 Move to Vault</b>.</P>
         <Example caption="Made-up example of a read document."><DocRow d={DOC} /></Example>
       </Fold>
 
@@ -378,7 +426,7 @@ export function Guide() {
       <Fold icon="🔐" title="Privacy">
         <P>Your data is in your own Supabase database. Each person only ever sees their own rows (Row Level Security). The bank access link and Google sign-in are encrypted, and the app itself can’t read them: only the server uses them. You can download everything or sign out in Settings.</P>
         <P>Ask LifeTracker sends a short summary of your own data with each question to the AI, only to answer it. Order emails are read only after a free check says they’re real orders.</P>
-        <P>About me (your name, emails, phones, city) is private too; it is sent to the free Gemini only to run the searches. Mailing lists: only email headers are read. Document photos stay in your own private storage.</P>
+        <P>About me (your name, emails, phones, city) is private too; it is sent to the free Gemini only to run the searches. Mailing lists: only email headers are read. Document photos and your Vault files stay in your own private storage, opened only with links that last 2 minutes.</P>
       </Fold>
 
       <Fold icon="🛠️" title="Setting it up (one time)">

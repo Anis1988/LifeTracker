@@ -1,7 +1,7 @@
 import { dateKind, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings } from './model.ts';
 import { daysBetween, money, nextDue, today } from './money.ts';
 import { categorize } from './spend.ts';
-import { paperKind } from './people.ts';
+import { docIcon } from './vaultText.ts';
 
 /**
  * 📊 "My week": one short summary of everything about you. The same function makes the card on Home and the
@@ -47,10 +47,12 @@ export function weekSummary(w: WeekInput, now = today()): WeekLine[] {
   const gone = w.senders.filter((s) => s.status === 'unsubscribed' && s.done_at && s.done_at.slice(0, 10) >= weekAgo);
   if (gone.length) out.push({ icon: '📭', text: `Unsubscribed from ${gone.length} mailing list${gone.length > 1 ? 's' : ''}${gone.some((s) => s.auto) ? ' (some automatically)' : ''}: ${gone.slice(0, 4).map((s) => s.name || s.address).join(', ')}${gone.length > 4 ? '…' : ''}.`, tone: 'good' });
   // 🪪 documents that expire within 90 days
-  const soon = w.papers.filter((p) => p.expires && daysBetween(now, p.expires) <= 90).sort((a, b) => (a.expires! < b.expires! ? -1 : 1));
+  // 📁 Vault documents that expire within 90 days, or are due again (next vaccine…) within 30 days
+  const soon = w.papers.filter((p) => p.expires && p.remind !== false && daysBetween(now, p.expires) <= (p.due_kind === 'due' ? 30 : 90) && daysBetween(now, p.expires) >= -60).sort((a, b) => (a.expires! < b.expires! ? -1 : 1));
   for (const p of soon.slice(0, 3)) {
     const d = daysBetween(now, p.expires!);
-    out.push({ icon: paperKind(p.kind).icon, text: d < 0 ? `${p.name} expired on ${p.expires}.` : `${p.name} expires in ${d} day${d === 1 ? '' : 's'} (${p.expires}).`, tone: d <= 30 ? 'warn' : undefined });
+    const name = `${p.name}${p.holder && p.due_kind === 'due' ? ` (${p.holder})` : ''}`;
+    out.push({ icon: docIcon(p), text: p.due_kind === 'due' ? (d < 0 ? `${name} was due on ${p.expires}.` : `${name} is due in ${d} day${d === 1 ? '' : 's'} (${p.expires}).`) : d < 0 ? `${p.name} expired on ${p.expires}.` : `${p.name} expires in ${d} day${d === 1 ? '' : 's'} (${p.expires}).`, tone: d <= 30 ? 'warn' : undefined });
   }
   // 🔒 credit freeze
   const c = w.settings.credit;

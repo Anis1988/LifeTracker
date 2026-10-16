@@ -11,6 +11,8 @@ import { breachStep, ensureBrokers, onlineStep } from './me.ts';
 import { sweepStep, unsubStep } from './unsub.ts';
 import { spentOf, weekSummary, type WeekInput } from './week.ts';
 import { paperKind } from './people.ts';
+import { docIcon } from './vaultText.ts';
+import { vaultEmailStep } from './vaultMail.ts';
 import { purchaseAlerts, purchaseStep } from './purchases.ts';
 import { spendCat, spendReport, type SpendTx } from './spend.ts';
 import { dateKind } from './model.ts';
@@ -31,7 +33,7 @@ export interface RunLog { steps: string[]; errors: string[]; newAlerts: number }
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
 /** Parts that can be run on their own (from the app's buttons). */
-export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts';
+export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts' | 'vault';
 
 export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
@@ -66,6 +68,8 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
   }
   if (want('purchases')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until, mails));
+  // 📁 Important documents attached to emails → Vault (owner's choice: straight in); receipts and bills → Money.
+  if (want('vault')) await step('Vault', () => vaultEmailStep(db, userId, s, alerts, until + 10_000));
   // 📇 Contacts: straight into Contacts (owner's choice). The hourly appointment look only folds in what it already read.
   if (want('contacts') || mails.length) await step('Contacts', () => contactStep(db, userId, s, until + 10_000, { mails, search: want('contacts'), email }));
   if (want('bills') || want('purchases')) await step('Coming up', () => lifeStep(db, userId, s, alerts));
@@ -316,10 +320,14 @@ async function headsUpStep(db: SupabaseClient, userId: string, s: Settings, aler
   if (s.papers.on) {
     const { data: papers } = await db.from('papers').select('*').eq('user_id', userId).not('expires', 'is', null);
     for (const p of (papers as Paper[]) ?? []) {
+      if (p.remind === false) continue;
       const left = daysBetween(t, p.expires!);
-      const at = [...s.papers.remind].sort((a, b) => a - b).find((d) => left <= d);
-      if (left < 0) { alerts.push({ user_id: userId, kind: 'paper', key: `${p.id}:${p.expires}:expired`, item_id: null, title: `${paperKind(p.kind).icon} ${p.name} has expired (${p.expires})`, body: 'Renew it, or delete it in Me if you already did.' }); n++; }
-      else if (at != null) { alerts.push({ user_id: userId, kind: 'paper', key: `${p.id}:${p.expires}:${at}`, item_id: null, title: `${paperKind(p.kind).icon} ${p.name} expires in ${left} day${left === 1 ? '' : 's'} (${p.expires})`, body: paperKind(p.kind).renew ? `Renew: ${paperKind(p.kind).renew}` : 'Time to renew it.' }); n++; }
+      const due = p.due_kind === 'due'; // 📁 a next vaccine, a check-up: heads-ups from 30 days before, not 90
+      const who = p.holder ? ` (${p.holder})` : '';
+      const at = [...s.papers.remind].filter((d) => !due || d <= 30).sort((a, b) => a - b).find((d) => left <= d);
+      if (left < 0) {
+        if (left >= -60) { alerts.push({ user_id: userId, kind: 'paper', key: `${p.id}:${p.expires}:expired`, item_id: null, title: `${docIcon(p)} ${p.name}${who} ${due ? 'was due' : 'has expired'} (${p.expires})`, body: due ? 'Done already? Put the next date on it in Vault.' : 'Renew it, or update it in Vault if you already did.' }); n++; }
+      } else if (at != null) { alerts.push({ user_id: userId, kind: 'paper', key: `${p.id}:${p.expires}:${at}`, item_id: null, title: `${docIcon(p)} ${p.name}${who} ${due ? 'is due' : 'expires'} ${left === 0 ? 'today' : `in ${left} day${left === 1 ? '' : 's'}`} (${p.expires})`, body: due ? 'Book it now. The record is in your Vault.' : paperKind(p.kind).renew ? `Renew: ${paperKind(p.kind).renew}` : 'Time to renew it.' }); n++; }
     }
   }
   // 🔒 credit freeze (once per change) and the free credit reports (every few months).

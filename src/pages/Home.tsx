@@ -67,7 +67,8 @@ export function Home({ go }: { go: (tab: string) => void }) {
     } catch (e) { toast('err', errText(e)); }
     setBusy(false);
   };
-  const openMoment = (m: { itemId?: string; apptId?: string }) => {
+  const openMoment = (m: { itemId?: string; apptId?: string; docId?: string }) => {
+    if (m.docId) { location.hash = `#/vault?doc=${m.docId}`; window.scrollTo(0, 0); return; }
     const a = st.appts.find((x) => x.id === m.apptId);
     if (a) { setAppt(a); return; }
     const i = st.items.find((x) => x.id === m.itemId);
