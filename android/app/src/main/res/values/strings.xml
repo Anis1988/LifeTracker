@@ -4,4 +4,6 @@
     <string name="title_activity_main">LifeTracker</string>
     <string name="package_name">app.lifetracker</string>
     <string name="custom_url_scheme">app.lifetracker</string>
+    <string name="widget_title">Coming up</string>
+    <string name="widget_description">Your next bills, appointments and dates</string>
 </resources>

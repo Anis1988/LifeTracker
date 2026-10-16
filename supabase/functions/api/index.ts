@@ -8,6 +8,8 @@ import { merchantKey } from '../_shared/recurring.ts';
 import { refresh } from '../_shared/google.ts';
 import { blockOne, unsubscribeOne } from '../_shared/unsub.ts';
 import { ask } from '../_shared/ask.ts';
+import { summary } from '../_shared/summary.ts';
+import { negotiate } from '../_shared/negotiate.ts';
 import { PAPER_KINDS } from '../_shared/people.ts';
 import type { Item, Sender } from '../_shared/model.ts';
 
@@ -39,6 +41,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('read-paper'), path: z.string().min(10).max(300) }),
   z.object({ action: z.literal('sync'), full: z.boolean().optional() }),
   z.object({ action: z.literal('read-doc'), id: z.string().uuid() }),
+  z.object({ action: z.literal('summary') }),
+  z.object({ action: z.literal('negotiate'), id: z.string().uuid(), okSwitch: z.boolean(), fresh: z.boolean().optional() }),
   z.object({ action: z.literal('import-csv'), rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), description: z.string().max(200), account: z.string().max(80).optional() })).min(1).max(5000) }),
 ]);
 
@@ -103,6 +107,12 @@ async function handle(req: Request): Promise<Response> {
         await saveConnection(db, user.id, 'phone', null, { nonce, since: new Date().toISOString() });
         return json({ key: `${user.id}.${nonce}.${await sign(`phone:${user.id}:${nonce}`)}`, url: `${env('SUPABASE_URL')}/functions/v1/texts` });
       }
+      case 'summary':
+        // 📱 "My apps" page: LifeTracker's card (read-only, no AI).
+        return json(await summary(db, user.id, await settingsOf(db, user.id)));
+      case 'negotiate':
+        // 💬 "Get a lower price": one AI read, then kept on the bill per price (free the next time).
+        return json(await negotiate(db, user.id, await settingsOf(db, user.id), body.id, body.okSwitch, body.fresh));
       case 'ask':
         return json(await ask(db, user.id, await settingsOf(db, user.id), body.question, body.history ?? []));
       case 'unsubscribe':

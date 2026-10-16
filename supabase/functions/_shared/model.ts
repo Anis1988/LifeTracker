@@ -81,7 +81,28 @@ export interface ItemDetails {
   last4?: string;
   documentId?: string;
   dueDay?: number; // a bill due on the 29th–31st: its real day, kept when a short month moves it earlier
+  negotiate?: Negotiation; // 💬 "Get a lower price": the script (kept per price, so it's never paid twice) and how it went
 }
+
+/** 💬 A short phone/chat script to ask the company for a better price (written by the AI, free ones first). */
+export interface NegotiateScript {
+  opener: string; // what to say first
+  ask: string; // the ask itself
+  ifNo: string[]; // what to say if they say no
+  switchLine: string; // only when you're OK to switch: "I'm thinking of cancelling…" ('' otherwise)
+  tips: string[]; // before / during the call (e.g. look at competitors' current offers first)
+  target: string; // a fair thing to aim for, in words
+}
+export interface Negotiation {
+  key: string; // price|cycle|ok to switch: the cached script is reused while these stay the same
+  script: NegotiateScript;
+  by: string;
+  at: string;
+  okSwitch: boolean;
+  result?: { note: string; newPrice: number | null; at: string };
+}
+/** Kinds of bills where asking for a lower price usually works. */
+export const NEGOTIABLE: Category[] = ['internet', 'phone', 'insurance', 'utility', 'subscription', 'membership'];
 
 export interface Suggestion {
   id: string;

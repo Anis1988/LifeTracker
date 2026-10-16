@@ -5,5 +5,6 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
-  build: { outDir: 'build' },
+  // Two pages: the app (index.html) and "My apps" (apps.html, all the owner's apps on one page).
+  build: { outDir: 'build', rollupOptions: { input: { main: 'index.html', apps: 'apps.html' } } },
 });

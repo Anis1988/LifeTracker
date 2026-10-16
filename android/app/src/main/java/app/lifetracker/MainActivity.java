@@ -6,8 +6,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        registerPlugin(TextsPlugin.class);
-        registerPlugin(UpdatePlugin.class); // ⬆️ the update banner's Update button // 💬 appointment texts (Settings → Appointments)
+        registerPlugin(TextsPlugin.class); // 💬 appointment texts (Settings → Appointments)
+        registerPlugin(UpdatePlugin.class); // ⬆️ the update banner's Update button
+        registerPlugin(WidgetPlugin.class); // 🗓️ the "Coming up" home-screen widget
         super.onCreate(savedInstanceState);
     }
 }

@@ -11,6 +11,8 @@ import { AlertBanks } from '../components/Bank';
 import { AboutMe } from '../components/AboutMe';
 import { UpdateBanner } from '../components/AppUpdate';
 import { ApptCard } from '../components/Appointments';
+import { ScriptView } from '../components/Negotiate';
+import { APPS, AppCard, TotalCard, type AppSummary } from '../components/Apps';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
 import type { Alert, Appointment, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
@@ -79,6 +81,21 @@ const TX = [0, 1, 2, 3].flatMap((n) => [
   { posted: `${ym(n)}-05`, amount: -(n ? 180 : 214.5), description: 'EXAMPLE CAFE', merchant: 'example cafe' },
   { posted: `${ym(n)}-06`, amount: -(n ? 95 : 58.2), description: 'EXAMPLE PHARMACY', merchant: 'example pharmacy' },
 ]);
+// Made-up "My apps" answers and a made-up price script.
+const AI = (t: number, w: number, m: number, calls: number[], estimate = false) => ({ today: { calls: calls[0], usd: t }, week: { calls: calls[1], usd: w }, month: { calls: calls[2], usd: m }, estimate });
+const APP_EX: AppSummary[] = [
+  { app: 'lifetracker', lines: [{ icon: '📋', text: 'Next bill: Example Streaming $17.99 tomorrow', tone: 'info' }, { icon: '📅', text: 'Today: Dentist at 15:30', tone: 'info' }, { icon: '✅', text: 'Nothing waiting for you', tone: 'good' }], ai: AI(0.03, 0.09, 0.27, [6, 31, 120], true) },
+  { app: 'trading', lines: [{ icon: '📈', text: 'Portfolio +1.2% today', tone: 'good' }, { icon: '🛑', text: '1 stock near its stop', tone: 'warn' }], ai: { ...AI(0.12, 0.61, 2.4, [4, 19, 77]), byModel: [{ model: 'Claude Sonnet', calls: 4, usd: 0.12 }] } },
+];
+const SCRIPT = {
+  opener: 'Hi, I’ve been an Example Internet customer for about 3 years, and I’d like to talk about my bill.',
+  ask: 'My bill went up to $79.99 a month. Is there a loyalty discount or a cheaper plan with the same speed you can give me?',
+  ifNo: ['Could you check with the loyalty or retention team, please?', 'What promotions do you have for customers like me right now?'],
+  switchLine: 'I like the service, but at this price I’m looking at other companies. I’d rather stay if we can find a better price.',
+  tips: ['Before you call, look up what other internet companies near you offer today.', 'Write down the name of the person and the new price, and ask for it in writing.'],
+  target: 'About $10–15 a month off, or the same speed for less.',
+};
+
 const RULES = { 'example market': 'groceries', 'example gas': 'gas', 'example cafe': 'dining', 'example pharmacy': 'health' };
 const REPORT = spendReport(TX, RULES, ym(0), 31);
 
@@ -166,6 +183,28 @@ export function Guide() {
             <ApptCard appts={APPTS} />
             <AlertList alerts={APPT_ALERT} />
           </div>
+        </Example>
+      </Fold>
+
+      <Fold icon="💬" title="Get a lower price on a bill">
+        <P>Internet, phone, TV, insurance, utilities and subscriptions often lower the price if you ask. Open the bill (Money → Bills) and tap <b>💬 Get a lower price</b>. The AI writes a short script in plain words to read on the phone or in their chat: what to say first, the ask, and what to say if they say no. It uses the bill’s name, its price, how long you’ve had it and any price rises. It never makes up other companies’ prices: it tells you to look them up yourself before you call.</P>
+        <P>Turn on <b>I’m OK to switch company</b> only if you really would: then the script also says, calmly, that you’re looking at other companies. Afterwards write how it went and the new price, and tap <b>Save</b>: only then does the bill change (the new price shows in its price changes).</P>
+        <P>It is 1 AI read (free AIs first, Claude only if they can’t). The script is kept for that price, so opening it again costs nothing; tap ↻ New script for another one.</P>
+        <Example caption="Made-up script for an internet bill, with “OK to switch” on.">
+          <ScriptView s={SCRIPT} by="Gemini Flash (free)" />
+        </Example>
+      </Fold>
+
+      <Fold icon="📱" title="My apps (all your apps on one page)">
+        <P>Tap the four squares at the top (or Settings → <b>My apps</b>) to open a page with all your apps: Trend Videos, Trading, Scam Check, CalorieTracker, LifeTracker and CarLoaner. Each card shows a few words on how it’s doing, an <b>Open</b> button, and what its <b>paid AI</b> cost today, in the last 7 days and this month. The card at the top adds them all up.</P>
+        <P>The first time, tap <b>🔑 Codes</b> and type each app’s access code (the one you already open it with), and CarLoaner’s address. They stay <b>only in that browser</b> and each code goes only to its own app. LifeTracker uses your sign-in. “Code needed” means a code is missing or wrong; “Couldn’t reach it” means the app didn’t answer. Tap ↻ for fresh numbers.</P>
+        <P>Free AIs count as $0. “About” means an estimate: the app counts its AI calls and uses a rough price per call.</P>
+        <Example caption="Made-up My apps page: the total, two apps that answered, one without its code and one that didn’t answer.">
+          <TotalCard results={APP_EX} total={5} />
+          <AppCard app={APPS[0]} url="https://example.com/lifetracker" st={{ s: 'ok', data: APP_EX[0] }} />
+          <AppCard app={APPS[2]} url="https://example.com/trading" st={{ s: 'ok', data: APP_EX[1] }} />
+          <AppCard app={APPS[3]} url="https://example.com/scam-check" st={{ s: 'code', wrong: false }} />
+          <AppCard app={APPS[1]} url="https://example.com/videos" st={{ s: 'offline', why: 'Couldn’t reach it.' }} />
         </Example>
       </Fold>
 
@@ -299,6 +338,7 @@ export function Guide() {
           <li>Sign in with Google or your email: the browser opens a small LifeTracker page, tap <b>Open in the LifeTracker app</b> and you’re in.</li>
         </ol>
         <P>When a new version is ready, a banner at the top says so: tap <b>Update</b>. The app downloads it (a notification shows the progress) and opens Android’s installer: tap <b>Update</b> there (your data stays). The very first time, Android asks you to allow LifeTracker to install updates: switch it on, come back and tap Update again. Connecting Google Calendar or Gmail opens your browser; when it says “connected”, come back to the app.</P>
+        <P><b>Home-screen widget “Coming up”</b>: touch and hold an empty spot on your home screen → Widgets → LifeTracker → Coming up. It shows your next 3 things (bills with their amount, appointments with the time, renewals, dates). It updates each time you open the app; tap it to open LifeTracker.</P>
         <Example caption="Made-up example of the update banner.">
           <UpdateBanner have={12} next={14} />
         </Example>
