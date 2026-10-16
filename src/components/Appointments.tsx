@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { apptKind, type Appointment } from '../../supabase/functions/_shared/model.ts';
+import { apptKind, contactKind, type Appointment, type Contact } from '../../supabase/functions/_shared/model.ts';
+import { contactForAppt, fmtPhone } from '../../supabase/functions/_shared/contacts.ts';
 import { whenText } from '../../supabase/functions/_shared/apptText.ts';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 import { Sheet, Toggle, errText, toast } from './ui';
@@ -8,7 +9,7 @@ import { recentTexts, textsOff, textsOn, textsState, type TextsState } from '../
 const FROM: Record<Appointment['source'], string> = { email: '✉️ Email', text: '💬 Text', hand: '✍️ Added' };
 
 /** 📅 Appointments found in emails and texts: already in your calendar. Also drawn in the Guide (made-up, no buttons). */
-export function ApptCard({ appts, onRemove, max = 5, emailOn = true }: { appts: Appointment[]; onRemove?: (a: Appointment) => Promise<void>; max?: number; emailOn?: boolean }) {
+export function ApptCard({ appts, onRemove, max = 5, emailOn = true, contacts = [] }: { appts: Appointment[]; onRemove?: (a: Appointment) => Promise<void>; max?: number; emailOn?: boolean; contacts?: Contact[] }) {
   const [open, setOpen] = useState<Appointment | null>(null);
   const [all, setAll] = useState(false);
   const t = today();
@@ -23,7 +24,7 @@ export function ApptCard({ appts, onRemove, max = 5, emailOn = true }: { appts: 
         <p className="py-2 text-sm text-slate-500 dark:text-slate-400">{emailOn ? 'Appointments in your emails (and texts, in the Android app) show up here and go straight into your calendar.' : 'Off: turn it on in Settings → Appointments.'}</p>
       )}
       {all && <Sheet title="Appointments" onClose={() => setAll(false)}><ApptList list={list} onOpen={(a) => { setAll(false); setOpen(a); }} /></Sheet>}
-      {open && <Sheet title={open.title} onClose={() => setOpen(null)}><ApptDetails a={open} onRemove={onRemove && (async () => { await onRemove(open); setOpen(null); })} /></Sheet>}
+      {open && <Sheet title={open.title} onClose={() => setOpen(null)}><ApptDetails a={open} contact={contactForAppt(contacts, open)} onRemove={onRemove && (async () => { await onRemove(open); setOpen(null); })} /></Sheet>}
     </section>
   );
 }
@@ -54,7 +55,7 @@ function ApptList({ list, onOpen }: { list: Appointment[]; onOpen: (a: Appointme
   );
 }
 
-export function ApptDetails({ a, onRemove }: { a: Appointment; onRemove?: () => Promise<void> }) {
+export function ApptDetails({ a, onRemove, contact }: { a: Appointment; onRemove?: () => Promise<void>; contact?: Contact }) {
   const [busy, setBusy] = useState(false);
   const remove = async () => {
     if (!onRemove || !confirm(`Remove “${a.title}” from your calendar?`)) return;
@@ -69,6 +70,15 @@ export function ApptDetails({ a, onRemove }: { a: Appointment; onRemove?: () => 
         {a.place && <p>📍 <a className="underline decoration-dotted underline-offset-2" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.place)}`} target="_blank" rel="noopener noreferrer">{a.place}</a></p>}
         {a.notes && <p className="text-slate-600 dark:text-slate-300">📝 {a.notes}</p>}
       </div>
+      {contact && (
+        <div className="panel flex items-center gap-2 !py-2">
+          <a href={`#/contacts?c=${contact.id}`} className="tap flex min-h-[44px] min-w-0 flex-1 items-center gap-2 rounded-2xl text-sm">
+            <span aria-hidden="true">{contactKind(contact.kind).icon}</span>
+            <span className="min-w-0"><span className="block truncate font-semibold">{contact.name}</span><span className="block truncate text-xs text-slate-500 dark:text-slate-400">{contact.phones[0] ? fmtPhone(contact.phones[0]) : 'Open in Contacts'}</span></span>
+          </a>
+          {contact.phones[0] && <a className="btn shrink-0 text-xs" href={`tel:${contact.phones[0].replace(/[^\d+]/g, '')}`}>📞 Call</a>}
+        </div>
+      )}
       <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
         {a.history.map((h, i) => <p key={i}>{new Date(h.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: {h.what}</p>)}
         <p>✓ In your LifeTracker calendar in Google, with reminders.</p>

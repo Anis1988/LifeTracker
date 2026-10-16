@@ -9,6 +9,7 @@ import { Sheet, errText, toast } from '../components/ui';
 import { api } from '../lib/supabase';
 import { timeline } from '../lib/timeline';
 import { weekSummary } from '../../supabase/functions/_shared/week.ts';
+import { contactForAppt } from '../../supabase/functions/_shared/contacts.ts';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import { monthly, today } from '../../supabase/functions/_shared/money.ts';
 import type { Appointment, Item } from '../../supabase/functions/_shared/model.ts';
@@ -118,14 +119,14 @@ export function Home({ go }: { go: (tab: string) => void }) {
         <AlertList alerts={st.alerts} onSeen={(id) => void st.seeAlert(id)} />
       </div>
       <div className="stagger space-y-4">
-        {(s.appts.on || st.appts.length > 0) && <ApptCard appts={st.appts} emailOn={s.appts.on} onRemove={(a) => st.removeAppt(a.id)} />}
+        {(s.appts.on || st.appts.length > 0) && <ApptCard appts={st.appts} emailOn={s.appts.on} contacts={st.contacts} onRemove={(a) => st.removeAppt(a.id)} />}
         <TimelineList moments={moments} onAll={() => setAll(true)} onOpen={(m) => openMoment(m)} />
         <WeekCard lines={lines} onOpen={() => go('me')} />
         <p className="text-center text-xs text-slate-500 dark:text-slate-400">🔄 Automatic check {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</p>
       </div>
       {all && <Sheet title="Next 60 days" onClose={() => setAll(false)}><TimelineList moments={timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases, appts: st.appts }, 60)} max={200} title="Timeline" onOpen={(m) => { setAll(false); openMoment(m); }} /></Sheet>}
       {chat && <Sheet title="Ask LifeTracker" onClose={() => setChat(null)}><AskChat turns={chat} busy={thinking} onAsk={(q) => void ask(q)} /><div className="mt-3"><AskBar onAsk={(q) => void ask(q)} disabled={thinking} /></div></Sheet>}
-      {appt && <Sheet title={appt.title} onClose={() => setAppt(null)}><ApptDetails a={appt} onRemove={async () => { await st.removeAppt(appt.id); setAppt(null); }} /></Sheet>}
+      {appt && <Sheet title={appt.title} onClose={() => setAppt(null)}><ApptDetails a={appt} contact={contactForAppt(st.contacts, appt)} onRemove={async () => { await st.removeAppt(appt.id); setAppt(null); }} /></Sheet>}
       {open && (
         <Sheet title={open.name} onClose={() => setOpen(null)}>
           <ItemForm item={open} onSave={st.saveItem} onDelete={() => st.deleteItem(open.id)} onDone={() => setOpen(null)} />

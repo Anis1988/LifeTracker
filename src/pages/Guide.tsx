@@ -12,9 +12,10 @@ import { AboutMe } from '../components/AboutMe';
 import { UpdateBanner } from '../components/AppUpdate';
 import { ApptCard } from '../components/Appointments';
 import { ScriptView } from '../components/Negotiate';
+import { ContactDetails, ContactGroup, KindChips, SearchBox, arrange, kindOptions } from '../components/Contacts';
 import { APPS, AppCard, TotalCard, type AppSummary } from '../components/Apps';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
-import type { Alert, Appointment, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
+import type { Alert, Appointment, Contact, Doc, Finding, Item, LifeDate, Paper, Purchase, Sender, Suggestion } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
 /* made-up examples, only for this guide */
@@ -69,6 +70,13 @@ const APPTS: Appointment[] = [
   { ...aBase, id: 'ap3', key: 'ap3', title: 'Dinner for 2', kind: 'food', day: d(9), time: '19:45', place: 'Example Bistro', with_who: null, source: 'email', source_from: 'Example Reservations' },
 ] as Appointment[];
 const APPT_ALERT: Alert[] = [{ id: 'aa1', kind: 'appt', key: '', title: '📅 Added to your calendar: Dentist: cleaning · in 2 days, 3:30 PM', body: '12 Example St. Found in a text from Example Dental. Wrong? Remove it on Home.', item_id: null, seen: false, created_at: '' }];
+const cBase = { key: '', person: null, phones: [] as string[], emails: [] as string[], website: null, address: null, notes: null, favorite: false, mine: [], status: 'active' as const };
+const CONTACTS: Contact[] = [
+  { ...cBase, id: 'c1', name: 'Example Dental', kind: 'dentist', person: 'Dr. Example', phones: ['(555) 010-0100'], website: 'https://www.example.com', address: '12 Example St, Springfield', emails: ['office@example.com'], description: 'Your dentist; next visit Oct 21', notes: 'Parking behind the building.', favorite: true, sources: ['email', 'appt'], last_seen: d(-6) },
+  { ...cBase, id: 'c2', name: 'Example Auto Repair', kind: 'car', phones: ['(555) 238-0142'], address: '88 Sample Ave', description: 'Car care; last visit Aug 2026', sources: ['email'], last_seen: d(-60) },
+  { ...cBase, id: 'c3', name: 'Example Insurance', kind: 'insurance', website: 'https://www.example.org', description: 'Your insurance; car insurance bill $690.00 every 6 months', sources: ['bill'], last_seen: d(-20) },
+  { ...cBase, id: 'c4', name: 'Example Pet Clinic', kind: 'pet', phones: ['(555) 761-0177'], description: 'Our vet', sources: ['hand'], last_seen: d(-3) },
+];
 const BUYS: Purchase[] = [
   { id: 'u1', key: 'u1', store: 'Example Electronics', item: 'Headphones', amount: 149.99, bought: d(-12), return_by: d(2), warranty_ends: d(353), status: 'keep', notes: null },
   { id: 'u2', key: 'u2', store: 'Example Home', item: 'Desk lamp', amount: 39, bought: d(-5), return_by: d(25), warranty_ends: null, status: 'keep', notes: null },
@@ -118,7 +126,7 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you. The one exception, your choice: <b>appointments</b> in your emails and texts go straight into your calendar (and you can remove them).</P>
+        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> for your OK: nothing is added, paid or cancelled without you. The exceptions, your choice: <b>appointments</b> in your emails and texts go straight into your calendar, and the places you deal with (dentist, garage, insurer…) go straight into <b>Contacts</b> (you can remove either).</P>
         <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
           <div className="space-y-2">
@@ -183,6 +191,29 @@ export function Guide() {
             <ApptCard appts={APPTS} />
             <AlertList alerts={APPT_ALERT} />
           </div>
+        </Example>
+      </Fold>
+
+      <Fold icon="📇" title="Contacts (your dentist, garage, insurer…)">
+        <P>The <b>Contacts</b> tab keeps the places you deal with: name, kind (dentist, doctor, car, home repairs, hair & beauty, pet, school, bank, insurance, utilities, government, restaurant, shop), the person if there is one, phone, website, address, email and a short line on what they are to you. Tap the phone button to call, or open a card for the website, the map and the email.</P>
+        <P><b>They come by themselves</b> (your choice: straight in, no OK needed): from your <b>appointments</b> (who and where), your <b>bills</b> (insurance, bank, car, health, utilities: not streaming) and the shops in Returns, and every morning from <b>Gmail</b>: the sender, and the phone number, website and street address in the email’s signature, read with free rules. Newsletters, private emails from friends, big online services and “no-reply” emails without real details are skipped. Only when the free rules can’t tell who sent an email does the AI look (free AIs first, a few a day at most, and never twice for the same sender). <b>Look in my emails now</b> runs it at once.</P>
+        <P><b>No doubles</b>: the same place found in an appointment, a bill and an email (or typed by you) is one card. Cards are matched by phone number (“(555) 010-0100” = “555.010.0100”), website, email address, or a name that means the same (“The Example Dental Office LLC” = “Example Dental”); new details are added to the card, never twice. Two branches with different phones and streets stay two cards. Two cards that are really one? Open one → <b>⇄ Same as…</b>.</P>
+        <P><b>Your edits win</b>: what you type (＋ Add or ✎ Edit) is never changed by the automatic finds; they can only fill in what’s missing. Not a contact? Open it → <b>✕ Not a contact</b>: it goes away for good and won’t come back from your emails (Settings → Contacts can show it again). ★ Favourites stay at the top.</P>
+        <P><b>Search</b> finds anything as you type: a name, the person, a kind (“dentist”), a few digits of the phone (“555 0100”), the website, a street, an email or words in the notes. The chips show one kind; <b>A–Z</b> groups by kind, <b>Recent</b> shows the newest first. An appointment on Home shows its contact card with a Call button.</P>
+        <Example caption="Made-up contacts: kind chips, a favourite at the top, then by kind.">
+          <div className="space-y-2">
+            <KindChips options={kindOptions(CONTACTS)} value="all" onChange={() => undefined} />
+            {arrange(CONTACTS, { q: '', kind: 'all', sort: 'name' }).slice(0, 3).map((g) => <ContactGroup key={g.title} title={g.title} list={g.list} />)}
+          </div>
+        </Example>
+        <Example caption="Made-up search: a few digits of the phone find the card.">
+          <div className="space-y-2">
+            <SearchBox q="555 0100" onChange={() => undefined} />
+            {arrange(CONTACTS, { q: '555 0100', kind: 'all', sort: 'name' }).map((g) => <ContactGroup key={g.title} title={g.title} list={g.list} />)}
+          </div>
+        </Example>
+        <Example caption="Made-up card: call, website, map and email in one tap; where it came from.">
+          <div className="card"><ContactDetails c={CONTACTS[0]} /></div>
         </Example>
       </Fold>
 

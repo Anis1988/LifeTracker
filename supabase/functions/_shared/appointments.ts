@@ -106,7 +106,7 @@ export async function readAppt(db: SupabaseClient, userId: string, s: Settings, 
 }
 
 /** ✉️ The Gmail part: new appointment emails since the last look (first time: the last 30 days). */
-export async function apptEmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number): Promise<{ text?: string; changed: number }> {
+export async function apptEmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number, mails: Mail[] = []): Promise<{ text?: string; changed: number }> {
   if (!s.appts.on) return { changed: 0 };
   const c = await connection(db, userId, 'google');
   if (!c || !has(c.meta.scope as string, 'gmail')) return { changed: 0 };
@@ -124,6 +124,7 @@ export async function apptEmailStep(db: SupabaseClient, userId: string, s: Setti
     let m: Mail;
     try { m = await readEmail(at, id); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
     if (!looksLikeAppointment(`${m.subject}\n${m.text.slice(0, 4000)}`)) { seen.add(id); skipped++; continue; }
+    mails.push(m); // 📇 also looked at for contacts (no second read)
     let x: Read;
     const received = dayIn(m.at || Date.parse(`${m.date}T12:00:00Z`), tzOf(s)); // "tomorrow" counts from your day, not UTC's
     try { x = await readAppt(db, userId, s, `From: ${m.from}\nSubject: ${m.subject}\nReceived: ${received}\n\n${m.text}`, received); } catch (e) {

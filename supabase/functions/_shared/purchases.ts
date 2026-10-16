@@ -41,7 +41,7 @@ export function looksLikeOrder(m: Mail): boolean {
 const addDays = (d: string, n: number) => iso(new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400_000));
 const addMonths = (d: string, n: number) => addCycle(d, 'monthly', n);
 
-export async function purchaseStep(db: SupabaseClient, userId: string, s: Settings, until: number): Promise<string | void> {
+export async function purchaseStep(db: SupabaseClient, userId: string, s: Settings, until: number, mails: Mail[] = []): Promise<string | void> {
   if (!s.purchases.on) return;
   const c = await connection(db, userId, 'google');
   if (!c || !has(c.meta.scope as string, 'gmail')) return;
@@ -56,6 +56,7 @@ export async function purchaseStep(db: SupabaseClient, userId: string, s: Settin
     let m: Mail;
     try { m = await readEmail(at, id); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
     if (!looksLikeOrder(m)) { seen.add(id); skipped++; continue; }
+    mails.push(m); // 📇 also looked at for contacts (no second read)
     let x: z.infer<typeof PurchaseSchema>;
     try {
       x = (await askAi(db, userId, s, { text: `From: ${m.from}\nSubject: ${m.subject}\nDate: ${m.date}\n\n${m.text}` }, AI)).data;
