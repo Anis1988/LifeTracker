@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { CATEGORIES, CYCLES, catOf, type Category, type Cycle, type Item } from '../../supabase/functions/_shared/model.ts';
+import { CATEGORIES, CYCLES, NEGOTIABLE, catOf, type Category, type Cycle, type Item } from '../../supabase/functions/_shared/model.ts';
 import { amortize, daysBetween, dueDates, loanPayment, monthly, nextDue, today } from '../../supabase/functions/_shared/money.ts';
 import { Field, Money, Toggle, errText, shortDate, toast } from './ui';
+import { NegotiateSheet } from './Negotiate';
 
 const cycleWord: Record<Cycle, string> = { weekly: '/wk', biweekly: '/2 wk', monthly: '/mo', quarterly: '/3 mo', semiannual: '/6 mo', yearly: '/yr', once: ' once' };
 
@@ -127,6 +128,7 @@ export function ItemForm({ item, onSave, onDelete, onDone }: {
 }) {
   const [f, setF] = useState<Partial<Item>>({ ...empty(item?.category as Category), ...item });
   const [busy, setBusy] = useState(false);
+  const [deal, setDeal] = useState(false);
   const set = (p: Partial<Item>) => setF((x) => ({ ...x, ...p }));
   const det = (p: Partial<Item['details']>) => setF((x) => ({ ...x, details: { ...x.details, ...p } }));
   const d = f.details ?? {};
@@ -211,6 +213,13 @@ export function ItemForm({ item, onSave, onDelete, onDone }: {
         {f.id && f.status !== 'active' && <button className="btn" disabled={busy} onClick={() => set({ status: 'active' })}>Active again</button>}
         {onDelete && <button className="btn text-red-700 dark:text-red-300" disabled={busy} onClick={() => { if (confirm('Delete this bill for good?')) void onDelete().then(onDone).catch((e) => toast('err', errText(e))); }}>🗑</button>}
       </div>
+      {f.id && f.status === 'active' && NEGOTIABLE.includes(f.category as Category) && (
+        <button className="btn mt-2 w-full" onClick={() => setDeal(true)}>💬 Get a lower price{f.details?.negotiate ? ' (script ready)' : ''}</button>
+      )}
+      {deal && f.id && (
+        <NegotiateSheet item={f as Item} onClose={() => setDeal(false)} onScript={(n) => det({ negotiate: n })}
+          onSave={async (patch) => { await onSave({ id: f.id, name: f.name ?? '', ...patch }); set(patch); }} />
+      )}
       {f.id && f.status === 'active' && f.website && <a className="btn-ghost mt-1" href={f.website} target="_blank" rel="noopener noreferrer">↗ Manage or cancel on their site</a>}
     </div>
   );

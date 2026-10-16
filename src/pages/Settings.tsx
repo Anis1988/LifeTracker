@@ -4,6 +4,7 @@ import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
 import { Field, Fold, Toggle, errText, toast } from '../components/ui';
 import { AboutMe } from '../components/AboutMe';
+import { appsUrl } from '../lib/links';
 import { TextsSetup } from '../components/Appointments';
 import { allRows } from '../../supabase/functions/_shared/rows.ts';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
@@ -87,6 +88,11 @@ export function Settings() {
     <div className="stagger mx-auto max-w-2xl space-y-3">
       <h1 className="text-[28px] font-semibold leading-tight">Settings</h1>
       {st.statusErr && <p className="card text-sm text-amber-800 dark:text-amber-200">The server didn’t answer: {st.statusErr}</p>}
+      <a href={appsUrl()} className="card tap flex min-h-[64px] items-center gap-3 !py-3">
+        <span className="tile" aria-hidden="true">📱</span>
+        <span className="min-w-0 flex-1"><span className="block font-display text-[16.5px] font-semibold">My apps</span><span className="block truncate text-xs text-slate-500 dark:text-slate-400">All your apps on one page, with what their AI costs</span></span>
+        <span aria-hidden="true" className="text-slate-400">↗</span>
+      </a>
 
       <Fold icon="👤" title="About me" subtitle={s.me.names.length ? `${s.me.names[0]}${s.me.places[0] ? ` · ${s.me.places[0]}` : ''}` : 'What to look for online (private to you)'}>
         <p className="text-sm text-slate-600 dark:text-slate-300">Used to look for you online (Me → Your name online). Private: only you can see it. It is sent to the free Gemini only to run the searches.</p>

@@ -2,6 +2,17 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { money } from '../../supabase/functions/_shared/money.ts';
 
+/** The slow teal / violet / amber glow behind the glass (still when the phone asks for less motion). */
+export function Aurora() {
+  return (
+    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+      <div className="absolute -left-32 -top-28 h-[380px] w-[420px] rounded-full bg-teal-300 opacity-50 blur-[70px] will-change-transform animate-[drift1_20s_ease-in-out_infinite] dark:bg-teal-600 dark:opacity-50" />
+      <div className="absolute -right-40 top-40 h-[340px] w-[380px] rounded-full bg-violet-300 opacity-45 blur-[80px] will-change-transform animate-[drift2_24s_ease-in-out_infinite] dark:bg-violet-700 dark:opacity-45" />
+      <div className="absolute -bottom-32 left-6 h-[260px] w-[320px] rounded-full bg-amber-200 opacity-40 blur-[90px] will-change-transform animate-[drift1_28s_ease-in-out_infinite] dark:bg-amber-600 dark:opacity-[0.22]" />
+    </div>
+  );
+}
+
 export function Money({ n, currency = 'USD', className = '' }: { n: number; currency?: string; className?: string }) {
   return <span className={`num ${className}`}>{money(n, currency)}</span>;
 }
