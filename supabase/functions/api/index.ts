@@ -11,6 +11,7 @@ import { ask } from '../_shared/ask.ts';
 import { summary } from '../_shared/summary.ts';
 import { negotiate } from '../_shared/negotiate.ts';
 import { mimeOf, readVault } from '../_shared/vault.ts';
+import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow } from '../_shared/receipts.ts';
 import type { Item, Sender } from '../_shared/model.ts';
 
 /**
@@ -23,7 +24,7 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('bank-connect'), setupToken: z.string().min(20).max(2000) }),
   z.object({ action: z.literal('disconnect'), kind: z.enum(['simplefin', 'google']) }),
   z.object({ action: z.literal('google-start'), want: z.array(z.enum(['calendar', 'gmail', 'mailbox'])).min(1).max(3), back: z.string().url().max(300) }),
-  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault']) }),
+  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail']) }),
   z.object({ action: z.literal('phone-key') }),
   z.object({ action: z.literal('ask'), question: z.string().min(2).max(500), history: z.array(z.object({ q: z.string().max(500), a: z.string().max(2000) })).max(6).optional() }),
   z.object({ action: z.literal('unsubscribe'), id: z.string().uuid() }),
@@ -33,6 +34,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('read-doc'), id: z.string().uuid() }),
   z.object({ action: z.literal('summary') }),
   z.object({ action: z.literal('negotiate'), id: z.string().uuid(), okSwitch: z.boolean(), fresh: z.boolean().optional() }),
+  z.object({ action: z.literal('receipt-add'), path: z.string().min(10).max(300) }),
+  z.object({ action: z.literal('receipt'), op: z.enum(['edit', 'reread', 'delete']), id: z.string().uuid(), entry: z.boolean().optional(), details: z.object({ store: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), total: z.number().min(0).max(1e6), tax: z.number().min(0).max(1e6).nullable(), card: z.string().regex(/^\d{4}$/).nullable(), items: z.array(z.object({ name: z.string().max(60), qty: z.number().min(0).max(1e4).nullable(), price: z.number().min(-1e6).max(1e6).nullable() })).max(40) }).optional() }),
   z.object({ action: z.literal('import-csv'), rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), description: z.string().max(200), account: z.string().max(80).optional() })).min(1).max(5000) }),
 ]);
 
@@ -46,13 +49,13 @@ async function handle(req: Request): Promise<Response> {
     const db = admin();
     switch (body.action) {
       case 'status': {
-        const [bank, google, status, me, mail, phone, contacts, vault] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), connection(db, user.id, 'me'), connection(db, user.id, 'mail'), connection(db, user.id, 'phone'), connection(db, user.id, 'contacts'), connection(db, user.id, 'vault')]);
+        const [bank, google, status, me, mail, phone, contacts, vault, receipts] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), connection(db, user.id, 'me'), connection(db, user.id, 'mail'), connection(db, user.id, 'phone'), connection(db, user.id, 'contacts'), connection(db, user.id, 'vault'), connection(db, user.id, 'receipts')]);
         const { data: usage } = await db.from('ai_usage').select('provider, n').eq('user_id', user.id).eq('day', new Date().toISOString().slice(0, 10));
         return json({
           bank: bank ? { connected: true, lastSync: bank.meta.lastSync ?? null, accounts: bank.meta.accounts ?? [], errors: bank.meta.errors ?? [] } : { connected: false },
           google: google ? { connected: true, email: google.meta.email ?? null, calendar: has(google.meta.scope as string, 'calendar'), gmail: has(google.meta.scope as string, 'gmail'), lastGmail: google.meta.gmailScanned ?? null, alertsScanned: google.meta.alertsScanned ?? null, alertsRead: google.meta.alertsRead ?? 0, alertBanks: google.meta.alertBanks ?? [], mailbox: has(google.meta.scope as string, 'mailbox') } : { connected: false },
           me: { lastOnline: me?.meta.lastOnline ?? null, lastErrors: me?.meta.lastErrors ?? [], weekSent: me?.meta.weekSent ?? null, breachScanned: me?.meta.breachScanned ?? null },
-          mail: { lastSweep: mail?.meta.lastSweep ?? null, sweepDone: !!mail?.meta.sweepDone, headsRead: mail?.meta.headsRead ?? 0, apptsScanned: mail?.meta.apptsScanned ?? null, contactsScanned: contacts?.meta.scanned ?? null, vaultScanned: vault?.meta.scanned ?? null },
+          mail: { lastSweep: mail?.meta.lastSweep ?? null, sweepDone: !!mail?.meta.sweepDone, headsRead: mail?.meta.headsRead ?? 0, apptsScanned: mail?.meta.apptsScanned ?? null, contactsScanned: contacts?.meta.scanned ?? null, vaultScanned: vault?.meta.scanned ?? null, receiptsScanned: receipts?.meta.scanned ?? null, mailChecked: receipts?.meta.mailChecked ?? null },
           phone: { since: phone?.meta.since ?? null, lastText: phone?.meta.lastText ?? null },
           lastRun: status?.meta ?? null,
           aiUsed: Object.fromEntries((usage ?? []).map((u) => [u.provider, u.n])),
@@ -157,18 +160,34 @@ async function handle(req: Request): Promise<Response> {
           throw new HttpError(msg, 502);
         }
       }
+      case 'receipt-add': {
+        // 🧾 A receipt added by hand (photo / PDF in this person's own folder): read once (cached by hash) → Spending, counted once.
+        if (!(body.path.startsWith(`${user.id}/money/`) || body.path.startsWith(`${user.id}/vault/`)) || body.path.includes('..')) throw new HttpError('Not found.', 404);
+        const { data: file, error } = await db.storage.from('docs').download(body.path);
+        if (error || !file) throw new HttpError('The file is missing.', 404);
+        const r = await receiptFromFile(db, user.id, await settingsOf(db, user.id), body.path, new Uint8Array(await file.arrayBuffer()), mimeOf(body.path, file.type));
+        if (r.status === 'known') await db.storage.from('docs').remove([body.path]); // already there: not kept twice
+        return json({ ...r, text: savedText(r.status, r.business, r.amount) });
+      }
+      case 'receipt': {
+        if (body.op === 'edit' && !body.details) throw new HttpError('Invalid request.', 400);
+        const op = body.op === 'edit' ? { op: 'edit' as const, id: body.id, details: body.details! } : body.op === 'reread' ? { op: 'reread' as const, id: body.id } : { op: 'delete' as const, id: body.id, entry: !!body.entry };
+        return json(await receiptAction(db, user.id, await settingsOf(db, user.id), op));
+      }
       case 'import-csv': {
         // A bank CSV read on the device: stored like bank transactions, then the recurring ones are found.
-        const rows = body.rows.map((r) => ({
+        // 🧾 A purchase already in Spending from its receipt is merged into that line (counted once).
+        const all: BankRow[] = body.rows.map((r) => ({
           user_id: user.id, external_id: `csv:${r.date}:${r.amount}:${r.description.slice(0, 60)}`, account: r.account ?? 'CSV import',
-          posted: r.date, amount: r.amount, description: r.description, merchant: merchantKey(r.description),
+          posted: r.date, amount: r.amount, description: r.description, merchant: merchantKey(r.description), source: 'csv' as const,
         }));
+        const { rows } = await mergeBankRows(db, user.id, all);
         for (let i = 0; i < rows.length; i += 500) {
           const { error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
           if (error) throw new Error(error.message);
         }
         const log = await syncUser(db, user.id, user.email);
-        return json({ ok: true, imported: rows.length, log });
+        return json({ ok: true, imported: all.length, log });
       }
     }
   } catch (e) {

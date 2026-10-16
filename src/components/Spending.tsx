@@ -58,7 +58,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
               )}
             </div>
           );
-        }) : <p className="text-sm text-slate-500 dark:text-slate-400">No purchases this month yet. They come from your bank alert emails (Settings → Bank & cards) or a bank CSV (Inbox).</p>}
+        }) : <p className="text-sm text-slate-500 dark:text-slate-400">No purchases this month yet. They come from your bank alert emails (Settings → Bank & cards), your receipts, or a bank CSV (Inbox).</p>}
       </section>
 
       {r.top.length > 0 && (

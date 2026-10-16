@@ -14,13 +14,15 @@ export interface Status {
   bank: { connected: boolean; lastSync?: string | null; accounts?: { name: string; balance: number; currency: string }[]; errors?: string[] };
   google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean };
   me?: { lastOnline: string | null; lastErrors: string[]; weekSent: string | null; breachScanned: string | null };
-  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null; vaultScanned?: string | null };
+  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null; vaultScanned?: string | null; receiptsScanned?: string | null; mailChecked?: string | null };
   phone?: { since: string | null; lastText: string | null };
   lastRun: { lastRun?: string; steps?: string[]; errors?: string[] } | null;
   aiUsed: Record<string, number>;
   keys: Record<'gemini' | 'groq' | 'openrouter' | 'claude' | 'google' | 'email' | 'secret', boolean>;
   email?: string;
 }
+
+const TX_COLS = 'id, posted, amount, description, merchant, item_id, account, source, receipt_path, note, details';
 
 interface Store {
   session: Session;
@@ -104,7 +106,10 @@ export function StoreProvider({ session, children }: { session: Session; childre
       supabase.from('senders').select('*').order('emails', { ascending: false }).limit(500),
       supabase.from('papers').select('*').order('expires', { ascending: true, nullsFirst: false }),
       // More than 1,000 rows come in pages (Supabase sends at most 1,000 at a time).
-      allRows<SpendTx>((a, b) => supabase.from('transactions').select('posted, amount, description, merchant, item_id').gte('posted', since).order('posted', { ascending: false }).order('external_id').range(a, b), 10000).then((data) => ({ data })),
+      // 🧾 with the receipt columns (a moment after an update they may not exist yet: then without them).
+      allRows<SpendTx>((a, b) => supabase.from('transactions').select(TX_COLS).gte('posted', since).order('posted', { ascending: false }).order('external_id').range(a, b), 10000)
+        .catch(() => allRows<SpendTx>((a, b) => supabase.from('transactions').select('posted, amount, description, merchant, item_id').gte('posted', since).order('posted', { ascending: false }).order('external_id').range(a, b), 10000))
+        .then((data) => ({ data })),
       supabase.from('purchases').select('*').neq('status', 'ignored').order('bought', { ascending: false }).limit(300),
       supabase.from('life_dates').select('*').order('next_date'),
       supabase.from('appointments').select('*').eq('status', 'booked').gte('day', yesterday).order('day').order('time').limit(200),

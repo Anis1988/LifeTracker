@@ -211,11 +211,12 @@ export function applyRead(d: Partial<Paper>, r: VaultReadResult, typed: Set<stri
   return { next, filled };
 }
 
-export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onDone, read, example }: {
+export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onDone, read, onReceipt, example }: {
   doc: Partial<Paper>; s: Settings; userId: string; existing?: Paper[];
   onSave?: (p: Partial<Paper> & { name: string }) => Promise<unknown>; onDelete?: () => Promise<void>; onDone?: () => void;
-  read?: (path: string) => Promise<VaultReadResult>; example?: { filled: string[]; pages: number };
+  read?: (path: string) => Promise<VaultReadResult>; onReceipt?: (path: string) => Promise<void>; example?: { filled: string[]; pages: number };
 }) {
+  const [receipt, setReceipt] = useState<string | null>(null); // 🧾 the AI says it's a receipt: offer Money → Spending
   const [d, setD] = useState<Partial<Paper>>({ ...PAPER_DEFAULTS, ...doc, tags: doc.tags ?? [], files: doc.files ?? [] });
   const [pages, setPages] = useState<Page[]>([]);
   const [one, setOne] = useState(true); // combine the pages into one PDF
@@ -282,6 +283,7 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
       const { next, filled: f } = applyRead(d, r, typed.current);
       setD((c) => ({ ...c, ...next, files: c.files, file_hash: c.file_hash }));
       setFilled(f);
+      if (r.route === 'receipt' && onReceipt) setReceipt(path);
       toast('ok', r.cached ? 'Filled in from the last time this file was read (free).' : `Read by ${r.by}. Check it, then Save.`);
     } catch (e) { if (errText(e) !== 'Not saved twice.') toast('err', errText(e)); }
     setBusy('');
@@ -311,6 +313,13 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
   const total = (d.files?.length ?? 0) + pages.length + (example?.pages ?? 0);
   return (
     <div className="space-y-3">
+      {receipt && onReceipt && (
+        <div className="panel space-y-2 !border-teal-400/50">
+          <p className="text-sm font-semibold">🧾 This looks like a receipt</p>
+          <p className="text-xs text-slate-600 dark:text-slate-300">Receipts belong in Money → Spending (with the picture, the total and what you bought), not in the Vault.</p>
+          <button className="btn-primary w-full" disabled={!!busy} onClick={() => { setBusy('receipt'); saved.current = true; void onReceipt(receipt).then(() => onDone?.(), (e) => { saved.current = false; toast('err', errText(e)); }).finally(() => setBusy('')); }}>{busy === 'receipt' ? <span className="spinner" /> : 'Put it in Spending instead'}</button>
+        </div>
+      )}
       <div className="glass space-y-2.5 rounded-[26px] border-2 !border-dashed !border-teal-500/30 p-3 dark:!border-teal-300/25">
         <div className="grid grid-cols-2 gap-2">
           <label className="btn-primary cursor-pointer focus-within:shadow-[0_0_0_4px_rgba(94,234,212,0.25)]">📷 Scan

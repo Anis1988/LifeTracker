@@ -4,7 +4,10 @@ import { api } from '../lib/supabase';
 import { Bills } from './Bills';
 import { PurchaseForm, PurchaseRow, SpendingView } from '../components/Spending';
 import { Empty, Seg, Sheet, errText, toast } from '../components/ui';
-import { spendReport } from '../../supabase/functions/_shared/spend.ts';
+import { categorize, spendCat, spendReport, type SpendTx } from '../../supabase/functions/_shared/spend.ts';
+import { matchSpend } from '../../supabase/functions/_shared/receiptText.ts';
+import { SearchBox } from '../components/Contacts';
+import { AddReceipt, ReceiptSheet, ReceiptViewer, SpendRow, lastChecked, useThumbs } from '../components/Receipts';
 import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
 
@@ -30,17 +33,53 @@ function Spending() {
   const now = t.slice(0, 7);
   const last = addCycle(`${now}-01`, 'monthly', -1).slice(0, 7);
   const [month, setMonth] = useState(now);
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState<{ id: string; del?: boolean } | null>(null);
+  const [view, setView] = useState<string | null>(null);
   const r = useMemo(() => spendReport(st.tx, s.spend.rules, month, month === now ? Number(t.slice(8, 10)) : 31), [st.tx, s.spend.rules, month, now]);
   const save = (spend: typeof s.spend) => void st.saveSettings({ ...s, spend }).catch((e) => toast('err', errText(e)));
+  const move = (key: string, cat: string) => { save({ ...s.spend, rules: { ...s.spend.rules, [key]: cat } }); toast('ok', 'Moved. That shop goes there from now on.'); };
+  // 🔎 Search (on this phone): shop, items on the receipt, amount, date, category, notes, the email it came from.
+  const found = useMemo(() => (q.trim() ? st.tx.filter((x) => Number(x.amount) < 0 && matchSpend(x, q, spendCat(categorize(x, s.spend.rules)).label)).slice(0, 80) : []), [q, st.tx, s.spend.rules]);
+  const receipts = useMemo(() => st.tx.filter((x) => x.receipt_path && x.posted.slice(0, 7) === month), [st.tx, month]);
+  const shown = q.trim() ? found : receipts;
+  const urls = useThumbs(shown);
+  const byId = (id: string | null | undefined) => st.tx.find((x) => x.id === id);
+  const sel = byId(open?.id);
+  const viewing = byId(view);
+  const onView = (x: SpendTx) => () => { if (x.receipt_path?.startsWith('gmail:')) window.open(`https://mail.google.com/mail/u/0/#all/${x.receipt_path.slice(6)}`, '_blank'); else setView(x.id ?? null); };
+  const gmail = !!st.status?.google.gmail;
   return (
     <div className="stagger space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-[28px] font-semibold leading-tight">Spending</h1>
         <Seg label="Month" options={[[now, 'This month'], [last, 'Last month']]} value={month} onChange={setMonth} />
       </div>
-      <SpendingView r={r} budgets={s.spend.budgets} alertAt={s.spend.alertAt} monthName={monthName(month)}
-        onBudget={(cat, n) => { const budgets = { ...s.spend.budgets }; if (n) budgets[cat] = n; else delete budgets[cat]; save({ ...s.spend, budgets }); toast('ok', n ? 'Budget saved: you get a heads-up at 80% and when it’s used up.' : 'Budget removed.'); }}
-        onMove={(key, cat) => { save({ ...s.spend, rules: { ...s.spend.rules, [key]: cat } }); toast('ok', 'Moved. That shop goes there from now on.'); }} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1 basis-full sm:basis-56"><SearchBox q={q} onChange={setQ} placeholder="Shop, item, 23.45, March…" label="Search spending and receipts" /></div>
+        <AddReceipt userId={st.session.user.id} className="w-full whitespace-nowrap sm:w-auto" onAdded={async (id) => { await st.reload(); if (id) setOpen({ id }); }} />
+      </div>
+      {q.trim() ? (
+        <section className="card space-y-1">
+          <p className="label">{found.length ? `${found.length}${found.length === 80 ? '+' : ''} found` : 'Nothing found'}</p>
+          {found.length ? <ul>{found.map((x) => <SpendRow key={x.id ?? `${x.posted}${x.description}${x.amount}`} t={x} url={x.receipt_path ? urls[x.receipt_path] : undefined} rules={s.spend.rules} onOpen={() => x.id && setOpen({ id: x.id })} onView={onView(x)} />)}</ul>
+            : <p className="text-sm text-slate-500 dark:text-slate-400">Try a shop, something you bought, an amount like 23.45, or a month.</p>}
+        </section>
+      ) : (
+        <>
+          <SpendingView r={r} budgets={s.spend.budgets} alertAt={s.spend.alertAt} monthName={monthName(month)}
+            onBudget={(cat, n) => { const budgets = { ...s.spend.budgets }; if (n) budgets[cat] = n; else delete budgets[cat]; save({ ...s.spend, budgets }); toast('ok', n ? 'Budget saved: you get a heads-up at 80% and when it’s used up.' : 'Budget removed.'); }}
+            onMove={move} />
+          <section className="card space-y-1">
+            <div className="flex items-baseline justify-between gap-2"><p className="label">🧾 Receipts</p><span className="text-[11px] text-slate-500 dark:text-slate-400">Tap a picture for full screen</span></div>
+            {receipts.length ? <ul>{receipts.map((x) => <SpendRow key={x.id} t={x} url={urls[x.receipt_path!]} rules={s.spend.rules} onOpen={() => x.id && setOpen({ id: x.id })} onView={onView(x)} />)}</ul>
+              : <p className="text-sm text-slate-500 dark:text-slate-400">No receipts this month yet. Receipts in your emails come here by themselves, or tap 📷 Add a receipt.</p>}
+          </section>
+        </>
+      )}
+      <p className="text-xs text-slate-500 dark:text-slate-400">{gmail ? `📧 Your Gmail is checked every hour for receipts and bank alerts (free checks first). Last checked: ${lastChecked(st.status?.mail?.mailChecked ?? st.status?.mail?.receiptsScanned)}.` : 'Connect Gmail (Settings → Google) and receipts in your emails come here by themselves.'} A receipt that matches a bank purchase is attached to it, so nothing is counted twice.</p>
+      {sel && <ReceiptSheet key={sel.id} t={sel} url={sel.receipt_path ? urls[sel.receipt_path] : undefined} rules={s.spend.rules} startDelete={open?.del} onMove={(cat) => move(sel.merchant || (sel.description ?? 'other').toLowerCase(), cat)} onClose={() => setOpen(null)} onChanged={st.reload} />}
+      {viewing?.receipt_path && <ReceiptViewer t={viewing} url={urls[viewing.receipt_path]} onClose={() => setView(null)} onDelete={() => { setView(null); setOpen({ id: viewing.id!, del: true }); }} />}
     </div>
   );
 }

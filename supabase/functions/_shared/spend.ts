@@ -1,3 +1,5 @@
+import type { ReceiptDetails } from './receiptText.ts';
+
 /**
  * 💸 Spending: every purchase gets a spending category with free rules (shop names), no AI. You can move a shop to
  * another category (Settings.spend.rules, by shop). A month is compared with your usual month (the 3 before it).
@@ -46,7 +48,11 @@ export function categorize(tx: { description: string | null; merchant: string | 
   return RULES.find(([re]) => re.test(text))?.[1] ?? 'other';
 }
 
-export interface SpendTx { posted: string; amount: number; description: string | null; merchant: string | null; item_id?: string | null }
+export interface SpendTx {
+  posted: string; amount: number; description: string | null; merchant: string | null; item_id?: string | null;
+  // 🧾 receipts (Money → Spending): the receipt file (or gmail:<id>), where the line came from, "From email: …"
+  id?: string; account?: string | null; source?: 'bank' | 'alert' | 'csv' | 'receipt'; receipt_path?: string | null; note?: string | null; details?: ReceiptDetails | null;
+}
 export interface SpendReport {
   month: string; // YYYY-MM
   total: number;
