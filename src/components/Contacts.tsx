@@ -49,7 +49,7 @@ export function ContactGroup({ title, list, onOpen }: { title: string; list: Con
 }
 
 /** The kind chips: scroll sideways; a glass pill slides to the chosen one. */
-export function KindChips({ options, value, onChange }: { options: { id: string; label: string; n: number }[]; value: string; onChange: (id: string) => void }) {
+export function KindChips({ options, value, onChange, label = 'Kind' }: { options: { id: string; label: string; n: number }[]; value: string; onChange: (id: string) => void; label?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
   useLayoutEffect(() => {
@@ -60,7 +60,7 @@ export function KindChips({ options, value, onChange }: { options: { id: string;
     if (el.offsetLeft < box.scrollLeft || el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = el.offsetLeft - 16;
   }, [value, options.map((o) => o.id + o.n).join()]);
   return (
-    <div ref={ref} role="tablist" aria-label="Kind" className="no-bar relative -mx-4 flex gap-1.5 overflow-x-auto px-4 py-1">
+    <div ref={ref} role="tablist" aria-label={label} className="no-bar relative -mx-4 flex gap-1.5 overflow-x-auto px-4 py-1">
       {pill && <span aria-hidden="true" className="chippill" style={{ width: pill.w, transform: `translateX(${pill.x}px)` }} />}
       {options.map((o) => (
         <button key={o.id} role="tab" aria-selected={o.id === value} onClick={() => onChange(o.id)}
@@ -73,11 +73,11 @@ export function KindChips({ options, value, onChange }: { options: { id: string;
 }
 
 /** The search box: everything, on the device, as you type. */
-export function SearchBox({ q, onChange }: { q: string; onChange: (q: string) => void }) {
+export function SearchBox({ q, onChange, placeholder = 'Name, phone, street, kind…', label = 'Search contacts' }: { q: string; onChange: (q: string) => void; placeholder?: string; label?: string }) {
   return (
     <div className="relative">
       <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-      <input className="input w-full !rounded-[20px] pl-10 pr-12" type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder="Name, phone, street, kind…" value={q} onChange={(e) => onChange(e.target.value)} aria-label="Search contacts" />
+      <input className="input w-full !rounded-[20px] pl-10 pr-12" type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder={placeholder} value={q} onChange={(e) => onChange(e.target.value)} aria-label={label} />
       {q && <button className="btn-ghost absolute right-0.5 top-1/2 -translate-y-1/2 !rounded-full text-slate-400" aria-label="Clear the search" onClick={() => onChange('')}>✕</button>}
     </div>
   );

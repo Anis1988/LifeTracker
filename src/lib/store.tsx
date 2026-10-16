@@ -14,7 +14,7 @@ export interface Status {
   bank: { connected: boolean; lastSync?: string | null; accounts?: { name: string; balance: number; currency: string }[]; errors?: string[] };
   google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean };
   me?: { lastOnline: string | null; lastErrors: string[]; weekSent: string | null; breachScanned: string | null };
-  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null };
+  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null; vaultScanned?: string | null };
   phone?: { since: string | null; lastText: string | null };
   lastRun: { lastRun?: string; steps?: string[]; errors?: string[] } | null;
   aiUsed: Record<string, number>;
@@ -198,12 +198,15 @@ export function StoreProvider({ session, children }: { session: Session; childre
     savePaper: async (p) => {
       const row = { ...p, user_id: session.user.id };
       delete (row as Partial<Paper>).created_at;
+      delete (row as Partial<Paper>).updated_at;
       const saved = check(await (p.id ? supabase.from('papers').update(row).eq('id', p.id) : supabase.from('papers').insert(row)).select().single()) as Paper;
       setPapers((cur) => [...cur.filter((x) => x.id !== saved.id), saved].sort((a, b) => (a.expires ?? '9') < (b.expires ?? '9') ? -1 : 1));
       return saved;
     },
     deletePaper: async (p) => {
-      if (p.photo) await supabase.storage.from('docs').remove([p.photo]);
+      // 📁 The row and every page / PDF it keeps (in the private bucket).
+      const files = [...new Set([...(p.files ?? []), ...(p.photo ? [p.photo] : [])])];
+      if (files.length) { const r = await supabase.storage.from('docs').remove(files); if (r.error) throw new Error(r.error.message); }
       check(await supabase.from('papers').delete().eq('id', p.id));
       setPapers((cur) => cur.filter((x) => x.id !== p.id));
     },

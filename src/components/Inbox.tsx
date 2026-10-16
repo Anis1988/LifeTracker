@@ -32,7 +32,7 @@ export function SuggestionCard({ s, onAdd, onIgnore }: { s: Suggestion; onAdd?: 
 }
 
 // '' = the title already starts with its own icon (documents, credit, breaches).
-const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭', budget: '', return: '', warranty: '', date: '', appt: '' };
+const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭', budget: '', return: '', warranty: '', date: '', appt: '', vault: '' };
 export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: string) => void }) {
   if (!alerts.length) return null;
   return (
@@ -92,7 +92,7 @@ export function Uploader({ userId, onDone }: { userId: string; onDone: () => voi
   );
 }
 
-export function DocRow({ d, onChange }: { d: Doc; onChange?: () => void }) {
+export function DocRow({ d, onChange, onMove }: { d: Doc; onChange?: () => void; onMove?: () => void }) {
   const [busy, setBusy] = useState(false);
   const x = d.extracted;
   const view = async () => {
@@ -118,6 +118,7 @@ export function DocRow({ d, onChange }: { d: Doc; onChange?: () => void }) {
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold">{x?.name || d.file_name}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">{d.file_name} · {shortDate(d.created_at.slice(0, 10))}{d.ai_by ? ` · read by ${d.ai_by}` : ''}</p>
+          {d.origin && <p className="truncate text-xs text-slate-500 dark:text-slate-400">✉️ {d.origin}</p>}
         </div>
         <span className={`chip ${d.status === 'done' ? 'border-emerald-300 text-emerald-800 dark:text-emerald-200' : d.status === 'failed' ? 'border-red-300 text-red-700 dark:text-red-300' : 'border-slate-900/10 dark:border-white/10 text-slate-600 dark:text-slate-300'}`}>
           {d.status === 'done' ? (x?.isBill ? (d.item_id ? 'linked' : 'in Inbox') : 'not a bill') : d.status === 'failed' ? 'failed' : 'reading…'}
@@ -133,6 +134,7 @@ export function DocRow({ d, onChange }: { d: Doc; onChange?: () => void }) {
       {onChange && (
         <div className="flex flex-wrap gap-2 pt-1">
           <button className="btn text-xs" onClick={() => void view()}>Open</button>
+          {onMove && d.status === 'done' && !x?.isBill && <button className="btn text-xs" onClick={onMove}>📁 Move to Vault</button>}
           <button className="btn text-xs" disabled={busy} onClick={() => void reread()}>{busy ? <span className="spinner" /> : '↻ Read again'}</button>
           <button className="btn text-xs text-red-700 dark:text-red-300" onClick={() => void remove()}>🗑</button>
         </div>

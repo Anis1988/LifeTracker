@@ -124,7 +124,7 @@ export interface Suggestion {
   created_at: string;
 }
 
-export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
+export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt' | 'vault'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
 
 // ---------- 👤 Me: name online, people-search sites, breaches, mailing lists, documents that expire ----------
 export interface Finding {
@@ -138,11 +138,45 @@ export interface Sender {
   unsub: { oneClick?: string; web?: string; mailto?: string }; spam: boolean;
   status: 'subscribed' | 'unsubscribed' | 'web' | 'kept' | 'blocked' | 'failed'; auto: boolean; done_at: string | null; error: string | null;
 }
-export interface Paper { id: string; kind: string; name: string; holder: string | null; number_end: string | null; expires: string | null; notes: string | null; photo: string | null; created_at?: string }
+/**
+ * 📁 A document in the Vault (the table is still called "papers": the passport, licence… of the Me tab are Vault documents too).
+ * name = title, holder = for whom (a name from Settings → Vault → People & pets, or free text), expires = the expiry or
+ * next-due date (due_kind), files = pages / PDF in the private "docs" bucket, body = searchable words read from it.
+ */
+export interface Paper {
+  id: string; kind: string; name: string; holder: string | null; number_end: string | null; expires: string | null; notes: string | null; photo: string | null;
+  folder: string; due_kind: 'expires' | 'due'; doc_date: string | null; tags: string[]; files: string[]; file_hash: string | null;
+  summary: string | null; body: string | null; source: 'hand' | 'scan' | 'email' | 'inbox'; source_key: string | null;
+  remind: boolean; calendar: boolean; ai_by: string | null;
+  created_at?: string; updated_at?: string;
+}
+export type VaultDoc = Paper;
+/** A new Vault document's defaults (and the made-up examples in the Guide). */
+export const PAPER_DEFAULTS: Omit<Paper, 'id' | 'name'> = {
+  kind: 'other', holder: null, number_end: null, expires: null, notes: null, photo: null, folder: 'other', due_kind: 'expires', doc_date: null, tags: [], files: [],
+  file_hash: null, summary: null, body: null, source: 'hand', source_key: null, remind: true, calendar: true, ai_by: null,
+};
+export const VAULT_FOLDERS: { id: string; icon: string; label: string }[] = [
+  { id: 'pets', icon: '🐾', label: 'Pets' },
+  { id: 'medical', icon: '🩺', label: 'Medical' },
+  { id: 'ids', icon: '🪪', label: 'IDs & passports' },
+  { id: 'home', icon: '🏠', label: 'Home' },
+  { id: 'car', icon: '🚗', label: 'Car' },
+  { id: 'insurance', icon: '🛡️', label: 'Insurance' },
+  { id: 'school', icon: '🎓', label: 'School' },
+  { id: 'taxes', icon: '🧾', label: 'Taxes' },
+  { id: 'legal', icon: '⚖️', label: 'Legal & contracts' },
+  { id: 'certificates', icon: '📜', label: 'Certificates' },
+  { id: 'other', icon: '📁', label: 'Other' },
+];
+export const folderOf = (id: string | null | undefined) => VAULT_FOLDERS.find((f) => f.id === id) ?? VAULT_FOLDERS[VAULT_FOLDERS.length - 1];
+/** 👤 People and 🐾 pets documents can be for (Settings → Vault). */
+export interface VaultPerson { name: string; kind: 'me' | 'family' | 'pet'; emoji?: string }
+export const personIcon = (p: VaultPerson | undefined) => p?.emoji || (p?.kind === 'pet' ? '🐾' : '👤');
 export type Freeze = 'unknown' | 'frozen' | 'not';
 
 // ---------- 🧾 returns & warranties, 🎂 important dates ----------
-export interface Purchase { id: string; key: string; store: string; item: string | null; amount: number | null; bought: string; return_by: string | null; warranty_ends: string | null; status: 'keep' | 'kept' | 'returning' | 'returned' | 'ignored'; notes: string | null; created_at?: string }
+export interface Purchase { id: string; key: string; store: string; item: string | null; amount: number | null; bought: string; return_by: string | null; warranty_ends: string | null; status: 'keep' | 'kept' | 'returning' | 'returned' | 'ignored'; notes: string | null; file?: string | null; created_at?: string } // file = the receipt (from an email) in the private bucket
 export interface LifeDate { id: string; kind: string; title: string; next_date: string; every_months: number | null; remind_days: number; notes: string | null; created_at?: string }
 export const DATE_KINDS: { id: string; icon: string; label: string }[] = [
   { id: 'birthday', icon: '🎂', label: 'Birthday' },
@@ -213,6 +247,7 @@ export const contactKind = (id: string) => CONTACT_KINDS.find((k) => k.id === id
 export interface Doc {
   id: string; path: string; file_name: string; mime: string; size: number;
   status: 'new' | 'reading' | 'done' | 'failed'; extracted: Extracted | null; ai_by: string | null; error: string | null; item_id: string | null; created_at: string;
+  origin?: string | null; hash?: string | null; // origin = "From email: …" for bill attachments found in Gmail
 }
 
 /** What the AI reads from a bill, policy, statement or email. */
@@ -290,6 +325,15 @@ export interface Settings {
   appts: { on: boolean; timeZone: string; remind: number[] };
   /** 📇 contacts found in emails (and appointments, bills) are added straight to Contacts (owner's choice). */
   contacts: { on: boolean };
+  /**
+   * 📁 Vault: emails = save important document attachments found in Gmail (owner's choice: straight in); maxPerRun = most
+   * attachments read by the AI per morning; people = who documents can be for; lock = the optional PIN screen (a privacy
+   * screen: only a salted PBKDF2 hash is kept; the data itself is protected by the sign-in and Row Level Security).
+   */
+  vault: {
+    emails: boolean; maxPerRun: number; people: VaultPerson[];
+    lock: { on: boolean; hash: string; salt: string; len: number; minutes: number; resetAsked: string | null };
+  };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -319,6 +363,7 @@ export const DEFAULT_SETTINGS: Settings = {
   purchases: { on: true, maxPerRun: 8 },
   appts: { on: true, timeZone: '', remind: [1440, 120] },
   contacts: { on: true },
+  vault: { emails: true, maxPerRun: 6, people: [{ name: 'Me', kind: 'me' }], lock: { on: false, hash: '', salt: '', len: 0, minutes: 5, resetAsked: null } },
 };
 
 /** Saved settings merged over the defaults (new options get their default). */
@@ -346,5 +391,6 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     purchases: { ...d.purchases, ...s?.purchases },
     appts: { ...d.appts, ...s?.appts },
     contacts: { ...d.contacts, ...s?.contacts },
+    vault: { ...d.vault, ...s?.vault, people: s?.vault?.people?.length ? s.vault.people : d.vault.people, lock: { ...d.vault.lock, ...s?.vault?.lock } },
   };
 }

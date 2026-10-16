@@ -142,5 +142,6 @@
 @keyframes grow { from { transform: scaleX(0); } }
 @keyframes shimmer { to { transform: translateX(100%); } }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-9px); } 40%, 80% { transform: translateX(9px); } }
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

@@ -1,3 +1,4 @@
+import { openFile } from '../lib/vault';
 import { useState } from 'react';
 import { SPEND_CATS, spendCat, type SpendReport } from '../../supabase/functions/_shared/spend.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
@@ -114,6 +115,7 @@ export function PurchaseRow({ p, onSet, onOpen }: { p: Purchase; onSet?: (patch:
       )}
       {onSet && p.status === 'returning' && <button className="btn text-xs" onClick={() => onSet({ status: 'returned' })}>✓ Returned</button>}
       {p.notes && <p className="text-[11px] text-slate-500 dark:text-slate-400">{p.notes}</p>}
+      {p.file && <button className="btn text-xs" onClick={() => void openFile(p.file!).catch((e) => toast('err', errText(e)))}>📎 Receipt</button>}
     </div>
   );
 }

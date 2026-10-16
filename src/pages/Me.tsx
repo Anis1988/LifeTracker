@@ -3,9 +3,10 @@ import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { Fold, Sheet, errText, toast } from '../components/ui';
 import { AboutMe } from '../components/AboutMe';
-import { BreachList, BrokerList, CreditCard, FindingRow, PaperForm, PaperRow, PasswordCheck, SenderRow, WeekCard, senderFilter, type SenderView } from '../components/Me';
+import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, PasswordCheck, SenderRow, WeekCard, senderFilter, type SenderView } from '../components/Me';
+import { useVaultOpen } from './Vault';
 import { weekSummary } from '../../supabase/functions/_shared/week.ts';
-import type { LifeDate, Paper, Sender } from '../../supabase/functions/_shared/model.ts';
+import type { LifeDate, Sender } from '../../supabase/functions/_shared/model.ts';
 import { DateForm, DateRow } from '../components/Dates';
 
 const ago = (iso?: string | null) => {
@@ -20,7 +21,6 @@ export function Me(_: { go: (tab: string) => void }) {
   const s = st.settings;
   const [busy, setBusy] = useState('');
   const [view, setView] = useState<SenderView>('stale');
-  const [paper, setPaper] = useState<Partial<Paper> | null>(null);
   const [date, setDate] = useState<Partial<LifeDate> | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -31,6 +31,10 @@ export function Me(_: { go: (tab: string) => void }) {
   const lines = useMemo(() => weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent, dates: st.dates, purchases: st.purchases }), [st.items, st.findings, st.senders, st.papers, s, st.spent, st.dates, st.purchases]);
   const senders = st.senders.filter(senderFilter(view, s.unsub.days));
   const hasProfile = s.me.names.length > 0 || s.me.emails.length > 0;
+  // 🪪 Documents with a date now live in 📁 Vault (same documents): the ones that expire or are due, soonest first.
+  const vaultOpen = useVaultOpen();
+  const dated = st.papers.filter((p) => p.expires);
+  const toVault = (q = '') => { location.hash = `#/vault${q}`; window.scrollTo(0, 0); };
 
   const run = async (part: 'online' | 'breaches' | 'lists' | 'week', label: string) => {
     setBusy(part);
@@ -128,10 +132,15 @@ export function Me(_: { go: (tab: string) => void }) {
         <p className="text-xs text-slate-500 dark:text-slate-400">A heads-up before each one, on Home’s timeline, and in your Google Calendar (repeating).</p>
       </Fold>
 
-      <Fold icon="🪪" title="Documents that expire" subtitle={st.papers.length ? `${st.papers.length} saved${st.papers[0]?.expires ? ` · next ${st.papers[0].name}` : ''}` : 'Passport, licence, registration…'} open={st.papers.length > 0}>
-        <div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{st.papers.map((p) => <PaperRow key={p.id} p={p} onOpen={() => setPaper(p)} />)}</div>
-        <button className="btn-primary" onClick={() => setPaper({ kind: 'passport' })}>＋ Add a document</button>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Heads-ups {s.papers.remind.join(', ')} days before it expires, and in your Google Calendar (a “start renewing” day 90 days before).</p>
+      <Fold icon="🪪" title="Documents that expire" subtitle={dated.length ? `${dated.length} with a date${vaultOpen ? ` · next ${dated[0].name}` : ''} · in 📁 Vault` : 'Passport, licence, vaccines… now in 📁 Vault'} open={dated.length > 0 && vaultOpen}>
+        {vaultOpen
+          ? <div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{dated.slice(0, 8).map((p) => <PaperRow key={p.id} p={p} onOpen={() => toVault(`?doc=${p.id}`)} />)}</div>
+          : <p className="text-sm text-slate-600 dark:text-slate-300">🔒 Your Vault is locked: open it to see them.</p>}
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-primary" onClick={() => toVault('?add')}>📷 Add a document</button>
+          <button className="btn" onClick={() => toVault()}>Open 📁 Vault</button>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Heads-ups {s.papers.remind.join(', ')} days before a document expires (30 and 7 for things due again, like a vaccine), and in your Google Calendar.</p>
       </Fold>
 
       <Fold icon="🔒" title="Credit freeze & reports" subtitle={`${(['equifax', 'experian', 'transunion'] as const).filter((b) => s.credit[b] === 'frozen').length} of 3 frozen`}>
@@ -141,13 +150,6 @@ export function Me(_: { go: (tab: string) => void }) {
       {date && (
         <Sheet title={date.id ? date.title ?? 'Date' : 'Add a date'} onClose={() => setDate(null)}>
           <DateForm d={date} onSave={st.saveDate} onDelete={date.id ? () => st.deleteDate(date.id!) : undefined} onDone={() => setDate(null)} />
-        </Sheet>
-      )}
-      {paper && (
-        <Sheet title={paper.id ? paper.name ?? 'Document' : 'Add a document'} onClose={() => setPaper(null)}>
-          <PaperForm paper={paper} userId={st.session.user.id} onDone={() => setPaper(null)} onSave={st.savePaper}
-            onDelete={paper.id ? () => st.deletePaper(paper as Paper) : undefined}
-            read={(path) => api('read-paper', { path })} />
         </Sheet>
       )}
     </div>

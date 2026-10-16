@@ -10,19 +10,20 @@ import { Settings } from './pages/Settings';
 import { Guide } from './pages/Guide';
 import { Me } from './pages/Me';
 import { Contacts } from './pages/Contacts';
+import { Vault } from './pages/Vault';
 import { appsUrl } from './lib/links';
 
-// Tabs (line icons, like the rest of the Liquid Glass look). Guide sits in the header.
+// Tabs (line icons, like the rest of the Liquid Glass look). Inbox (the bell) and Guide sit in the header.
 const TABS = [
   { id: 'home', label: 'Home', icon: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z' },
   { id: 'money', label: 'Money', icon: 'M3 7h18v12H3zM3 11h18M7 15h3M16 7V5H5v2' },
   { id: 'contacts', label: 'Contacts', icon: 'M7 3h11a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM12.5 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8.5 17a4 4 0 0 1 8 0M4 7.5h2M4 12h2M4 16.5h2' },
+  { id: 'vault', label: 'Vault', icon: 'M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5zM10 14h4M12 12v4' },
   { id: 'me', label: 'Me', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0' },
-  { id: 'inbox', label: 'Inbox', icon: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5' },
   { id: 'settings', label: 'Settings', icon: 'M4 6h9M17 6h3M15 4v4M4 12h3M11 12h9M9 10v4M4 18h11M19 18h1M17 16v4' },
 ] as const;
-type Tab = (typeof TABS)[number]['id'] | 'guide';
-const tabOf = (): Tab => (location.hash.startsWith('#/guide') ? 'guide' : location.hash.startsWith('#/bills') ? 'money' : TABS.find((t) => location.hash.startsWith(`#/${t.id}`))?.id ?? 'home');
+type Tab = (typeof TABS)[number]['id'] | 'guide' | 'inbox';
+const tabOf = (): Tab => (location.hash.startsWith('#/guide') ? 'guide' : location.hash.startsWith('#/inbox') ? 'inbox' : location.hash.startsWith('#/bills') ? 'money' : TABS.find((t) => location.hash.startsWith(`#/${t.id}`))?.id ?? 'home');
 
 const Icon = ({ d, className = 'h-[22px] w-[22px]' }: { d: string; className?: string }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d={d} /></svg>
@@ -111,7 +112,7 @@ function Main() {
   const go = (t: string) => { location.hash = `#/${t}`; window.scrollTo(0, 0); };
   // Me: worrying pages, people-search listings and breaches still to handle.
   const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
-  const badge = (t: Tab): number => (t === 'inbox' ? st.suggestions.length : t === 'me' ? meCount : 0);
+  const badge = (t: Tab): number => (t === 'me' ? meCount : 0);
   return (
     <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom,0px))] sm:pb-10">
       <Aurora />
@@ -129,6 +130,11 @@ function Main() {
           <a href={appsUrl()} aria-label="My apps" title="My apps" className="btn ml-auto h-11 w-11 !p-0 text-slate-600 dark:text-slate-300 sm:ml-1">
             <Icon d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" className="h-5 w-5" />
           </a>
+          {/* 🔔 Inbox: what was found for you (bills, documents), waiting for your OK. */}
+          <button onClick={() => go('inbox')} aria-label={`Inbox${st.suggestions.length ? `: ${st.suggestions.length} waiting` : ''}`} title="Inbox" aria-current={tab === 'inbox' ? 'page' : undefined} className={`btn relative ml-1 h-11 w-11 !overflow-visible !p-0 ${tab === 'inbox' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
+            <Icon d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0" className="h-5 w-5" />
+            {st.suggestions.length ? <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-amber-400 px-1 text-center text-[10px] font-bold leading-[18px] text-slate-900 shadow-[0_0_12px_-2px_rgba(251,191,36,0.9)] ring-2 ring-white/80 dark:ring-[#0b1020]/80">{st.suggestions.length}</span> : null}
+          </button>
           <button onClick={() => go('guide')} aria-label="Guide" className={`btn ml-1 h-11 w-11 !p-0 ${tab === 'guide' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
             <Icon d="M12 17h.01M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" className="h-5 w-5" />
           </button>
@@ -136,11 +142,11 @@ function Main() {
       </header>
       <main key={tab} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         {st.loading ? <Skeleton />
-          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <Me go={go} /> : tab === 'contacts' ? <Contacts /> : tab === 'settings' ? <Settings /> : <Guide />}
+          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <Me go={go} /> : tab === 'contacts' ? <Contacts /> : tab === 'vault' ? <Vault /> : tab === 'settings' ? <Settings /> : <Guide />}
       </main>
       {/* Phones: a floating glass tab bar within thumb reach; a glass pill slides to the open tab. */}
       <nav aria-label="Tabs" style={{ bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className="glass tabbar fixed inset-x-3 z-30 mx-auto flex max-w-md rounded-[30px] p-1.5 sm:hidden">
-        <span aria-hidden="true" className="tabpill" style={{ '--i': Math.max(0, TABS.findIndex((t) => t.id === tab)), '--n': TABS.length, opacity: tab === 'guide' ? 0 : 1 } as React.CSSProperties} />
+        <span aria-hidden="true" className="tabpill" style={{ '--i': Math.max(0, TABS.findIndex((t) => t.id === tab)), '--n': TABS.length, opacity: tab === 'guide' || tab === 'inbox' ? 0 : 1 } as React.CSSProperties} />
         {TABS.map((t) => (
           <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`tap tabbtn z-[1] flex h-[54px] flex-1 basis-0 flex-col items-center justify-center gap-0.5 rounded-[22px] text-[10.5px] font-bold ${tab === t.id ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
             <Icon d={t.icon} />{t.label}

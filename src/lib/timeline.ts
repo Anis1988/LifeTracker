@@ -1,11 +1,11 @@
 import { apptKind, catOf, dateKind, type Appointment, type Item, type LifeDate, type Paper, type Purchase } from '../../supabase/functions/_shared/model.ts';
 import { addCycle, daysBetween, dueDates, today } from '../../supabase/functions/_shared/money.ts';
-import { paperKind } from '../../supabase/functions/_shared/people.ts';
+import { docIcon } from '../../supabase/functions/_shared/vaultText.ts';
 import { whenText } from '../../supabase/functions/_shared/apptText.ts';
 
 /** 🗓️ Everything coming up, in one list: appointments, bills, trial ends, renewals, documents, important dates, return windows, warranties. */
 export type Tone = 'bill' | 'warn' | 'date' | 'doc' | 'return' | 'appt';
-export interface Moment { date: string; icon: string; title: string; sub: string; amount?: number; tone: Tone; itemId?: string; apptId?: string; time?: string }
+export interface Moment { date: string; icon: string; title: string; sub: string; amount?: number; tone: Tone; itemId?: string; apptId?: string; docId?: string; time?: string }
 
 const monthsLater = (d: string, n: number) => addCycle(d, 'monthly', n);
 
@@ -19,9 +19,11 @@ export function timeline(input: { items: Item[]; papers: Paper[]; dates: LifeDat
     if (inRange(i.ends_on)) out.push({ date: i.ends_on, icon: '🔁', title: `${i.name} renews or ends`, sub: 'Compare prices or cancel', tone: 'warn', itemId: i.id });
   }
   for (const p of input.papers) {
-    if (inRange(p.expires)) out.push({ date: p.expires, icon: paperKind(p.kind).icon, title: `${p.name} expires`, sub: p.holder ?? 'Renew it', tone: 'doc' });
+    if (p.remind === false) continue;
+    if (p.due_kind === 'due') { if (inRange(p.expires)) out.push({ date: p.expires, icon: docIcon(p), title: `${p.name} due`, sub: p.holder ?? 'Vault', tone: 'doc', docId: p.id }); continue; }
+    if (inRange(p.expires)) out.push({ date: p.expires, icon: docIcon(p), title: `${p.name} expires`, sub: p.holder ?? 'Renew it', tone: 'doc', docId: p.id });
     const start = p.expires ? new Date(Date.parse(`${p.expires}T12:00:00Z`) - 90 * 86400_000).toISOString().slice(0, 10) : null;
-    if (inRange(start)) out.push({ date: start, icon: paperKind(p.kind).icon, title: `Start renewing: ${p.name}`, sub: `Expires ${p.expires}`, tone: 'doc' });
+    if (inRange(start)) out.push({ date: start, icon: docIcon(p), title: `Start renewing: ${p.name}`, sub: `Expires ${p.expires}`, tone: 'doc', docId: p.id });
   }
   for (const d of input.dates) {
     let n = d.next_date;

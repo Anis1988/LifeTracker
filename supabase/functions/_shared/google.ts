@@ -2,6 +2,7 @@ import { env } from './server.ts';
 import { apptKind, catOf, dateKind, type Appointment, type Item, type LifeDate, type Paper, type Settings } from './model.ts';
 import { endOf } from './apptText.ts';
 import { paperKind } from './people.ts';
+import { docIcon } from './vaultText.ts';
 
 /**
  * 📅 Google Calendar and ✉️ Gmail. Calendar uses the narrow "calendars this app created" permission: the app makes
@@ -118,14 +119,16 @@ const sigOf = (ev: GEvent) => { const s = JSON.stringify([ev.summary, ev.descrip
 
 /** 🪪 A document that expires: a "start renewing" day 90 days before, and the expiry day (reminders 4 weeks and 1 week before). */
 export function paperEvents(p: Paper, site: string): { kind: string; ev: GEvent }[] {
-  if (!p.expires) return [];
+  if (!p.expires || p.calendar === false) return [];
   const k = paperKind(p.kind);
   const link = site ? `\n\nOpen LifeTracker: ${site}` : '';
   const allDay = (d: string) => ({ start: { date: d }, end: { date: nextDay(d) } });
+  // 📁 Something due again (a pet's next vaccine, a check-up): one event on the day, reminders 1 week and 1 day before.
+  if (p.due_kind === 'due') return [{ kind: 'paper-due', ev: { summary: `${docIcon(p)} ${p.name}${p.holder ? ` (${p.holder})` : ''}: due`, description: `${p.name}${p.holder ? ` for ${p.holder}` : ''} is due today. The document is in your LifeTracker Vault.${link}`, ...allDay(p.expires), reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 7 * 1440 }, { method: 'popup', minutes: 1440 }] } } }];
   const start = new Date(Date.parse(`${p.expires}T12:00:00Z`) - 90 * 86400_000).toISOString().slice(0, 10);
   return [
-    { kind: 'paper-renew', ev: { summary: `${k.icon} Start renewing: ${p.name}`, description: `${p.name}${p.holder ? ` (${p.holder})` : ''} expires on ${p.expires}. Renewing can take weeks.${k.renew ? `\nRenew: ${k.renew}` : ''}${link}`, ...allDay(start), reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 9 * 60 }] } } },
-    { kind: 'paper-expires', ev: { summary: `${k.icon} ${p.name} expires`, description: `${p.name}${p.holder ? ` (${p.holder})` : ''} expires today.${link}`, ...allDay(p.expires), reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 28 * 1440 }, { method: 'popup', minutes: 7 * 1440 }] } } },
+    { kind: 'paper-renew', ev: { summary: `${docIcon(p)} Start renewing: ${p.name}`, description: `${p.name}${p.holder ? ` (${p.holder})` : ''} expires on ${p.expires}. Renewing can take weeks.${k.renew ? `\nRenew: ${k.renew}` : ''}${link}`, ...allDay(start), reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 9 * 60 }] } } },
+    { kind: 'paper-expires', ev: { summary: `${docIcon(p)} ${p.name} expires`, description: `${p.name}${p.holder ? ` (${p.holder})` : ''} expires today.${link}`, ...allDay(p.expires), reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 28 * 1440 }, { method: 'popup', minutes: 7 * 1440 }] } } },
   ];
 }
 
@@ -191,7 +194,9 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
 
 // ---------- ✉️ Gmail (read-only) ----------
 const GM = 'https://gmail.googleapis.com/gmail/v1/users/me';
-export interface Mail { id: string; from: string; subject: string; date: string; text: string; at: number; listUnsub?: string } // date = UTC day; at = when it arrived (ms); listUnsub = a mailing list
+export interface Mail { id: string; from: string; subject: string; date: string; text: string; at: number; listUnsub?: string; attachments?: Attachment[] } // date = UTC day; at = when it arrived (ms); listUnsub = a mailing list
+/** 📎 A file attached to an email (only its name, type and size: the file itself is fetched with getAttachment). */
+export interface Attachment { filename: string; mime: string; size: number; attachmentId: string; inline: boolean }
 
 /** Receipt / bill / renewal emails (and anything sent to you+lifetracker@…) from the last `days` days. */
 export async function findBillEmails(at: string, days: number, plusTag: string, max = 40): Promise<string[]> {
@@ -201,7 +206,19 @@ export async function findBillEmails(at: string, days: number, plusTag: string, 
   return (r.messages ?? []).map((m) => m.id);
 }
 
-interface Part { mimeType?: string; body?: { data?: string }; parts?: Part[]; headers?: { name: string; value: string }[] }
+interface Part { mimeType?: string; filename?: string; body?: { data?: string; attachmentId?: string; size?: number }; parts?: Part[]; headers?: { name: string; value: string }[] }
+function attachmentsOf(p: Part): Attachment[] {
+  const out: Attachment[] = [];
+  const walk = (x: Part) => {
+    if (x.filename && x.body?.attachmentId) {
+      const h = (n: string) => x.headers?.find((y) => y.name.toLowerCase() === n)?.value ?? '';
+      out.push({ filename: x.filename.slice(0, 200), mime: (x.mimeType ?? '').toLowerCase(), size: x.body.size ?? 0, attachmentId: x.body.attachmentId, inline: /^inline/i.test(h('content-disposition')) || (!!h('content-id') && !/^attachment/i.test(h('content-disposition'))) });
+    }
+    x.parts?.forEach(walk);
+  };
+  walk(p);
+  return out;
+}
 const dec = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)));
 function textOf(p: Part): { plain: string; html: string } {
   const out = { plain: '', html: '' };
@@ -221,7 +238,16 @@ export async function readEmail(at: string, id: string): Promise<Mail> {
   const m = await g<{ id: string; payload: Part; internalDate: string }>(at, `${GM}/messages/${id}?format=full`);
   const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
   const t = textOf(m.payload);
-  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000), listUnsub: h('list-unsubscribe') };
+  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload) };
+}
+
+/** 📎 One attachment's bytes (read-only). */
+export async function getAttachment(at: string, messageId: string, attachmentId: string): Promise<Uint8Array> {
+  await pace();
+  const r = await g<{ data?: string }>(at, `${GM}/messages/${messageId}/attachments/${attachmentId}`);
+  if (!r.data) throw new Error('Google: the attachment is empty');
+  const b = atob(r.data.replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
 }
 
 /** Free first look (no AI): does it talk about money and a bill? Skips most newsletters and shipping notices. */
