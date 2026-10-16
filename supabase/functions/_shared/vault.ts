@@ -54,11 +54,11 @@ export function b64(u: Uint8Array): string {
   return btoa(s);
 }
 
-async function cached<T>(db: SupabaseClient, userId: string, kind: string, hash: string): Promise<{ data: T; by: string } | null> {
+export async function cached<T>(db: SupabaseClient, userId: string, kind: string, hash: string): Promise<{ data: T; by: string } | null> {
   const { data } = await db.from('ai_reads').select('data, by').eq('user_id', userId).eq('kind', kind).eq('hash', hash).maybeSingle();
   return data ? { data: data.data as T, by: (data.by as string) ?? '' } : null;
 }
-async function remember(db: SupabaseClient, userId: string, kind: string, hash: string, data: unknown, by: string) {
+export async function remember(db: SupabaseClient, userId: string, kind: string, hash: string, data: unknown, by: string) {
   await db.from('ai_reads').upsert({ user_id: userId, kind, hash, data, by });
 }
 
@@ -74,8 +74,8 @@ export async function readVault(db: SupabaseClient, userId: string, s: Settings,
 }
 
 /** 💳 Read a bill / receipt attachment the way Inbox documents are read (cached by hash). */
-export async function readBill(db: SupabaseClient, userId: string, s: Settings, file: { mime: string; bytes: Uint8Array }, hash: string): Promise<{ data: Extracted; by: string; cached: boolean }> {
-  const old = await cached<Extracted>(db, userId, 'bill', hash);
+export async function readBill(db: SupabaseClient, userId: string, s: Settings, file: { mime: string; bytes: Uint8Array }, hash: string, fresh = false): Promise<{ data: Extracted; by: string; cached: boolean }> {
+  const old = fresh ? null : await cached<Extracted>(db, userId, 'bill', hash);
   if (old) return { ...old, cached: true };
   const r = await readWithAi(db, userId, s, { file: { mime: file.mime, data: b64(file.bytes) } });
   await remember(db, userId, 'bill', hash, r.data, r.by);

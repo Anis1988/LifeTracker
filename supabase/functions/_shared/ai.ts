@@ -32,6 +32,9 @@ export const ExtractedSchema = z.object({
   rate: z.number().nullable().describe('loans / mortgages: yearly interest rate in %; otherwise null'),
   summary: z.string().describe('one or two plain-English sentences: what it is and what to do'),
   warnings: z.array(z.string()).describe('important things: price going up, auto-renewal, cancellation deadline, late fee, overdue. Empty if none'),
+  date: day.describe('the date printed on it (the purchase date of a receipt, the invoice date), or empty'),
+  tax: z.number().nullable().describe('receipts: the tax amount; otherwise null'),
+  items: z.array(z.object({ name: z.string(), qty: z.number().nullable(), price: z.number().nullable().describe('the line total') })).describe('receipts: the lines bought (up to 40), short names; otherwise empty'),
 });
 
 /** What to ask: the answer's shape (zod), the instructions, and how to introduce the text. */
@@ -48,7 +51,7 @@ const BILL: AiSpec<typeof ExtractedSchema> = { schema: ExtractedSchema, system: 
 /** Turns "" into null for dates; keeps the shape the app uses. */
 function tidy(o: z.infer<typeof ExtractedSchema>): Extracted {
   const d = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
-  return { ...o, category: o.category as Extracted['category'], cycle: o.cycle as Extracted['cycle'], nextDue: d(o.nextDue), endsOn: d(o.endsOn), trialEnds: d(o.trialEnds) };
+  return { ...o, category: o.category as Extracted['category'], cycle: o.cycle as Extracted['cycle'], nextDue: d(o.nextDue), endsOn: d(o.endsOn), trialEnds: d(o.trialEnds), date: d(o.date ?? ''), tax: o.tax ?? null, items: (o.items ?? []).slice(0, 40) };
 }
 
 const jsonSchema = (schema: z.ZodTypeAny) => { const s = z.toJSONSchema(schema) as Record<string, unknown>; delete s.$schema; return s; };

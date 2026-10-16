@@ -14,6 +14,7 @@ import { paperKind } from './people.ts';
 import { docIcon } from './vaultText.ts';
 import { vaultEmailStep } from './vaultMail.ts';
 import { purchaseAlerts, purchaseStep } from './purchases.ts';
+import { mergeBankRows, moveOldReceipts, receiptEmailStep, type BankRow } from './receipts.ts';
 import { spendCat, spendReport, type SpendTx } from './spend.ts';
 import { dateKind } from './model.ts';
 import { apptEmailStep } from './appointments.ts';
@@ -33,7 +34,9 @@ export interface RunLog { steps: string[]; errors: string[]; newAlerts: number }
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
 /** Parts that can be run on their own (from the app's buttons). */
-export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts' | 'vault';
+// 'mail' = the hourly email look (with the appointments): bank alert emails, bill emails, order emails, receipts and
+// document attachments. Free checks first, so most hours cost nothing; the AI only within each step's per-run cap.
+export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts' | 'vault' | 'mail';
 
 export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
@@ -66,10 +69,19 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     await step('Due dates', () => rollStep(db, userId));
     await step('Calendar', () => calendarStep(db, userId, s));
     await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
+  } else if (want('mail')) {
+    await step('Bank alerts', () => alertStep(db, userId, s, until));
+    await step('Gmail', () => gmailStep(db, userId, s, alerts, until, mails));
   }
-  if (want('purchases')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until, mails));
-  // 📁 Important documents attached to emails → Vault (owner's choice: straight in); receipts and bills → Money.
-  if (want('vault')) await step('Vault', () => vaultEmailStep(db, userId, s, alerts, until + 10_000));
+  const mail = want('mail') || want('vault');
+  // 🧾 Receipts the Vault once put in Returns move to Spending (once).
+  if (want('bills') || mail) await step('Receipts moved', () => moveOldReceipts(db, userId));
+  if (want('purchases') || want('mail')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until, mails));
+  // 📁 Important documents attached to emails → Vault (owner's choice: straight in); receipts → Spending, bills → Inbox.
+  if (want('bills') || mail) await step('Vault', () => vaultEmailStep(db, userId, s, alerts, until + 10_000));
+  // 🧾 Plain receipt emails → Spending (free patterns first).
+  if (want('bills') || mail) await step('Receipts', () => receiptEmailStep(db, userId, s, until + 10_000, mails));
+  if (want('bills') || mail) await saveConnection(db, userId, 'receipts', null, { mailChecked: new Date().toISOString() }).catch(() => undefined);
   // 📇 Contacts: straight into Contacts (owner's choice). The hourly appointment look only folds in what it already read.
   if (want('contacts') || mails.length) await step('Contacts', () => contactStep(db, userId, s, until + 10_000, { mails, search: want('contacts'), email }));
   if (want('bills') || want('purchases')) await step('Coming up', () => lifeStep(db, userId, s, alerts));
@@ -101,11 +113,13 @@ async function bankStep(db: SupabaseClient, userId: string, s: Settings, full?: 
     const description = (t.payee || t.description || t.memo || '').slice(0, 200);
     return {
       user_id: userId, external_id: `${a.id}:${t.id}`, account: `${a.org?.name ?? ''} ${a.name}`.trim().slice(0, 80),
-      posted: iso(new Date(t.posted * 1000)), amount: Number(t.amount), description, merchant: merchantKey(description),
+      posted: iso(new Date(t.posted * 1000)), amount: Number(t.amount), description, merchant: merchantKey(description), source: 'bank' as const,
     };
   }));
-  for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
+  // 🧾 A purchase already in Spending from its receipt: merged into that line (counted once).
+  const { rows: toAdd } = await mergeBankRows(db, userId, rows);
+  for (let i = 0; i < toAdd.length; i += 500) {
+    const { error } = await db.from('transactions').upsert(toAdd.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
     if (error) throw new Error(error.message);
   }
   await saveConnection(db, userId, 'simplefin', null, {
@@ -125,7 +139,7 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
   const done = !!c.meta.alertsDone;
   const all = (await findAlertEmails(at, done ? 7 : s.bank.lookbackDays, ALERT_QUERY, done ? 200 : 2000)).filter((id) => !seen.has(id));
   const ids = all.slice(0, PER_RUN);
-  const rows: Record<string, unknown>[] = [];
+  const rows: BankRow[] = [];
   let skipped = 0, stopped = '';
   const banks = new Set<string>();
   for (const id of ids) {
@@ -139,10 +153,12 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
     const tx = parseBankAlert(m);
     if (!tx) { skipped++; continue; }
     banks.add(tx.bank);
-    rows.push({ user_id: userId, external_id: `mail:${id}`, account: tx.account, posted: tx.posted, amount: -tx.amount, description: tx.merchant, merchant: merchantKey(tx.merchant) });
+    rows.push({ user_id: userId, external_id: `mail:${id}`, account: tx.account, posted: tx.posted, amount: -tx.amount, description: tx.merchant, merchant: merchantKey(tx.merchant), source: 'alert' });
   }
-  for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
+  // 🧾 A purchase already in Spending from its receipt: merged into that line (counted once).
+  const { rows: toAdd, merged } = await mergeBankRows(db, userId, rows);
+  for (let i = 0; i < toAdd.length; i += 500) {
+    const { error } = await db.from('transactions').upsert(toAdd.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
     if (error) throw new Error(error.message);
   }
   const left = all.filter((id) => !seen.has(id)).length;
@@ -150,7 +166,7 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
     seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(), alertsDone: done || left === 0,
     alertsRead: ((c.meta.alertsRead as number) ?? 0) + rows.length, alertBanks: [...new Set([...((c.meta.alertBanks as string[]) ?? []), ...banks])],
   });
-  if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}${left ? `; ${left} older ones next time` : ''}${stopped ? `. ${stopped}` : ''}`;
+  if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${merged ? ` (${merged} matched a receipt already in Spending)` : ''}${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}${left ? `; ${left} older ones next time` : ''}${stopped ? `. ${stopped}` : ''}`;
 }
 const PER_RUN = 300; // alert emails read per run (about 75 seconds)
 

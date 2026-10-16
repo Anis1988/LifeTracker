@@ -3,6 +3,9 @@ import { Empty, Fold, Seg, Toggle } from '../components/ui';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
 import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
 import { PurchaseRow, SpendingView } from '../components/Spending';
+import { ReceiptDetailsView, SpendRow } from '../components/Receipts';
+import { matchSpend } from '../../supabase/functions/_shared/receiptText.ts';
+import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { DateRow } from '../components/Dates';
 import { timeline } from '../lib/timeline';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
@@ -119,6 +122,13 @@ const SCRIPT = {
 
 const RULES = { 'example market': 'groceries', 'example gas': 'gas', 'example cafe': 'dining', 'example pharmacy': 'health' };
 const REPORT = spendReport(TX, RULES, ym(0), 31);
+// 🧾 made-up receipts in Spending
+const RECEIPTS: SpendTx[] = [
+  { id: 'r1', posted: d(-2), amount: -23.45, description: 'Example Cafe', merchant: 'example cafe', source: 'alert', account: 'Example Bank card', receipt_path: 'example.jpg', note: 'From email: Your receipt from Example Cafe — Example Cafe, ' + d(-2),
+    details: { store: 'Example Cafe', date: d(-2), total: 23.45, tax: 1.75, card: '4821', read: 'free', items: [{ name: 'Oat latte', qty: 2, price: 11.0 }, { name: 'Blueberry muffin', qty: 1, price: 3.95 }, { name: 'Tip', qty: null, price: 6.75 }] } },
+  { id: 'r2', posted: d(-6), amount: -86.12, description: 'Example Hardware', merchant: 'example hardware', source: 'receipt', account: 'Receipt', receipt_path: 'example.pdf', note: 'Added by hand on ' + d(-6),
+    details: { store: 'Example Hardware', date: d(-6), total: 86.12, tax: 5.62, card: null, read: 'ai', by: 'Gemini Flash (free)', items: [{ name: 'Paint roller kit', qty: 1, price: 24.5 }, { name: 'Wall paint, 1 gal', qty: 2, price: 56.0 }] } },
+];
 
 const Example = ({ children, caption }: { children: ReactNode; caption: string }) => (
   <figure className="space-y-1.5">
@@ -139,7 +149,7 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works by itself as much as possible: every morning it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> (the 🔔 bell at the top, with a number when something is waiting) for your OK: nothing is added, paid or cancelled without you. The exceptions, your choice: <b>appointments</b> in your emails and texts go straight into your calendar, the places you deal with (dentist, garage, insurer…) go straight into <b>Contacts</b>, and important documents attached to your emails go straight into your <b>Vault</b> (you can remove any of them).</P>
+        <P>It works by itself as much as possible: every hour it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> (the 🔔 bell at the top, with a number when something is waiting) for your OK: nothing is added, paid or cancelled without you. The exceptions, your choice: <b>appointments</b> in your emails and texts go straight into your calendar, the places you deal with (dentist, garage, insurer…) go straight into <b>Contacts</b>, and important documents attached to your emails go straight into your <b>Vault</b> (you can remove any of them).</P>
         <P>The tabs at the bottom: <b>Home</b>, <b>Money</b> (bills, spending, returns), <b>Contacts</b>, <b>Vault</b> (your documents), <b>Me</b> and <b>Settings</b>. At the top: My apps, the 🔔 Inbox and this Guide.</P>
         <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…, kept in your Vault) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
@@ -186,10 +196,27 @@ export function Guide() {
         <Example caption="Made-up month: eating out over its usual amount, groceries with a budget.">
           <SpendingView r={REPORT} budgets={{ groceries: 450, dining: 200 }} monthName="This month" />
         </Example>
+        <P><b>🧾 Receipts go to Spending.</b> A receipt in your email (the email itself, or a photo or PDF attached to it) is read <b>by itself</b>: the shop, the date, the total, the tax, the card’s last 4 and <b>what you bought</b>, line by line. Most receipt emails are read with free patterns; a photo or PDF is read by the AI once (the free ones first) and never paid for twice. Got a paper receipt? Tap <b>📷 Add a receipt</b> and take a photo (or pick a photo or PDF).</P>
+        <P>The small picture of the receipt sits on the side (📄 for a PDF, ✉️ when the receipt is the email itself). <b>Tap the picture</b> for full screen (tap again to zoom in), with ⬇ Download, ↗ Share and 🗑 Delete. Tap the purchase for its sheet: the details read from the receipt, the lines bought, where it came from (“From email: subject — sender, date”), the category (change it like any shop), ✎ Edit details, ✨ Read again (asks first: it uses one AI read) and 🗑 Delete (the receipt only, or the purchase too).</P>
+        <P><b>Never counted twice</b>: the same purchase is often in your bank alert emails too. When the amount is the same (to the cent), the dates are within 3 days and the shop names match (“Example Cafe” = “SQ *EXAMPLE CAFE 1234”), the receipt is <b>attached to that purchase</b> instead of adding a second one, whichever comes first. The same receipt email or file is never added twice.</P>
+        <Example caption="Made-up receipts: one matched to a bank alert, one added by hand.">
+          <div className="card"><p className="label mb-1">🧾 Receipts</p><ul>{RECEIPTS.map((t) => <SpendRow key={t.id} t={t} rules={{}} example />)}</ul></div>
+        </Example>
+        <Example caption="Made-up receipt sheet: what was read from it.">
+          <div className="card"><ReceiptDetailsView t={RECEIPTS[0]} rules={{}} example actions={{ edit: () => undefined, del: () => undefined }} /></div>
+        </Example>
+        <P><b>🔎 Search</b> finds any purchase as you type: a shop, something on a receipt (“latte”), an amount (“23.45”), a month (“March”), a category or words from the email it came from. It all happens on your phone.</P>
+        <Example caption="Made-up search: “latte” finds the cafe receipt.">
+          <div className="space-y-2">
+            <SearchBox q="latte" onChange={() => undefined} placeholder="Shop, item, 23.45, March…" label="Search spending and receipts" />
+            <div className="card"><ul>{RECEIPTS.filter((t) => matchSpend(t, 'latte')).map((t) => <SpendRow key={t.id} t={t} rules={{}} example />)}</ul></div>
+          </div>
+        </Example>
+        <P><b>How often</b>: your Gmail is checked <b>every hour</b> by itself for receipts, bank alerts, bills, orders and documents (free checks first, so most hours cost nothing). Settings → Spending & returns shows when it last checked.</P>
       </Fold>
 
       <Fold icon="🧾" title="Returns and warranties">
-        <P>Every morning LifeTracker looks for order confirmations and receipts in Gmail (a free check first, then the AI reads only real orders). It saves the shop, what you bought, the price, the <b>last day to return it</b> (from the email, or the store’s usual window like Best Buy 15 days, Amazon 30, Target 90) and any warranty.</P>
+        <P>Every hour LifeTracker looks for <b>order confirmations</b> in Gmail (a free check first, then the AI reads only real orders). Returns is only for “can I still return it?”: the money is counted once, in Spending (receipts go there). It saves the shop, what you bought, the price, the <b>last day to return it</b> (from the email, or the store’s usual window like Best Buy 15 days, Amazon 30, Target 90) and any warranty.</P>
         <P>In <b>Money → Returns</b>: tap <b>Returning it</b> or <b>Keeping it</b>. You get a heads-up 3 days before a return window closes and a month before a warranty ends. Add any purchase by hand with ＋ Add.</P>
         <Example caption="Made-up purchases: one return window closing in 2 days, one still open.">
           <div className="space-y-2">{BUYS.map((p) => <PurchaseRow key={p.id} p={p} />)}</div>
@@ -255,7 +282,7 @@ export function Guide() {
         <Example caption="Made-up document card, found in an email.">
           <div className="card"><VaultDetails p={VAULT[0]} s={VS} example onEdit={() => undefined} onDelete={() => undefined} /></div>
         </Example>
-        <P><b>From your emails</b> (Gmail, read-only): every morning, files attached to your emails are looked at. A free check first (the file name, the subject, the words): vaccine and vet records, medical results, certificates, insurance policies, contracts, leases, tax forms, registrations, tickets and permits are <b>saved straight into the Vault</b> (your choice), with <b>“From email: subject — sender, date”</b> in the note and a heads-up. <b>Receipts, invoices and bills go to Money instead</b>: a bill shows up in Inbox to add (like one you upload), and a receipt from a business is kept in <b>Money → Returns</b> with the receipt attached (📎 Receipt). Newsletters, ads and logos are skipped. Only files the free check can’t place go to the AI (free ones first, 6 a morning by default), and the same file is never saved twice. <b>✉️ Look in my emails now</b> (in the Vault) runs it at once; turn it off in Settings → Vault.</P>
+        <P><b>From your emails</b> (Gmail, read-only): every hour, files attached to your emails are looked at. A free check first (the file name, the subject, the words): vaccine and vet records, medical results, certificates, insurance policies, contracts, leases, tax forms, registrations, tickets and permits are <b>saved straight into the Vault</b> (your choice), with <b>“From email: subject — sender, date”</b> in the note and a heads-up. <b>Receipts, invoices and bills go to Money instead</b>: a bill shows up in Inbox to add (like one you upload), and a receipt from a business goes to <b>Money → Spending</b> with its picture and what was read from it (it also shows in Returns only when the store has a return window). Scanned a receipt in the Vault? It offers <b>Put it in Spending instead</b>. Newsletters, ads and logos are skipped. Only files the free check can’t place go to the AI (free ones first, 6 a run by default), and the same file is never saved twice. <b>✉️ Look in my emails now</b> (in the Vault) runs it at once; turn it off in Settings → Vault.</P>
         <Example caption="Made-up heads-up when a document is found in an email."><AlertList alerts={VAULT_ALERT} /></Example>
         <P><b>People & pets</b> (Settings → Vault): the names documents can be for, each with an icon (pets get a paw, or 🐶, 🐱…). The AI picks one of them when it reads a document.</P>
         <Example caption="Made-up list: you, Daizy the dog and Sam."><PeopleEditor people={VS.vault.people} onChange={() => undefined} /></Example>
@@ -314,7 +341,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🏦" title="Your bank (free, by email)">
-        <P>LifeTracker reads your bank the free way: your banks <b>email you each purchase</b>, and every morning LifeTracker finds those alert emails in your Gmail and reads the amount, the shop and the date. No bank password, no bank login, nothing paid, and no AI (free patterns). It only reads: nothing can be paid or moved.</P>
+        <P>LifeTracker reads your bank the free way: your banks <b>email you each purchase</b>, and every hour LifeTracker finds those alert emails in your Gmail and reads the amount, the shop and the date. No bank password, no bank login, nothing paid, and no AI (free patterns). It only reads: nothing can be paid or moved.</P>
         <P>Once per bank: in its app, turn on <b>purchase / transaction alerts by email</b> for every card, for any amount ($0.01). Settings → Bank & cards shows the steps for Bank of America, SoFi and Capital One. Gmail must be connected (Settings → Google).</P>
         <P>Deposits, payments to your card and statements are skipped. The purchases go into the same bill finder: the same company charging about the same amount every month (or year) shows up in Inbox, and price rises are flagged. The first time it also looks back over your old alert emails (300 at a time, so a big inbox takes a few mornings or taps on Read now: Gmail only allows so many reads a minute).</P>
         <Example caption="Made-up example of Settings → Bank & cards.">
@@ -388,7 +415,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="✉️" title="Gmail receipts and forwarding">
-        <P>Tick <b>Also read Gmail receipts</b>: each morning it looks for receipt, invoice, renewal and “free trial” emails (read-only). A free check first skips ads and shipping notices; only emails that look like bills are read by the AI.</P>
+        <P>Tick <b>Also read Gmail receipts</b>: every hour it looks for receipt, invoice, renewal and “free trial” emails (read-only). A free check first skips ads and shipping notices; only emails that look like bills are read by the AI.</P>
         <P>To add a bill from any email, <b>forward it to yourself with “+lifetracker”</b> (for example you+lifetracker@gmail.com, shown in Settings): it is picked up the next morning.</P>
       </Fold>
 

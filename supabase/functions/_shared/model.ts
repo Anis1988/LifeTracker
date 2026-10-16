@@ -270,6 +270,9 @@ export interface Extracted {
   rate: number | null;
   summary: string; // 1-2 plain sentences
   warnings: string[]; // price going up, auto-renewal, cancellation deadline…
+  date?: string | null; // the date printed on it (a receipt's purchase date); missing in older reads
+  tax?: number | null; // receipts
+  items?: { name: string; qty: number | null; price: number | null }[]; // receipts: the lines bought
 }
 
 // ---------- AI (Settings → AI): free ones first, Claude (paid) only when they run out or fail ----------
@@ -321,6 +324,7 @@ export interface Settings {
   /** 💸 spending: monthly budgets per spending category, your own category for a shop, warn at this share of a budget. */
   spend: { budgets: Record<string, number>; rules: Record<string, string>; alertAt: number };
   purchases: { on: boolean; maxPerRun: number }; // 🧾 read order emails for returns & warranties
+  receipts: { on: boolean; maxPerRun: number }; // 🧾 receipt emails → Money → Spending (every hour); maxPerRun = most read by the AI a run
   /** 📅 appointments in emails (and texts, Android app) → straight into the calendar; reminders in minutes before. */
   appts: { on: boolean; timeZone: string; remind: number[] };
   /** 📇 contacts found in emails (and appointments, bills) are added straight to Contacts (owner's choice). */
@@ -361,6 +365,7 @@ export const DEFAULT_SETTINGS: Settings = {
   week: { on: true, day: 0 },
   spend: { budgets: {}, rules: {}, alertAt: 0.8 },
   purchases: { on: true, maxPerRun: 8 },
+  receipts: { on: true, maxPerRun: 4 },
   appts: { on: true, timeZone: '', remind: [1440, 120] },
   contacts: { on: true },
   vault: { emails: true, maxPerRun: 6, people: [{ name: 'Me', kind: 'me' }], lock: { on: false, hash: '', salt: '', len: 0, minutes: 5, resetAsked: null } },
@@ -389,6 +394,7 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     week: { ...d.week, ...s?.week },
     spend: { ...d.spend, ...s?.spend, budgets: { ...s?.spend?.budgets }, rules: { ...s?.spend?.rules } },
     purchases: { ...d.purchases, ...s?.purchases },
+    receipts: { ...d.receipts, ...s?.receipts },
     appts: { ...d.appts, ...s?.appts },
     contacts: { ...d.contacts, ...s?.contacts },
     vault: { ...d.vault, ...s?.vault, people: s?.vault?.people?.length ? s.vault.people : d.vault.people, lock: { ...d.vault.lock, ...s?.vault?.lock } },

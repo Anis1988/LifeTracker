@@ -169,7 +169,7 @@ function VaultList() {
       {docs.length > 0 && (
         <div className="panel flex flex-wrap items-center gap-3 text-sm">
           <button className="btn" disabled={busy || !gmail || !s.vault.emails} onClick={() => void look()}>{busy ? <><span className="spinner" /> Looking…</> : '✉️ Look in my emails now'}</button>
-          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!s.vault.emails ? 'Finding documents in emails is off (Settings → Vault).' : gmail ? `Important files attached to your emails come by themselves every morning; receipts and bills go to Money. Last look ${ago(st.status?.mail?.vaultScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
+          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!s.vault.emails ? 'Finding documents in emails is off (Settings → Vault).' : gmail ? `Important files attached to your emails come by themselves every hour; receipts go to Money → Spending, bills to Inbox. Last checked ${ago(st.status?.mail?.vaultScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
         </div>
       )}
 
@@ -183,7 +183,8 @@ function VaultList() {
           <VaultForm doc={edit} s={s} userId={st.session.user.id} existing={docs}
             onSave={async (p) => { const saved = await st.savePaper(p); toast('ok', `${saved.name} saved in your Vault.`); setTimeout(() => setOpenId(saved.id), 50); }}
             onDelete={edit.id ? () => st.deletePaper(edit as Paper) : undefined}
-            onDone={() => setEdit(null)} read={(path) => api<VaultReadResult>('vault-read', { path })} />
+            onDone={() => setEdit(null)} read={(path) => api<VaultReadResult>('vault-read', { path })}
+            onReceipt={async (path) => { const r = await api<{ text: string }>('receipt-add', { path }); toast('ok', r.text); await st.reload(); }} />
         </Sheet>
       )}
     </div>

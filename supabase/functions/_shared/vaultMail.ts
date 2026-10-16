@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Alert, Item, Settings } from './model.ts';
-import { iso, money } from './money.ts';
+import { iso } from './money.ts';
 import { getAttachment, has, isRateLimit, readEmail, refresh, searchIds, type Attachment, type Mail } from './google.ts';
 import { connection, open, saveConnection } from './server.ts';
 import { classifyAttachment, fromEmailNote, vaultKey, type Route } from './vaultText.ts';
@@ -8,16 +8,20 @@ import { mimeOf, readBill, readVault, safeName, sha256 } from './vault.ts';
 import { applyExtracted } from './sync.ts';
 import { merchantKey } from './recurring.ts';
 import { returnDaysFor } from './spend.ts';
+import { detailsOf, receiptKnown, saveReceipt } from './receipts.ts';
 
 /**
  * 📁 Documents attached to emails (Gmail is read-only). For each PDF or photo attached:
  *  1. a FREE look (file name, subject, sender's words; no AI): important document → Vault, receipt / invoice / bill → Money,
  *     newsletter, ad, logo → skipped;
- *  2. the AI reads only what's left (free AIs first, Claude last, daily limits, `vault.maxPerRun` a morning), and never
+ *  2. the AI reads only what's left (free AIs first, Claude last, daily limits, `vault.maxPerRun` a run), and never
  *     the same file twice (kept by the file's SHA-256);
  *  3. Vault documents are saved straight in (owner's choice) with "From email: <subject> — <sender>, <date>" in the note
- *     and a heads-up; bills go to Inbox like an uploaded bill; receipts go to Money → Returns with the receipt attached.
- * The same attachment is never saved twice (file hash + Gmail message id).
+ *     and a heads-up; bills go to Inbox like an uploaded bill; receipts go to Money → Spending with the receipt attached
+ *     (on the bank line of the same purchase when there is one: counted once), and also to Returns only when the store
+ *     has a return window.
+ * Runs every hour (with the appointments) and in the morning. The same attachment is never saved twice (file hash +
+ * Gmail message id).
  */
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
@@ -59,7 +63,7 @@ export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Sett
     if (!done) break;
   }
   await saveConnection(db, userId, 'vault', null, { seen: [...seen].slice(-4000), scanned: new Date().toISOString() });
-  if (ids.length) return `${ids.length} email(s) with files: ${vault} to Vault, ${bills} bill(s) to Inbox, ${receipts} receipt(s) to Money → Returns, ${skipped} skipped for free${stopped ? ` (${stopped})` : ''}`;
+  if (vault || bills || receipts || stopped) return `${ids.length} email(s) with files: ${vault} to Vault, ${bills} bill(s) to Inbox, ${receipts} receipt(s) to Money → Spending, ${skipped} skipped for free${stopped ? ` (${stopped})` : ''}`;
 }
 
 async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at: string, m: Mail, a: Attachment, route: Route, items: Item[], alerts: NewAlert[]): Promise<{ saved?: 'vault' | 'bill' | 'receipt'; reads: number }> {
@@ -69,12 +73,13 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
   const note = fromEmailNote(m);
   const sourceKey = vaultKey(m.id, hash);
   // Already kept (this email, or the same file from anywhere: a scan, another email)? Nothing to do.
-  const [{ data: inVault }, { data: inDocs }, { data: inBuys }] = await Promise.all([
+  const [{ data: inVault }, { data: inDocs }, { data: inBuys }, inSpend] = await Promise.all([
     db.from('papers').select('id').eq('user_id', userId).or(`file_hash.eq.${hash},source_key.eq.${sourceKey}`).limit(1),
     db.from('documents').select('id').eq('user_id', userId).eq('hash', hash).limit(1),
     db.from('purchases').select('id, file').eq('user_id', userId).eq('key', `mail:${m.id}`).limit(1),
+    receiptKnown(db, userId, [sourceKey, `mail:${m.id}:body`], hash),
   ]);
-  if (inVault?.length || inDocs?.length || inBuys?.[0]?.file) return { reads: 0 };
+  if (inVault?.length || inDocs?.length || inBuys?.[0]?.file || inSpend) return { reads: 0 };
 
   let reads = 0;
   let moneyRoute: 'bill' | 'receipt' | null = null;
@@ -101,30 +106,39 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
     }
   }
 
-  // 💳 Money: a bill → Inbox (like an uploaded bill), a receipt → Money → Returns with the receipt attached.
+  // 💳 Money: a bill → Inbox (like an uploaded bill), a receipt → Money → Spending with the receipt attached.
   const b = await readBill(db, userId, s, { mime, bytes }, hash);
   if (!b.cached) reads++;
   const x = b.data;
   const path = `${userId}/money/${crypto.randomUUID()}-${safeName(a.filename)}`;
   const up = await db.storage.from('docs').upload(path, bytes, { contentType: mime });
   if (up.error) throw new Error(`storage: ${up.error.message}`);
-  if (x.isBill && moneyRoute !== 'receipt') {
+  const keepAsDoc = async () => {
     const { data: doc, error } = await db.from('documents').insert({ user_id: userId, path, file_name: a.filename.slice(0, 200), mime, size: bytes.length, status: 'done', extracted: x, ai_by: b.by, origin: note, hash }).select('id').single();
     if (error) { await db.storage.from('docs').remove([path]); throw new Error(error.message); }
+    return doc.id as string;
+  };
+  if (x.isBill && moneyRoute !== 'receipt') {
+    const docId = await keepAsDoc();
     // Same key as the bill emails read in the morning ("mail:<company>"): one suggestion per company, not two.
-    const link = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, documentId: doc.id }, items, alerts);
-    if (link.itemId) await db.from('documents').update({ item_id: link.itemId }).eq('id', doc.id);
+    const link = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, documentId: docId }, items, alerts);
+    if (link.itemId) await db.from('documents').update({ item_id: link.itemId }).eq('id', docId);
     return { saved: 'bill', reads };
   }
   const store = (x.merchant || x.name || m.from.replace(/<[^>]*>/g, '').replace(/"/g, '')).trim().slice(0, 120) || 'Receipt';
+  // No total on it: kept in Inbox → Documents (with the email in its note) rather than lost.
+  if (!x.amount || !(x.amount > 0)) { await keepAsDoc(); return { saved: 'bill', reads }; }
+  const details = detailsOf(x, b.by, m.date);
+  const bought = details.date;
+  let res;
+  try { res = await saveReceipt(db, userId, { business: store, amount: x.amount, date: bought, key: sourceKey, hash, path, note, details: { ...details, store } }); } catch (e) { await db.storage.from('docs').remove([path]); throw e; }
+  if (res === 'known') { await db.storage.from('docs').remove([path]); return { reads }; }
+  // 🧾 A store with a return window: also in Returns (the return-window tracker; the money is counted once, in Spending).
   const days = returnDaysFor(`${store} ${m.from}`);
-  const returnBy = days ? addDays(m.date, days) : null;
-  const { data: prev } = await db.from('purchases').select('id').eq('user_id', userId).eq('key', `mail:${m.id}`).maybeSingle();
-  if (prev) await db.from('purchases').update({ file: path }).eq('id', prev.id); // found by the order-email step already: add the receipt
-  else {
-    const { error } = await db.from('purchases').insert({ user_id: userId, key: `mail:${m.id}`, store, item: (x.name && x.name !== store ? x.name : null)?.slice(0, 200) ?? null, amount: x.amount, bought: m.date, return_by: returnBy, warranty_ends: null, status: returnBy ? 'keep' : 'kept', notes: note, file: path });
-    if (error) { await db.storage.from('docs').remove([path]); throw new Error(error.message); }
-    alerts.push({ user_id: userId, kind: 'return', key: `receipt:${m.id}`, item_id: null, title: `🧾 Receipt kept in Money → Returns: ${store}${x.amount ? ` ${money(x.amount)}` : ''}`.slice(0, 200), body: note });
+  if (days) {
+    const { data: prev } = await db.from('purchases').select('id, file').eq('user_id', userId).eq('key', `mail:${m.id}`).maybeSingle();
+    if (prev) { if (!prev.file) await db.from('purchases').update({ file: path }).eq('id', prev.id); }
+    else await db.from('purchases').insert({ user_id: userId, key: `mail:${m.id}`, store, item: (x.name && x.name !== store ? x.name : null)?.slice(0, 200) ?? null, amount: x.amount, bought, return_by: addDays(bought, days), warranty_ends: null, status: 'keep', notes: `Receipt: ${note.replace(/^From email: /, 'from ')}`.slice(0, 300), file: path });
   }
   return { saved: 'receipt', reads };
 }

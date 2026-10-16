@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { lastChecked } from '../components/Receipts';
 import { useStore } from '../lib/store';
 import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
@@ -158,7 +159,19 @@ export function Settings() {
       </Fold>
 
       <Fold icon="💸" title="Spending & returns" subtitle={`${Object.keys(s.spend.budgets).length} budget(s) · order emails ${s.purchases.on ? 'read' : 'off'}`}>
-        <p className="text-sm text-slate-600 dark:text-slate-300">Budgets are set in Money → Spending (tap a category). Purchases come from your bank alert emails, sorted with free rules.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Budgets are set in Money → Spending (tap a category). Purchases come from your bank alert emails and your receipts, sorted with free rules.</p>
+        <div className="panel text-sm">
+          <p className="font-semibold">📧 Email finding: every hour, by itself</p>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{status?.google.gmail ? <>Receipts, bank alerts, bills, orders and documents in your Gmail. Last checked: <span className="num font-semibold text-slate-700 dark:text-slate-200">{lastChecked(status.mail?.mailChecked ?? status.mail?.receiptsScanned)}</span>.</> : 'Needs Gmail: Google Calendar & Gmail → “Also read Gmail receipts”.'}</p>
+        </div>
+        <Field label="Receipts in my emails → Spending" hint="Every hour. Free patterns read most receipts (shop, total, items); the AI (free ones first) only when they can’t, and never the same receipt twice. A receipt that matches a bank purchase is attached to it: counted once.">
+          <Toggle on={s.receipts.on} onChange={(v) => save({ receipts: { ...s.receipts, on: v } })} label="Receipts in my emails" />
+        </Field>
+        <Field label="Most receipt emails read by the AI per run">
+          <select className="input" value={s.receipts.maxPerRun} onChange={(e) => save({ receipts: { ...s.receipts, maxPerRun: Number(e.target.value) } })} aria-label="Most receipt emails per run">
+            {[1, 2, 4, 8].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </Field>
         <Field label="Warn me when a budget reaches">
           <select className="input" value={s.spend.alertAt} onChange={(e) => save({ spend: { ...s.spend, alertAt: Number(e.target.value) } })} aria-label="Warn at">
             {[0.5, 0.75, 0.8, 0.9].map((n) => <option key={n} value={n}>{Math.round(n * 100)}%</option>)}
@@ -168,18 +181,18 @@ export function Settings() {
         <Field label="Read order emails for returns & warranties" hint="A free check first; only real orders and receipts go to the AI (free ones first).">
           <Toggle on={s.purchases.on} onChange={(v) => save({ purchases: { ...s.purchases, on: v } })} label="Order emails" />
         </Field>
-        <Field label="Most order emails read per morning">
+        <Field label="Most order emails read per run">
           <input className="input w-20" type="number" min={1} max={30} value={s.purchases.maxPerRun} onChange={(e) => save({ purchases: { ...s.purchases, maxPerRun: Math.min(30, Math.max(1, Number(e.target.value) || 8)) } })} aria-label="Most per morning" />
         </Field>
       </Fold>
 
       <Fold icon="📁" title="Vault" subtitle={`${st.papers.length} document${st.papers.length === 1 ? '' : 's'} · ${lock.on ? '🔒 PIN lock on' : 'no lock'} · ${s.vault.emails ? 'found in emails too' : 'only what you add'}`}>
         <p className="text-sm text-slate-600 dark:text-slate-300">Your documents (pet records, medical, IDs, home, car, school, taxes, contracts…), kept privately in your own storage. Scan them in 📁 Vault, or let LifeTracker find them in Gmail.</p>
-        <Field label="Find documents in my emails" hint={status?.google.gmail ? `Every morning: files attached to emails (vaccine records, certificates, policies, contracts, tax forms…) are saved straight in, with the email in the note. Receipts and bills go to Money instead. Newsletters are skipped. A free check first; the AI (free ones first) only reads what’s left, and never the same file twice.${status.mail?.vaultScanned ? ` Last look: ${new Date(status.mail.vaultScanned).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.` : ''}` : 'Needs Gmail: Google Calendar & Gmail → “Also read Gmail receipts”.'}>
+        <Field label="Find documents in my emails" hint={status?.google.gmail ? `Every hour: files attached to emails (vaccine records, certificates, policies, contracts, tax forms…) are saved straight in, with the email in the note. Receipts go to Money → Spending and bills to Inbox instead. Newsletters are skipped. A free check first; the AI (free ones first) only reads what’s left, and never the same file twice.${status.mail?.vaultScanned ? ` Last look: ${new Date(status.mail.vaultScanned).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.` : ''}` : 'Needs Gmail: Google Calendar & Gmail → “Also read Gmail receipts”.'}>
           <Toggle on={s.vault.emails} onChange={(v) => saveVault({ emails: v })} label="Find documents in my emails" />
         </Field>
-        <Field label="Most attachments read by the AI per morning">
-          <select className="input" value={s.vault.maxPerRun} onChange={(e) => saveVault({ maxPerRun: Number(e.target.value) })} aria-label="Most attachments per morning">
+        <Field label="Most attachments read by the AI per run">
+          <select className="input" value={s.vault.maxPerRun} onChange={(e) => saveVault({ maxPerRun: Number(e.target.value) })} aria-label="Most attachments per run">
             {[2, 4, 6, 10, 15].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </Field>
