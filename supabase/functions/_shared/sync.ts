@@ -16,6 +16,8 @@ import { spendCat, spendReport, type SpendTx } from './spend.ts';
 import { dateKind } from './model.ts';
 import { apptEmailStep } from './appointments.ts';
 import { allRows } from './rows.ts';
+import { contactStep } from './contactFind.ts';
+import type { Mail } from './google.ts';
 import type { Appointment } from './model.ts';
 
 /**
@@ -29,7 +31,7 @@ export interface RunLog { steps: string[]; errors: string[]; newAlerts: number }
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
 /** Parts that can be run on their own (from the app's buttons). */
-export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar';
+export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts';
 
 export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
@@ -48,20 +50,24 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     }
   };
 
+  // 📇 Emails the steps below read (appointments, bills, orders): also looked at for contacts, without reading them twice.
+  const mails: Mail[] = [];
   // 📅 Appointments (also every hour on their own): straight into the calendar.
   let apptChanges = 0;
-  if (want('appts')) await step('Appointments', async () => { const r = await apptEmailStep(db, userId, s, alerts, until); apptChanges = r.changed; return r.text; });
+  if (want('appts')) await step('Appointments', async () => { const r = await apptEmailStep(db, userId, s, alerts, until, mails); apptChanges = r.changed; return r.text; });
   if (!want('bills') && (apptChanges || (opts.only?.includes('calendar')))) await step('Calendar', () => calendarStep(db, userId, s));
   if (want('bills')) {
     await step('Bank', () => bankStep(db, userId, s, opts.full));
     await step('Bank alerts', () => alertStep(db, userId, s, until));
     await step('Recurring', () => detectStep(db, userId, s, alerts));
-    await step('Gmail', () => gmailStep(db, userId, s, alerts, until));
+    await step('Gmail', () => gmailStep(db, userId, s, alerts, until, mails));
     await step('Due dates', () => rollStep(db, userId));
     await step('Calendar', () => calendarStep(db, userId, s));
     await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
   }
-  if (want('purchases')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until));
+  if (want('purchases')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until, mails));
+  // 📇 Contacts: straight into Contacts (owner's choice). The hourly appointment look only folds in what it already read.
+  if (want('contacts') || mails.length) await step('Contacts', () => contactStep(db, userId, s, until + 10_000, { mails, search: want('contacts'), email }));
   if (want('bills') || want('purchases')) await step('Coming up', () => lifeStep(db, userId, s, alerts));
   if (want('breaches')) await step('Data breaches', () => breachStep(db, userId, alerts));
   if (want('online')) await step('Your name online', async () => { await ensureBrokers(db, userId); return onlineStep(db, userId, s, alerts, opts.force); });
@@ -192,7 +198,7 @@ async function detectStep(db: SupabaseClient, userId: string, s: Settings, alert
 }
 
 // ---------- ✉️ Gmail receipts ----------
-async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number): Promise<string | void> {
+async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number, mails: Mail[] = []): Promise<string | void> {
   const c = await connection(db, userId, 'google');
   if (!c || !s.gmail.on || !has(c.meta.scope as string, 'gmail')) return;
   const at = await refresh(await open(c.secret));
@@ -212,6 +218,7 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
       stopped = 'Gmail asked to slow down: the rest next time'; break;
     }
     if (!looksLikeBill(m) || !s.ai.readEmails) { seen.add(id); skipped++; continue; }
+    mails.push(m);
     if (read >= s.ai.maxPerRun) { stopped = 'the rest next time'; break; }
     let x: Extracted;
     try {

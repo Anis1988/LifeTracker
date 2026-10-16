@@ -179,6 +179,37 @@ export const APPT_KINDS: { id: string; icon: string; label: string }[] = [
 ];
 export const apptKind = (id: string) => APPT_KINDS.find((k) => k.id === id) ?? APPT_KINDS[APPT_KINDS.length - 1];
 
+// ---------- 📇 contacts: the places and people you deal with (found in emails, appointments and bills, or added by you) ----------
+export type ContactSource = 'email' | 'hand' | 'appt' | 'bill' | 'purchase';
+export interface Contact {
+  id: string; key: string; // key = the normalized identity (website domain, phone, email or name): one row per real place
+  name: string; kind: string; person: string | null;
+  phones: string[]; emails: string[]; website: string | null; address: string | null;
+  description: string | null; notes: string | null; favorite: boolean;
+  sources: ContactSource[];
+  mine: string[]; // fields you set yourself: automatic finds never change them
+  status: 'active' | 'hidden'; // hidden = "Not a contact": remembered, so it never comes back
+  last_seen: string | null; // YYYY-MM-DD
+  created_at?: string; updated_at?: string;
+}
+export const CONTACT_KINDS: { id: string; icon: string; label: string; you: string }[] = [
+  { id: 'dentist', icon: '🦷', label: 'Dentist', you: 'Your dentist' },
+  { id: 'doctor', icon: '🩺', label: 'Doctor & health', you: 'Your doctor’s office' },
+  { id: 'car', icon: '🚗', label: 'Car', you: 'Car care' },
+  { id: 'home', icon: '🔧', label: 'Home & repairs', you: 'Home repairs' },
+  { id: 'beauty', icon: '💇', label: 'Hair & beauty', you: 'Hair & beauty' },
+  { id: 'pet', icon: '🐾', label: 'Pet', you: 'Pet care' },
+  { id: 'school', icon: '🎓', label: 'School', you: 'School' },
+  { id: 'bank', icon: '🏦', label: 'Bank & loans', you: 'Your bank or lender' },
+  { id: 'insurance', icon: '🛡️', label: 'Insurance', you: 'Your insurance' },
+  { id: 'utility', icon: '💡', label: 'Utilities & phone', you: 'A utility you pay' },
+  { id: 'government', icon: '🏛️', label: 'Government', you: 'Government office' },
+  { id: 'restaurant', icon: '🍽️', label: 'Restaurant', you: 'A restaurant' },
+  { id: 'shop', icon: '🛍️', label: 'Shop', you: 'A shop' },
+  { id: 'other', icon: '📇', label: 'Other', you: '' },
+];
+export const contactKind = (id: string) => CONTACT_KINDS.find((k) => k.id === id) ?? CONTACT_KINDS[CONTACT_KINDS.length - 1];
+
 export interface Doc {
   id: string; path: string; file_name: string; mime: string; size: number;
   status: 'new' | 'reading' | 'done' | 'failed'; extracted: Extracted | null; ai_by: string | null; error: string | null; item_id: string | null; created_at: string;
@@ -257,6 +288,8 @@ export interface Settings {
   purchases: { on: boolean; maxPerRun: number }; // 🧾 read order emails for returns & warranties
   /** 📅 appointments in emails (and texts, Android app) → straight into the calendar; reminders in minutes before. */
   appts: { on: boolean; timeZone: string; remind: number[] };
+  /** 📇 contacts found in emails (and appointments, bills) are added straight to Contacts (owner's choice). */
+  contacts: { on: boolean };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -285,6 +318,7 @@ export const DEFAULT_SETTINGS: Settings = {
   spend: { budgets: {}, rules: {}, alertAt: 0.8 },
   purchases: { on: true, maxPerRun: 8 },
   appts: { on: true, timeZone: '', remind: [1440, 120] },
+  contacts: { on: true },
 };
 
 /** Saved settings merged over the defaults (new options get their default). */
@@ -311,5 +345,6 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     spend: { ...d.spend, ...s?.spend, budgets: { ...s?.spend?.budgets }, rules: { ...s?.spend?.rules } },
     purchases: { ...d.purchases, ...s?.purchases },
     appts: { ...d.appts, ...s?.appts },
+    contacts: { ...d.contacts, ...s?.contacts },
   };
 }

@@ -73,8 +73,8 @@ export function Settings() {
 
   const exportAll = async () => {
     // Every row, page by page (Supabase sends at most 1,000 at a time).
-    const [i, sg, d, tx] = await Promise.all(['items', 'suggestions', 'documents', 'transactions'].map((t) => allRows((a, b) => supabase.from(t).select('*').order('id').range(a, b), 100000).then((data) => ({ data }))));
-    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), items: i.data, suggestions: sg.data, documents: d.data, transactions: tx.data, settings: s }, null, 2)], { type: 'application/json' });
+    const [i, sg, d, tx, co] = await Promise.all(['items', 'suggestions', 'documents', 'transactions', 'contacts'].map((t) => allRows((a, b) => supabase.from(t).select('*').order('id').range(a, b), 100000).then((data) => ({ data }))));
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), items: i.data, suggestions: sg.data, documents: d.data, transactions: tx.data, contacts: co.data, settings: s }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `lifetracker-${new Date().toISOString().slice(0, 10)}.json`;
@@ -251,6 +251,32 @@ export function Settings() {
           toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'No new appointment emails.');
           await st.reload();
         })}>{busy === 'appts' ? <span className="spinner" /> : '✉️ Look in my emails now'}</button>
+      </Fold>
+
+      <Fold icon="📇" title="Contacts" subtitle={`${st.contacts.filter((c) => c.status === 'active').length} saved · ${s.contacts.on ? 'found in your emails too' : 'only the ones you add'}`}>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Your dentist, garage, insurer… with their phone, website and address. They’re found in Gmail, your appointments and bills and <b>added straight to Contacts</b>, one card per place (no doubles). Free rules read the emails; the AI only names a sender they can’t (free AIs first, a few a day at most, each sender once).</p>
+        <Field label="Find contacts in my emails" hint={status?.google.gmail ? `Every morning, and with the emails read for appointments, bills and orders.${status.mail?.contactsScanned ? ` Last look: ${new Date(status.mail.contactsScanned).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.` : ''}` : 'Needs Gmail: Google Calendar & Gmail → “Also read Gmail receipts”.'}>
+          <Toggle on={s.contacts.on} onChange={(v) => save({ contacts: { ...s.contacts, on: v } })} label="Find contacts in my emails" />
+        </Field>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{st.contacts.filter((c) => c.status === 'active' && c.sources.some((x) => x !== 'hand')).length} found automatically · {st.contacts.filter((c) => c.status === 'active' && c.sources.every((x) => x === 'hand')).length} added by you · ★ {st.contacts.filter((c) => c.status === 'active' && c.favorite).length}</p>
+        {st.contacts.some((c) => c.status === 'hidden') && (
+          <details className="panel">
+            <summary className="text-sm font-semibold">“Not a contact” ({st.contacts.filter((c) => c.status === 'hidden').length}): never added again</summary>
+            <ul className="mt-1">
+              {st.contacts.filter((c) => c.status === 'hidden').map((c) => (
+                <li key={c.id} className="field flex min-h-[52px] items-center gap-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  <button className="btn text-xs" onClick={() => void st.setContact(c.id, { status: 'active' }).then(() => toast('ok', `${c.name} is back in Contacts.`)).catch((e) => toast('err', errText(e)))}>Show again</button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <button className="btn" disabled={!!busy || !s.contacts.on || !status?.google.gmail} onClick={() => void run('contacts', async () => {
+          const r = await api<{ log: { steps: string[]; errors: string[] } }>('run', { part: 'contacts' });
+          toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'Nothing new in your emails.');
+          await Promise.all([st.reload(), st.reloadStatus()]);
+        })}>{busy === 'contacts' ? <span className="spinner" /> : '✉️ Look in my emails now'}</button>
       </Fold>
 
       <Fold icon="🤖" title="AI that reads bills" subtitle={`Free first (${free.map((p) => providerOf(p).name).join(' → ')}), then Claude if they can’t`}>

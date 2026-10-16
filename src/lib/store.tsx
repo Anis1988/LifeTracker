@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { api, supabase } from './supabase';
-import { withDefaults, type Alert, type Appointment, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings, type Suggestion } from '../../supabase/functions/_shared/model.ts';
+import { withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings, type Suggestion } from '../../supabase/functions/_shared/model.ts';
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { spentOf, type WeekInput } from '../../supabase/functions/_shared/week.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 import { allRows } from '../../supabase/functions/_shared/rows.ts';
+import { changedFields, contactKey, ownerMerge, sameContact, unionEmails, unionPhones } from '../../supabase/functions/_shared/contacts.ts';
 import { flushTexts } from './texts';
 
 /** What the server reports (bank, Google, AI use today, last automatic run, which keys are set). */
@@ -13,7 +14,7 @@ export interface Status {
   bank: { connected: boolean; lastSync?: string | null; accounts?: { name: string; balance: number; currency: string }[]; errors?: string[] };
   google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean };
   me?: { lastOnline: string | null; lastErrors: string[]; weekSent: string | null; breachScanned: string | null };
-  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null };
+  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null };
   phone?: { since: string | null; lastText: string | null };
   lastRun: { lastRun?: string; steps?: string[]; errors?: string[] } | null;
   aiUsed: Record<string, number>;
@@ -35,6 +36,7 @@ interface Store {
   purchases: Purchase[];
   dates: LifeDate[];
   appts: Appointment[]; // booked, from yesterday on
+  contacts: Contact[]; // 📇 all of them, hidden ones too ("Not a contact")
   settings: Settings;
   status: Status | null;
   statusErr: string;
@@ -56,6 +58,11 @@ interface Store {
   saveDate: (d: Partial<LifeDate> & { title: string; next_date: string }) => Promise<LifeDate>;
   deleteDate: (id: string) => Promise<void>;
   removeAppt: (id: string) => Promise<void>;
+  /** 📇 Add or edit a card. A new one that matches a card you already have (phone, website, email, name) is merged into it. */
+  saveContact: (c: Partial<Contact> & { name: string }) => Promise<{ contact: Contact; merged: boolean }>;
+  setContact: (id: string, patch: Partial<Pick<Contact, 'favorite' | 'status'>>) => Promise<void>;
+  deleteContact: (id: string) => Promise<void>;
+  mergeContacts: (keep: Contact, other: Contact) => Promise<Contact>;
 }
 const Ctx = createContext<Store | null>(null);
 export const useStore = () => useContext(Ctx)!;
@@ -78,6 +85,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [dates, setDates] = useState<LifeDate[]>([]);
   const [appts, setAppts] = useState<Appointment[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [settings, setSettings] = useState<Settings>(withDefaults(null));
   const [status, setStatus] = useState<Status | null>(null);
   const [statusErr, setStatusErr] = useState('');
@@ -86,7 +94,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
   const reload = useCallback(async () => {
     const since = new Date(Date.now() - 200 * 86400_000).toISOString().slice(0, 10);
     const yesterday = new Date(Date.parse(`${today()}T12:00:00Z`) - 86400_000).toISOString().slice(0, 10); // this phone's yesterday
-    const [i, s, a, d, st, f, se, p, tx, pu, ld, ap] = await Promise.all([
+    const [i, s, a, d, st, f, se, p, tx, pu, ld, ap, co] = await Promise.all([
       supabase.from('items').select('*').order('name'),
       supabase.from('suggestions').select('*').eq('status', 'new').order('created_at', { ascending: false }),
       supabase.from('alerts').select('*').eq('seen', false).order('created_at', { ascending: false }).limit(50),
@@ -100,6 +108,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
       supabase.from('purchases').select('*').neq('status', 'ignored').order('bought', { ascending: false }).limit(300),
       supabase.from('life_dates').select('*').order('next_date'),
       supabase.from('appointments').select('*').eq('status', 'booked').gte('day', yesterday).order('day').order('time').limit(200),
+      supabase.from('contacts').select('*').order('name').limit(3000),
     ]);
     setItems(check(i) ?? []);
     setSuggestions(check(s) ?? []);
@@ -114,6 +123,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
     setPurchases((pu.data as Purchase[]) ?? []);
     setDates((ld.data as LifeDate[]) ?? []);
     setAppts((ap.data as Appointment[]) ?? []);
+    setContacts((co.data as Contact[]) ?? []);
     const saved = withDefaults((st.data?.data ?? null) as Partial<Settings> | null);
     // 📅 Appointment times are in your time zone: remember this device's the first time.
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -144,7 +154,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
   }, [reload, reloadStatus]);
 
   const store = useMemo<Store>(() => ({
-    session, items, suggestions, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, settings, status, statusErr, loading, reload, reloadStatus,
+    session, items, suggestions, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus,
     saveSettings: async (s) => {
       const prev = settings;
       setSettings(s);
@@ -224,7 +234,54 @@ export function StoreProvider({ session, children }: { session: Session; childre
       check(await supabase.from('appointments').update({ status: 'removed' }).eq('id', id));
       await api('run', { part: 'calendar' }); // off the calendar now
     },
-  }), [session, items, suggestions, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, settings, status, statusErr, loading, reload, reloadStatus]);
+    saveContact: async (c) => {
+      const clean = (x: Partial<Contact>) => ({
+        name: x.name!.trim().slice(0, 120), kind: x.kind || 'other', person: x.person?.trim() || null, phones: unionPhones(x.phones ?? [], []), emails: unionEmails(x.emails ?? [], []),
+        website: x.website?.trim() ? (/^https?:\/\//i.test(x.website.trim()) ? x.website.trim() : `https://${x.website.trim()}`) : null,
+        address: x.address?.trim() || null, description: x.description?.trim() || null, notes: x.notes?.trim() || null, favorite: !!x.favorite,
+      });
+      const put = (row: Contact) => setContacts((cur) => [...cur.filter((x) => x.id !== row.id), row].sort((a, b) => a.name.localeCompare(b.name)));
+      const fields = clean(c);
+      const old = c.id ? contacts.find((x) => x.id === c.id) : contacts.find((x) => sameContact(x, fields));
+      if (old) {
+        // Your edits (and what you typed for a card you already had) become "set by you": automatic finds never change them.
+        const typed = Object.fromEntries(Object.entries(fields).filter(([, v]) => v && !(Array.isArray(v) && !v.length)));
+        const next: Contact = c.id ? { ...old, ...fields }
+          : { ...old, ...typed, phones: unionPhones(old.phones, fields.phones), emails: unionEmails(old.emails, fields.emails), favorite: old.favorite || fields.favorite, notes: fields.notes || old.notes };
+        const mine = [...new Set([...old.mine, ...changedFields(old, next), ...(c.id ? [] : changedFields({}, fields))])];
+        const sources = c.id ? old.sources : [...new Set([...old.sources, 'hand' as const])]; // an edit isn't "added by you"
+        const saved = check(await supabase.from('contacts').update({ ...clean(next), mine, sources, status: 'active' }).eq('id', old.id).select().single()) as Contact;
+        put(saved);
+        return { contact: saved, merged: !c.id };
+      }
+      const mine = changedFields({}, fields);
+      const row = { ...fields, user_id: session.user.id, sources: ['hand'], mine, status: 'active', last_seen: today() };
+      let key = contactKey(fields);
+      for (let n = 0; ; n++) {
+        const r = await supabase.from('contacts').insert({ ...row, key }).select().single();
+        if (r.error?.code === '23505' && n < 3) { key = `${contactKey(fields)}#${crypto.randomUUID().slice(0, 6)}`; continue; } // same identity text, different place
+        const saved = check(r) as Contact;
+        put(saved);
+        return { contact: saved, merged: false };
+      }
+    },
+    setContact: async (id, patch) => {
+      setContacts((cur) => cur.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      check(await supabase.from('contacts').update(patch).eq('id', id));
+    },
+    deleteContact: async (id) => {
+      check(await supabase.from('contacts').delete().eq('id', id));
+      setContacts((cur) => cur.filter((x) => x.id !== id));
+    },
+    mergeContacts: async (keep, other) => {
+      const m = ownerMerge(keep, other);
+      // Delete first: the merged card may take the other one's phone/website (one row per place).
+      check(await supabase.from('contacts').delete().eq('id', other.id));
+      const saved = check(await supabase.from('contacts').update({ name: m.name, kind: m.kind, person: m.person, phones: m.phones, emails: m.emails, website: m.website, address: m.address, description: m.description, notes: m.notes, favorite: m.favorite, sources: m.sources, mine: m.mine, last_seen: m.last_seen, status: 'active' }).eq('id', keep.id).select().single()) as Contact;
+      setContacts((cur) => [...cur.filter((x) => x.id !== keep.id && x.id !== other.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
+      return saved;
+    },
+  }), [session, items, suggestions, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

@@ -34,6 +34,7 @@
   /* A glowing ring for keyboard focus, everywhere. */
   :where(a, button, summary, select, [role="tab"], [tabindex]):focus-visible { outline: 2px solid #2dd4bf; outline-offset: 2px; border-radius: 14px; }
   input[type="date"].input { -webkit-appearance: none; appearance: none; }
+  input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; display: none; } /* our own ✕ instead */
   /* "More…" sections: a tappable row with a turning chevron. */
   details > summary { @apply flex min-h-[44px] cursor-pointer items-center gap-2 rounded-2xl; list-style: none; }
   details > summary::-webkit-details-marker { display: none; }
@@ -112,10 +113,15 @@
 
   /* Phone tab bar: a glass pill slides to the open tab; its icon lifts and glows. */
   .tabbar { -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%); box-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 var(--lo), 0 20px 50px -18px rgba(15, 23, 42, .55); }
-  .tabpill { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / 5); transform: translateX(calc(var(--i, 0) * 100%)); border-radius: 22px; border: 1px solid var(--bd);
+  .tabpill { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / var(--n, 5)); transform: translateX(calc(var(--i, 0) * 100%)); border-radius: 22px; border: 1px solid var(--bd);
     @apply bg-white/90 dark:bg-white/[0.1]; box-shadow: inset 0 1px 0 var(--hi), 0 0 24px -6px var(--a); transition: transform .55s cubic-bezier(.34, 1.4, .64, 1), opacity .3s; }
   .tabbtn svg { transition: transform .5s var(--spring), filter .3s; }
   .tabbtn[aria-current="page"] svg { transform: translateY(-1px) scale(1.12); filter: drop-shadow(0 0 7px rgba(45, 212, 191, .8)); }
+
+  /* Chips that scroll sideways (Contacts → kinds): a glowing pill slides to the chosen one. */
+  .no-bar { scrollbar-width: none; } .no-bar::-webkit-scrollbar { display: none; }
+  .chippill { position: absolute; top: 4px; bottom: 4px; left: 0; border-radius: 9999px; pointer-events: none; background: linear-gradient(135deg, var(--a), var(--a2));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 0 18px -6px var(--a); transition: transform .5s cubic-bezier(.34, 1.4, .64, 1); }
 
   /* Panels: slide up from the bottom on phones, pop in on big screens. */
   .sheet { animation: sheetup .55s var(--sheet) both; }
