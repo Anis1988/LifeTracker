@@ -24,6 +24,7 @@ import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, We
 import { LockScreen, PeopleEditor, ReadingCard, VaultDetails, VaultGroup, arrangeVault, vaultChips } from '../components/Vault';
 import { PAPER_DEFAULTS, withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
+import { SettingsSearch, SettingsTiles } from '../components/SettingsGrid';
 
 /* made-up examples, only for this guide */
 const d = (days: number) => new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
@@ -217,6 +218,22 @@ export function Guide() {
         <P>The app icon is a small glowing planet with a ring and an amber moon: your life in the middle, with what’s coming up going around it.</P>
       </Fold>
 
+      <Fold icon="⚙️" title="Settings">
+        <P>Settings is a grid of squares, one per topic (About me, Google, Appointments, Spending, Bank, Vault, Contacts, Nearby, AI…). Each square shows in a few words how it’s set right now: a teal dot when it’s on, a grey one when it’s off. Tap a square and its settings slide up in a panel; ✕ (or the phone’s back button) closes it. Everything saves as soon as you change it.</P>
+        <P>Can’t find something? Type in the <b>search box</b> at the top: “zip”, “PIN”, “budget”, “Gmail”… only the squares that have it stay. When another page says “Settings → Nearby”, tapping it opens that square straight away.</P>
+        <Example caption="Made-up example of the Settings grid.">
+          <div className="space-y-2.5">
+            <SettingsSearch q="" onChange={() => undefined} />
+            <SettingsTiles tiles={[
+              { id: 'a', icon: '📍', title: 'Nearby', status: '12345 · weekend on' },
+              { id: 'b', icon: '📁', title: 'Vault', status: '14 docs · 🔒 PIN' },
+              { id: 'c', icon: '🤖', title: 'AI', status: '3 AIs set up' },
+              { id: 'd', icon: '📭', title: 'Mailing lists', status: 'Off', off: true },
+            ]} />
+          </div>
+        </Example>
+      </Fold>
+
       <Fold icon="💬" title="Ask LifeTracker">
         <P>Type a question in the bar on Home, in your own words: “How much did I spend eating out last month?”, “Which subscriptions renew this month?”, “What could I cancel?”, “When does my passport expire?”. The answer comes only from your own data, with follow-up questions to tap. It knows your zip code too: “find me a dentist near me” answers with your contacts and the closest dentists on the free map, with miles and drive time.</P>
         <P>Each question is one AI read: the free AIs first, Claude only if they can’t (Settings → AI). A short summary of your bills, spending, documents, dates, contacts and your zip code goes to the AI with the question, nothing else.</P>
@@ -296,7 +313,7 @@ export function Guide() {
 
       <Fold icon="📍" title="Nearby (places, things to do, this weekend)">
         <P>Your <b>zip code</b> (Settings → Nearby; 45245 until you change it) tells LifeTracker where home is. Distances are straight-line miles from the middle of that zip; the drive time is a real road route when the free route service answers, otherwise a guess marked <b>“about”</b>.</P>
-        <P><b>Contacts → 📍 Nearby → 🔎 Find a place</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added). The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google, and a place is kept only if its page really came back from that search.</P>
+        <P><b>Contacts → 📍 Nearby → 🔎 Find a place</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added). The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google (if Gemini is used up, Claude searches the web instead: paid, a few cents, within its daily limit), and a place is kept only if its page really came back from that search.</P>
         <P><b>🎉 Things to do</b>: restaurants, fun places (parks, museums, bowling…), events (looked up on the web, always with a link to where they were found) and day trips farther away. Every search is remembered for a while, so asking again costs nothing.</P>
         <P><b>This weekend</b>: every Friday morning you get a short list of ideas close by and a bit farther, each with miles and drive time: a card on Home (Friday to Sunday), a heads-up and the morning email. Turn it off in Settings → Nearby. The <b>💬 Ask</b> bar knows your zip too: “find me a dentist” answers with your contacts and the closest ones.</P>
         <Example caption="Made-up search for “dentist”: closest first, with miles and drive time.">
@@ -410,7 +427,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📊" title="My week">
-        <P>A short summary on Home (and by email on the day you pick in Settings → Documents &amp; My week): money spent this week against a usual week, bills in the next 7 days, anything new about you online, mailing lists removed, documents expiring soon and your credit freeze.</P>
+        <P>A short summary on Home (and by email on the day you pick in Settings → My week): money spent this week against a usual week, bills in the next 7 days, anything new about you online, mailing lists removed, documents expiring soon and your credit freeze.</P>
         <Example caption="Made-up example of My week.">
           <WeekCard lines={[
             { icon: '💸', text: 'Spent $412.30 this week (a usual week: $385.00). Most at Example Market $96.10, Example Gas $52.00.' },
@@ -511,7 +528,7 @@ export function Guide() {
       <Fold icon="🔐" title="Privacy">
         <P>Your data is in your own Supabase database. Each person only ever sees their own rows (Row Level Security). The bank access link and Google sign-in are encrypted, and the app itself can’t read them: only the server uses them. You can download everything or sign out in Settings.</P>
         <P>Ask LifeTracker sends a short summary of your own data with each question to the AI, only to answer it. Order emails are read only after a free check says they’re real orders.</P>
-        <P>📍 Nearby sends only your zip code’s map point and what you typed to the free map services (OpenStreetMap, the OSRM route service, zippopotam.us) and, for web searches, to the free Gemini; never your name or anything else.</P>
+        <P>📍 Nearby sends only your zip code’s map point and what you typed to the free map services (OpenStreetMap, the OSRM route service, zippopotam.us) and, for web searches, to the free Gemini (or Claude when Gemini is used up); never your name or anything else.</P>
         <P>About me (your name, emails, phones, city) is private too; it is sent to the free Gemini only to run the searches. Mailing lists: only email headers are read. Document photos and your Vault files stay in your own private storage, opened only with links that last 2 minutes.</P>
       </Fold>
 

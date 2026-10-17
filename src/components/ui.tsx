@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { money } from '../../supabase/functions/_shared/money.ts';
 
@@ -94,18 +94,26 @@ export function Fold({ title, subtitle, icon, open: start = false, children }: {
   );
 }
 
+let openSheets = 0;
 /** A panel that slides up from the bottom on phones (centred on big screens). */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    // Escape / the Android back button closes only the top panel (a PIN sheet opened from a Settings sheet, say).
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const all = document.querySelectorAll('[role="dialog"]');
+      if (all[all.length - 1] === ref.current) onClose();
+    };
     window.addEventListener('keydown', k);
+    openSheets++;
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
+    return () => { window.removeEventListener('keydown', k); if (--openSheets === 0) document.body.style.overflow = ''; };
   }, [onClose]);
   // Drawn on the page itself (a portal): inside a glass card, "fixed" would be trapped in that card.
   return createPortal(
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 backdrop-blur-md animate-[fade_.3s_ease-out] sm:items-center sm:p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="sheet max-h-[92dvh] w-full overflow-y-auto overscroll-contain rounded-t-[32px] border border-b-0 border-white/70 bg-[#f4f7fb]/95 px-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1020]/95 dark:shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.12)] sm:max-w-lg sm:rounded-[32px] sm:border-b sm:pb-6" onClick={(e) => e.stopPropagation()}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className="sheet max-h-[92dvh] w-full overflow-y-auto overscroll-contain rounded-t-[32px] border border-b-0 border-white/70 bg-[#f4f7fb]/95 px-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1020]/95 dark:shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.12)] sm:max-w-lg sm:rounded-[32px] sm:border-b sm:pb-6" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 -mx-4 mb-2 bg-gradient-to-b from-[#f4f7fb] from-70% to-[#f4f7fb]/0 px-4 pb-3 pt-2.5 dark:from-[#0b1020] dark:to-[#0b1020]/0">
           <div className="mx-auto mb-2.5 h-1.5 w-10 rounded-full bg-slate-900/15 dark:bg-white/20 sm:hidden" aria-hidden="true" />
           <div className="flex items-center justify-between gap-3">

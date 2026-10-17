@@ -4,6 +4,7 @@ import { contactForAppt, fmtPhone } from '../../supabase/functions/_shared/conta
 import { whenText } from '../../supabase/functions/_shared/apptText.ts';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 import { Sheet, Toggle, errText, toast } from './ui';
+import { settingsHref } from './SettingsGrid';
 import { recentTexts, textsOff, textsOn, textsState, type TextsState } from '../lib/texts';
 
 const FROM: Record<Appointment['source'], string> = { email: '✉️ Email', text: '💬 Text', hand: '✍️ Added' };
@@ -21,7 +22,7 @@ export function ApptCard({ appts, onRemove, max = 5, emailOn = true, contacts = 
         {list.length > max && <button className="chip -my-2 border-teal-500/30 px-2.5 py-1 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={() => setAll(true)}>See all {list.length}</button>}
       </div>
       {list.length ? <ApptList list={list.slice(0, max)} onOpen={setOpen} /> : (
-        <p className="py-2 text-sm text-slate-500 dark:text-slate-400">{emailOn ? 'Appointments in your emails (and texts, in the Android app) show up here and go straight into your calendar.' : 'Off: turn it on in Settings → Appointments.'}</p>
+        <p className="py-2 text-sm text-slate-500 dark:text-slate-400">{emailOn ? 'Appointments in your emails (and texts, in the Android app) show up here and go straight into your calendar.' : <>Off: turn it on in <a className="tap underline decoration-teal-500/50 underline-offset-2" href={settingsHref('appts')}>Settings → Appointments</a>.</>}</p>
       )}
       {all && <Sheet title="Appointments" onClose={() => setAll(false)}><ApptList list={list} onOpen={(a) => { setAll(false); setOpen(a); }} /></Sheet>}
       {open && <Sheet title={open.title} onClose={() => setOpen(null)}><ApptDetails a={open} contact={contactForAppt(contacts, open)} onRemove={onRemove && (async () => { await onRemove(open); setOpen(null); })} /></Sheet>}
