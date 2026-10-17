@@ -17,7 +17,7 @@ import { UpdateBanner } from '../components/AppUpdate';
 import { ApptCard } from '../components/Appointments';
 import { ScriptView } from '../components/Negotiate';
 import { ContactDetails, ContactGroup, KindChips, SearchBox, arrange, kindOptions } from '../components/Contacts';
-import { Credit, NearbyLink, SpotList, TodoButtons, WeekendCard } from '../components/Nearby';
+import { Credit, NearbyLink, SpotList, TodoButtons, WebLoading, WeekendCard } from '../components/Nearby';
 import type { Spot, Weekend } from '../../supabase/functions/_shared/place.ts';
 import { PlaceCard } from '../components/MyList';
 import type { ListPlace } from '../../supabase/functions/_shared/myList.ts';
@@ -363,11 +363,16 @@ export function Guide() {
       <Fold icon="📍" title="Nearby (places, things to do, this weekend)">
         <P>Your <b>zip code</b> (Settings → Nearby; 45245 until you change it) tells LifeTracker where home is. Distances are straight-line miles from the middle of that zip; the drive time is a real road route when the free route service answers, otherwise a guess marked <b>“about”</b>.</P>
         <P><b>Places → 🔎 Nearby → 🔎 Find</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word (slide the row of words sideways for more). Opening Nearby never searches by itself: nothing is looked up until you tap a word, tap Find or pick a group in Things to do. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added); it lights up as <b>✓ In Contacts</b>. Tap it again to take it back out (only a contact added from that place; one you already had, or one found in your emails, stays), with <b>↶ Undo</b> for a few seconds. The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google (if Gemini is used up, Claude searches the web instead: paid, a few cents, within its daily limit), and a place is kept only if its page really came back from that search.</P>
+        <P><b>Results come in steps</b>, so you don’t wait for everything: the places from the free map show first with a guessed drive time (“about”, a bit faded); a moment later the real road times fill in on the same rows. Only when the map has little (and always for events) a <b>🌐 Searching the web…</b> row shimmers underneath and turns into the places found on the web, or a short note if it found nothing more. You can tap ＋ Contacts or ＋ My list on any of them right away. Starting a new search drops the old one.</P>
         <P><b>🎉 Things to do</b>: tap <b>Food</b>, <b>Fun</b>, <b>Events</b> or <b>Trips</b>: restaurants, fun places (parks, museums, bowling…), events (looked up on the web, always with a link to where they were found) and day trips farther away. Every search is remembered for a while, so asking again costs nothing.</P>
         <P><b>This weekend</b>: every Friday morning you get a short list of ideas close by and a bit farther, each with miles and drive time: a card on Home (Friday to Sunday), a heads-up and the morning email. Turn it off in Settings → Nearby. The <b>💬 Ask</b> bar knows your zip too: “find me a dentist” answers with your contacts and the closest ones.</P>
         <Example caption="Made-up search for “dentist”: closest first, with miles and drive time.">
           <SpotList title="“dentist” closest first" spots={SPOTS} contacts={[]} onAdd={() => undefined} />
           <Credit by={['OpenStreetMap']} />
+        </Example>
+        <Example caption="Made-up search a second after tapping Find: the map’s places are in (drive times still “about”), and the web is still looking.">
+          <SpotList title="“tire shop” closest first" spots={SPOTS.slice(0, 1)} pending />
+          <WebLoading />
         </Example>
         <Example caption="🎉 Things to do when you open it: nothing looked up yet, waiting for a tap.">
           <TodoButtons value={null} onPick={() => undefined} />
