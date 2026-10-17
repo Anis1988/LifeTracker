@@ -44,6 +44,15 @@ const describe = (s: Settings) => [
  * them back as short redirect links; each is followed once to get the address), so callers keep only real pages.
  */
 export async function geminiGrounded(model: string, text: string, maxOutputTokens: number): Promise<{ out: string; hosts: Set<string> }> {
+  // Each Gemini model has its own free allowance: when the picked one is used up, try the lighter ones.
+  const models = [...new Set([model, 'gemini-flash-latest', 'gemini-flash-lite-latest'])];
+  for (let i = 0; ; i++) {
+    try { return await groundedOnce(models[i], text, maxOutputTokens); } catch (e) {
+      if (i + 1 >= models.length || !/allowance/.test(String(e))) throw e;
+    }
+  }
+}
+async function groundedOnce(model: string, text: string, maxOutputTokens: number): Promise<{ out: string; hosts: Set<string> }> {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env('GEMINI_API_KEY') },
