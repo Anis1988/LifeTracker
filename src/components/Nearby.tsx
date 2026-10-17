@@ -150,7 +150,7 @@ export function NearbyView() {
           {busy && <Loading label="Looking for things to do" />}
           {cur && !busy && (cur.spots.length
             ? <SpotList title={TODO_KINDS.find((k) => k.id === kind)!.label} spots={cur.spots} contacts={kind === 'events' || kind === 'trips' ? undefined : st.contacts} onAdd={kind === 'events' || kind === 'trips' ? undefined : (s) => void add(s)} />
-            : <Empty icon={TODO_KINDS.find((k) => k.id === kind)!.icon}>{kind === 'events' ? 'No events found with a source page right now. Events are looked up on the web (free Gemini with Google Search) and only kept with a real link.' : 'Nothing found this time. Try again later.'}</Empty>)}
+            : <Empty icon={TODO_KINDS.find((k) => k.id === kind)!.icon}>{kind === 'events' ? 'No events found with a source page right now. Events are looked up on the web (free Gemini first, Claude if needed) and only kept with a real link.' : 'Nothing found this time. Try again later.'}</Empty>)}
           {cur && !busy && <Credit by={cur.by} note={cur.note} />}
         </>
       )}
