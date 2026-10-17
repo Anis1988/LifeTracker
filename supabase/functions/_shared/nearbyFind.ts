@@ -50,19 +50,25 @@ export const homeText = (h: Home) => `zip ${h.zip} (${h.town}, ${h.state})`;
 interface OsmEl { lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
 // Public servers of the same map data, tried in turn (the main one is often busy).
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+// All servers are asked at once; the first good answer wins and the others are stopped (one slow server no longer holds up the search).
 async function overpass(q: string): Promise<OsmEl[]> {
   const last: string[] = [];
-  for (const url of OVERPASS) {
+  const stop = new AbortController();
+  const ask = async (url: string): Promise<OsmEl[]> => {
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'User-Agent': UA(), 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(q)}`, signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) { last.push(`HTTP ${res.status}`); await res.body?.cancel(); continue; }
+      const res = await fetch(url, { method: 'POST', headers: { 'User-Agent': UA(), 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(q)}`, signal: AbortSignal.any([stop.signal, AbortSignal.timeout(12_000)]) });
+      if (!res.ok) { last.push(`HTTP ${res.status}`); await res.body?.cancel(); throw 0; }
       const j = (await res.json().catch(() => null)) as { elements?: OsmEl[]; remark?: string } | null;
-      // A busy server can answer 200 with no data and a "runtime error" remark: try the next one.
-      if (!j || (!j.elements?.length && /error|timed out/i.test(j.remark ?? ''))) { last.push('busy'); continue; }
+      // A busy server can answer 200 with no data and a "runtime error" remark: not an answer.
+      if (!j || (!j.elements?.length && /error|timed out/i.test(j.remark ?? ''))) { last.push('busy'); throw 0; }
       return j.elements ?? [];
-    } catch (e) { last.push(e instanceof Error && e.name === 'TimeoutError' ? 'too slow' : 'no answer'); }
-  }
-  throw new Error(`OpenStreetMap didn’t answer (${[...new Set(last)].join(', ')})`);
+    } catch (e) {
+      if (e !== 0 && !stop.signal.aborted) last.push(e instanceof Error && e.name === 'TimeoutError' ? 'too slow' : 'no answer');
+      throw e;
+    }
+  };
+  try { const els = await Promise.any(OVERPASS.map(ask)); stop.abort(); return els; }
+  catch { throw new Error(`OpenStreetMap didn’t answer (${[...new Set(last)].join(', ')})`); }
 }
 
 /** Backup when every map server is busy: OpenStreetMap's own search (Nominatim), inside a box around home. One request per word, 1 a second. */
@@ -71,9 +77,7 @@ async function nominatimNear(h: Home, words: string[], meters: number): Promise<
   const box = [h.lon - dLon, h.lat + dLat, h.lon + dLon, h.lat - dLat].map((x) => x.toFixed(4)).join(',');
   const out: OsmEl[] = [];
   for (const w of [...new Set(words)].slice(0, 3)) {
-    const wait = lastGeo + 1100 - Date.now();
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastGeo = Date.now();
+    await geoTurn();
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&viewbox=${box}&addressdetails=1&extratags=1&namedetails=1&countrycodes=us&q=${encodeURIComponent(w)}`,
       { headers: { 'User-Agent': UA(), 'Accept-Language': 'en' }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
     if (!res?.ok) { await res?.body?.cancel().catch(() => undefined); continue; }
@@ -216,7 +220,13 @@ async function photonNear(h: Home, words: string[], filters: string[], meters: n
 }
 
 // ---------- addresses → map points (US Census first: free, no key; then Nominatim 1 a second, then Photon) ----------
-let lastGeo = 0;
+let lastGeo = 0, geoLine: Promise<void> = Promise.resolve();
+/** Nominatim allows 1 request a second: callers take turns, even when several map points are looked up at once. */
+function geoTurn(): Promise<void> {
+  const turn = geoLine.then(async () => { const wait = lastGeo + 1100 - Date.now(); if (wait > 0) await new Promise((r) => setTimeout(r, wait)); lastGeo = Date.now(); });
+  geoLine = turn;
+  return turn;
+}
 async function geocode(q: string): Promise<{ lat: number; lon: number } | null> {
   if (/\d/.test(q)) {
     const res = await fetch(`https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=${encodeURIComponent(q.slice(0, 200))}`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
@@ -231,9 +241,7 @@ async function geocode(q: string): Promise<{ lat: number; lon: number } | null> 
   return f ? { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] } : null;
 }
 async function nominatimOne(q: string): Promise<{ lat: number; lon: number } | null> {
-  const wait = lastGeo + 1100 - Date.now();
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  lastGeo = Date.now();
+  await geoTurn();
   const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q=${encodeURIComponent(q.slice(0, 200))}`, { headers: { 'User-Agent': UA(), 'Accept-Language': 'en' }, signal: AbortSignal.timeout(8000) }).catch(() => null);
   const j = (await res?.json().catch(() => null)) as { lat: string; lon: string }[] | null;
   return j?.[0] ? { lat: Number(j[0].lat), lon: Number(j[0].lon) } : null;
@@ -298,8 +306,11 @@ Only things that really appeared in your search results; never invent names, add
   if (!Array.isArray(list)) return { spots: [] };
   const real = (u?: string) => { const x = u && /^https?:\/\//.test(u) ? hostOf(u) : ''; return !!x && [...hosts].some((y) => y === x || x.endsWith(`.${y}`) || y.endsWith(`.${x}`)); };
   const spots: Spot[] = [];
-  for (const x of (list as WebHit[]).filter((x) => x && typeof x.name === 'string' && x.name.trim() && (real(x.source) || real(x.website))).slice(0, max)) {
-    const at = (x.address && await geocode(x.address)) || (x.city && await geocode(x.city)) || null;
+  const hits = (list as WebHit[]).filter((x) => x && typeof x.name === 'string' && x.name.trim() && (real(x.source) || real(x.website))).slice(0, max);
+  // Map points for all of them at once (the free US Census service needs no waiting between requests).
+  const points = await Promise.all(hits.map(async (x) => (x.address && await geocode(x.address)) || (x.city && await geocode(x.city)) || null));
+  for (const [i, x] of hits.entries()) {
+    const at = points[i];
     if (!at) continue; // no map point → no miles: left out
     const miles = milesBetween(h, at);
     const source = real(x.source) ? x.source! : x.website!;
@@ -331,8 +342,8 @@ export async function nearbySearch(db: SupabaseClient, userId: string, s: Settin
   let spots: Spot[] = [];
   try {
     const name = q.replace(/'/g, '');
-    spots = await osm(h, filtersFor(q), name, 16_000);
-    if (spots.length < THIN) spots = await osm(h, filtersFor(q), name, 40_000);
+    // One trip to the map (40 km around home, closest first) instead of a small circle and then a bigger one.
+    spots = await osm(h, filtersFor(q), name, 40_000);
     if (spots.length) by.add(OSM_BY);
   } catch (e) { notes.push(e instanceof Error ? e.message : String(e)); }
   if (spots.length < THIN && ai) {
