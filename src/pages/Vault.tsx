@@ -6,6 +6,7 @@ import { KindChips, SearchBox } from '../components/Contacts';
 import { LockScreen, NewPin, VaultDetails, VaultForm, VaultGroup, arrangeVault, vaultChips, type VaultReadResult } from '../components/Vault';
 import { isOpen, hashPin, lockVault, onLockChange, pinOk, touchVault, unlockVault, waitLeft, wrongPin } from '../lib/vault';
 import { biometric, canBiometric } from '../lib/biometric';
+import { settingsHref } from '../components/SettingsGrid';
 import type { Paper } from '../../supabase/functions/_shared/model.ts';
 
 const ago = (iso?: string | null) => {
@@ -169,7 +170,7 @@ function VaultList() {
       {docs.length > 0 && (
         <div className="panel flex flex-wrap items-center gap-3 text-sm">
           <button className="btn" disabled={busy || !gmail || !s.vault.emails} onClick={() => void look()}>{busy ? <><span className="spinner" /> Looking…</> : '✉️ Look in my emails now'}</button>
-          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!s.vault.emails ? 'Finding documents in emails is off (Settings → Vault).' : gmail ? `Important files attached to your emails come by themselves every hour; receipts go to Money → Spending, bills to Money → Bills. Last checked ${ago(st.status?.mail?.vaultScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
+          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!s.vault.emails ? <>Finding documents in emails is off (<a className="tap underline decoration-teal-500/50 underline-offset-2" href={settingsHref('vault')}>Settings → Vault</a>).</> : gmail ? `Important files attached to your emails come by themselves every hour; receipts go to Money → Spending, bills to Money → Bills. Last checked ${ago(st.status?.mail?.vaultScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
         </div>
       )}
 

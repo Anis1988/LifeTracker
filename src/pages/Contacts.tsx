@@ -4,6 +4,7 @@ import { api } from '../lib/supabase';
 import { Empty, Seg, Sheet, errText, toast } from '../components/ui';
 import { ContactDetails, ContactForm, ContactGroup, KindChips, MergePicker, SearchBox, arrange, kindOptions } from '../components/Contacts';
 import { NearbyView } from '../components/Nearby';
+import { settingsHref } from '../components/SettingsGrid';
 import type { Contact } from '../../supabase/functions/_shared/model.ts';
 
 const ago = (iso?: string | null) => {
@@ -95,7 +96,7 @@ export function Contacts() {
       {active > 0 && (
         <div className="panel flex flex-wrap items-center gap-3 text-sm">
           <button className="btn" disabled={busy || !gmail || !st.settings.contacts.on} onClick={() => void look()}>{busy ? <><span className="spinner" /> Looking…</> : '✉️ Look in my emails now'}</button>
-          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!st.settings.contacts.on ? 'Finding contacts in emails is off (Settings → Contacts).' : gmail ? `New ones come by themselves every morning. Last look ${ago(st.status?.mail?.contactsScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
+          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!st.settings.contacts.on ? <>Finding contacts in emails is off (<a className="tap underline decoration-teal-500/50 underline-offset-2" href={settingsHref('contacts')}>Settings → Contacts</a>).</> : gmail ? `New ones come by themselves every morning. Last look ${ago(st.status?.mail?.contactsScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
         </div>
       )}
       </>}

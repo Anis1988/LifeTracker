@@ -5,6 +5,7 @@ import { Empty, Seg, errText, toast } from './ui';
 import { PhoneIcon, SearchBox, mapUrl, siteText, tel } from './Contacts';
 import { fmtPhone, sameContact } from '../../supabase/functions/_shared/contacts.ts';
 import { TODO_KINDS, driveText, milesText, spotKind, spotToContact, zipOf, type NearbyResult, type Spot, type TodoKind, type Weekend } from '../../supabase/functions/_shared/place.ts';
+import { settingsHref } from './SettingsGrid';
 import type { Contact } from '../../supabase/functions/_shared/model.ts';
 
 /** 📍 Nearby: places near your zip (closest first, miles + drive time), things to do, and this weekend's list. */
@@ -118,7 +119,7 @@ export function NearbyView() {
     <div className="space-y-3">
       <div className="panel flex items-center gap-3 text-sm">
         <span className="tile !h-9 !w-9 !rounded-xl !text-base" aria-hidden="true">📍</span>
-        <span className="min-w-0 flex-1">Near <b className="num">{zip}</b>{town ? ` · ${town.town}, ${town.state}` : ''}<span className="block text-xs text-slate-500 dark:text-slate-400">Change your zip in Settings → Nearby.</span></span>
+        <span className="min-w-0 flex-1">Near <b className="num">{zip}</b>{town ? ` · ${town.town}, ${town.state}` : ''}<span className="block text-xs text-slate-500 dark:text-slate-400">Change your zip in <a className="tap underline decoration-teal-500/50 underline-offset-2" href={settingsHref('nearby')}>Settings → Nearby</a>.</span></span>
       </div>
       <Seg label="Nearby" options={[['find', '🔎 Find a place'], ['todo', '🎉 Things to do']]} value={mode} onChange={pickMode} />
 

@@ -23,6 +23,7 @@ import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, We
 import { LockScreen, PeopleEditor, ReadingCard, VaultDetails, VaultGroup, arrangeVault, vaultChips } from '../components/Vault';
 import { PAPER_DEFAULTS, withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
+import { SettingsSearch, SettingsTiles } from '../components/SettingsGrid';
 
 /* made-up examples, only for this guide */
 const d = (days: number) => new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
@@ -214,6 +215,22 @@ export function Guide() {
           </div>
         </Example>
         <P>The app icon is a small glowing planet with a ring and an amber moon: your life in the middle, with what’s coming up going around it.</P>
+      </Fold>
+
+      <Fold icon="⚙️" title="Settings">
+        <P>Settings is a grid of squares, one per topic (About me, Google, Appointments, Spending, Bank, Vault, Contacts, Nearby, AI…). Each square shows in a few words how it’s set right now: a teal dot when it’s on, a grey one when it’s off. Tap a square and its settings slide up in a panel; ✕ (or the phone’s back button) closes it. Everything saves as soon as you change it.</P>
+        <P>Can’t find something? Type in the <b>search box</b> at the top: “zip”, “PIN”, “budget”, “Gmail”… only the squares that have it stay. When another page says “Settings → Nearby”, tapping it opens that square straight away.</P>
+        <Example caption="Made-up example of the Settings grid.">
+          <div className="space-y-2.5">
+            <SettingsSearch q="" onChange={() => undefined} />
+            <SettingsTiles tiles={[
+              { id: 'a', icon: '📍', title: 'Nearby', status: '12345 · weekend on' },
+              { id: 'b', icon: '📁', title: 'Vault', status: '14 docs · 🔒 PIN' },
+              { id: 'c', icon: '🤖', title: 'AI', status: '3 AIs set up' },
+              { id: 'd', icon: '📭', title: 'Mailing lists', status: 'Off', off: true },
+            ]} />
+          </div>
+        </Example>
       </Fold>
 
       <Fold icon="💬" title="Ask LifeTracker">
@@ -409,7 +426,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📊" title="My week">
-        <P>A short summary on Home (and by email on the day you pick in Settings → Documents &amp; My week): money spent this week against a usual week, bills in the next 7 days, anything new about you online, mailing lists removed, documents expiring soon and your credit freeze.</P>
+        <P>A short summary on Home (and by email on the day you pick in Settings → My week): money spent this week against a usual week, bills in the next 7 days, anything new about you online, mailing lists removed, documents expiring soon and your credit freeze.</P>
         <Example caption="Made-up example of My week.">
           <WeekCard lines={[
             { icon: '💸', text: 'Spent $412.30 this week (a usual week: $385.00). Most at Example Market $96.10, Example Gas $52.00.' },
