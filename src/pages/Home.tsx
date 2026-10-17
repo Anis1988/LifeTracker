@@ -10,8 +10,8 @@ import { WeekCard } from '../components/Me';
 import { ApptCard, ApptDetails } from '../components/Appointments';
 import { AskBar, AskChat, MiniRings, MonthHero, TimelineList, askError, type Turn } from '../components/Dash';
 import { Sheet, errText, toast } from '../components/ui';
-import { NearbyLink, WeekendCard, WeekendLists, useSaveToList } from '../components/Nearby';
-import { isWeekendNow, spotToContact, zipOf } from '../../supabase/functions/_shared/place.ts';
+import { NearbyLink, WeekendCard, WeekendLists, useSpotToggles } from '../components/Nearby';
+import { isWeekendNow, zipOf } from '../../supabase/functions/_shared/place.ts';
 import { api } from '../lib/supabase';
 import { timeline } from '../lib/timeline';
 import { addedFeed, seenAt } from '../lib/added';
@@ -80,7 +80,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
     setMaking(false);
   };
   const toNearby = (list?: boolean) => goTo('places', list ? 'list' : 'nearby');
-  const saveToList = useSaveToList();
+  const spotToggles = useSpotToggles();
   // 🆕 What was added by itself (the 🔔 Inbox feed): the latest few here, with Undo; "See all" opens the whole feed.
   const feed = useMemo(() => addedFeed(st), [st]);
   const fresh = useMemo(() => { const since = seenAt(); return feed.filter((e) => Date.parse(e.at) > since); }, [feed]);
@@ -172,7 +172,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
       </div>
       {all && <Sheet title="Next 60 days" onClose={() => setAll(false)}><TimelineList moments={timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases, appts: st.appts }, 60)} max={200} title="Timeline" onOpen={(m) => { setAll(false); openMoment(m); }} /></Sheet>}
       {chat && <Sheet title="Ask LifeTracker" onClose={() => setChat(null)}><AskChat turns={chat} busy={thinking} onAsk={(q) => void ask(q)} /><div className="mt-3"><AskBar onAsk={(q) => void ask(q)} disabled={thinking} /></div></Sheet>}
-      {weekendOpen && wk && <Sheet title="This weekend" onClose={() => setWeekendOpen(false)}><WeekendLists w={wk} contacts={st.contacts} onAdd={(x) => void st.saveContact(spotToContact(x)).then((r) => toast('ok', r.merged ? `${x.name} was already in Contacts.` : `${x.name} added to Contacts.`)).catch((e) => toast('err', errText(e)))} places={st.places} onSave={(x) => void saveToList(x)} /></Sheet>}
+      {weekendOpen && wk && <Sheet title="This weekend" onClose={() => setWeekendOpen(false)}><WeekendLists w={wk} contacts={st.contacts} onAdd={(x) => void spotToggles.toggleContact(x)} places={st.places} onSave={(x) => void spotToggles.toggleList(x)} /></Sheet>}
       {appt && <Sheet title={appt.title} onClose={() => setAppt(null)}><ApptDetails a={appt} contact={contactForAppt(st.contacts, appt)} onRemove={async () => { await st.removeAppt(appt.id); setAppt(null); }} /></Sheet>}
       {open && (
         <Sheet title={open.name} onClose={() => setOpen(null)}>

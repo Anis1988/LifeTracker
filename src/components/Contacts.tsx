@@ -1,7 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import { CONTACT_KINDS, contactKind, type Contact, type ContactSource } from '../../supabase/functions/_shared/model.ts';
 import { fmtPhone, matchContact, nameTokens } from '../../supabase/functions/_shared/contacts.ts';
-import { Toggle, errText, shortDate, toast } from './ui';
+import { Toggle, errText, shortDate, toast, useStrip } from './ui';
 
 /** 📇 Contacts: rows, the card, the add/edit form, the kind chips and the merge picker. Also drawn in the Guide (made-up, no buttons). */
 
@@ -50,17 +50,15 @@ export function ContactGroup({ title, list, onOpen }: { title: string; list: Con
 
 /** The kind chips: scroll sideways; a glass pill slides to the chosen one. */
 export function KindChips({ options, value, onChange, label = 'Kind' }: { options: { id: string; label: string; n: number }[]; value: string; onChange: (id: string) => void; label?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ids = options.map((o) => o.id + o.n).join();
+  const ref = useStrip<HTMLDivElement>(`${value}|${ids}`);
   const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
   useLayoutEffect(() => {
     const el = ref.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!el) return setPill(null);
-    setPill({ x: el.offsetLeft, w: el.offsetWidth });
-    const box = ref.current!;
-    if (el.offsetLeft < box.scrollLeft || el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = el.offsetLeft - 16;
-  }, [value, options.map((o) => o.id + o.n).join()]);
+    setPill(el ? { x: el.offsetLeft, w: el.offsetWidth } : null);
+  }, [value, ids]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div ref={ref} role="tablist" aria-label={label} className="no-bar relative -mx-4 flex gap-1.5 overflow-x-auto px-4 py-1">
+    <div ref={ref} role="tablist" aria-label={label} className="strip relative -mx-4 gap-1.5 px-4 py-1">
       {pill && <span aria-hidden="true" className="chippill" style={{ width: pill.w, transform: `translateX(${pill.x}px)` }} />}
       {options.map((o) => (
         <button key={o.id} role="tab" aria-selected={o.id === value} onClick={() => onChange(o.id)}

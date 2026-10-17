@@ -37,7 +37,7 @@ export function DoneStamp({ fresh }: { fresh?: boolean }) {
   );
 }
 
-/** One saved place: tap it to edit; call, website, map; "✓ Been there" (then "How was it?"). */
+/** One saved place: tap it to edit; call, website, map; "✓ Been there" (then "How was it?"), tap it again to undo. */
 export function PlaceCard({ p, fresh, asking, onOpen, onDone, onRate }: { p: ListPlace; fresh?: boolean; asking?: boolean; onOpen: () => void; onDone: () => void; onRate: (v: number | null) => void }) {
   const k = spotKind(p.kind);
   return (
@@ -72,7 +72,8 @@ export function PlaceCard({ p, fresh, asking, onOpen, onDone, onRate }: { p: Lis
         {p.phone && <a href={tel(p.phone)} className="btn h-11 w-11 !rounded-full !p-0 text-teal-700 dark:text-teal-200" aria-label={`Call ${p.name}, ${fmtPhone(p.phone)}`}><PhoneIcon /></a>}
         {p.website && <a href={p.website} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Website of ${p.name}: ${siteText(p.website)}`}>🌐 Site</a>}
         <a href={mapUrl(p.address ? `${p.name}, ${p.address}` : p.lat && p.lon ? `${p.lat},${p.lon}` : p.name)} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Map of ${p.name}`}>🗺️ Map</a>
-        {!p.done && <button className="btn ml-auto !px-3 text-xs font-bold text-emerald-700 dark:text-emerald-300" onClick={onDone}>✓ Been there</button>}
+        <button className={`btn ml-auto !px-3 text-xs font-bold text-emerald-700 dark:text-emerald-300 ${p.done ? '!border-emerald-500/35 !bg-emerald-500/15 !bg-none dark:!border-emerald-300/30 dark:!bg-emerald-300/15' : ''}`} aria-pressed={p.done} onClick={onDone}
+          aria-label={p.done ? `Been there. Tap to undo for ${p.name}` : `Mark ${p.name} as been there`}>✓ Been there</button>
       </div>
     </article>
   );
@@ -143,6 +144,16 @@ export function MyListView({ onFind }: { onFind: () => void }) {
   useEffect(() => { const id = takeParam('p', '#/places/list'); if (id) { setOpenId(id); setFilter('all'); } }, []);
 
   const markDone = async (p: ListPlace) => {
+    if (p.done) { // tapped again: back to not done (stamp and stars off), with ↶ Undo
+      const was = { done: true, done_at: p.done_at, rating: p.rating };
+      if (fresh === p.id) setFresh(null);
+      if (asking === p.id) setAsking(null);
+      try {
+        await st.editPlace(p.id, { done: false, done_at: null, rating: null });
+        toast('ok', `${p.name}: back on the to-do list.`, () => void st.editPlace(p.id, was).catch((e) => toast('err', errText(e))));
+      } catch (e) { toast('err', errText(e)); }
+      return;
+    }
     setFresh(p.id); setAsking(p.id);
     navigator.vibrate?.(18);
     try { await st.editPlace(p.id, { done: true, done_at: new Date().toISOString() }); } catch (e) { toast('err', errText(e)); setFresh(null); setAsking(null); }

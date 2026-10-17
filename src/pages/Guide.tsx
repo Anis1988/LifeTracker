@@ -16,7 +16,7 @@ import { AboutMe } from '../components/AboutMe';
 import { ApptCard } from '../components/Appointments';
 import { ScriptView } from '../components/Negotiate';
 import { ContactDetails, ContactGroup, KindChips, SearchBox, arrange, kindOptions } from '../components/Contacts';
-import { Credit, NearbyLink, SpotList, WeekendCard } from '../components/Nearby';
+import { Credit, NearbyLink, SpotList, TodoButtons, WeekendCard } from '../components/Nearby';
 import type { Spot, Weekend } from '../../supabase/functions/_shared/place.ts';
 import { PlaceCard } from '../components/MyList';
 import type { ListPlace } from '../../supabase/functions/_shared/myList.ts';
@@ -341,7 +341,7 @@ export function Guide() {
         <P><b>No doubles</b>: the same place found in an appointment, a bill and an email (or typed by you) is one card. Cards are matched by phone number (“(555) 010-0100” = “555.010.0100”), website, email address, or a name that means the same (“The Example Dental Office LLC” = “Example Dental”); new details are added to the card, never twice. Two branches with different phones and streets stay two cards. Two cards that are really one? Open one → <b>⇄ Same as…</b>.</P>
         <P>Add one with <b>＋ Add</b> here, or the round ＋ in the tab bar → A contact.</P>
         <P><b>Your edits win</b>: what you type (＋ Add or ✎ Edit) is never changed by the automatic finds; they can only fill in what’s missing. Not a contact? Open it → <b>✕ Not a contact</b>: it goes away for good and won’t come back from your emails (Settings → Contacts can show it again). ★ Favourites stay at the top.</P>
-        <P><b>Search</b> finds anything as you type: a name, the person, a kind (“dentist”), a few digits of the phone (“555 0100”), the website, a street, an email or words in the notes. The chips show one kind; <b>A–Z</b> groups by kind, <b>Recent</b> shows the newest first. An appointment on Home shows its contact card with a Call button.</P>
+        <P><b>Search</b> finds anything as you type: a name, the person, a kind (“dentist”), a few digits of the phone (“555 0100”), the website, a street, an email or words in the notes. The chips show one kind (more chips than fit? slide the row sideways); <b>A–Z</b> groups by kind, <b>Recent</b> shows the newest first. An appointment on Home shows its contact card with a Call button.</P>
         <Example caption="Made-up contacts: kind chips, a favourite at the top, then by kind.">
           <div className="space-y-2">
             <KindChips options={kindOptions(CONTACTS)} value="all" onChange={() => undefined} />
@@ -361,12 +361,15 @@ export function Guide() {
 
       <Fold icon="📍" title="Nearby (places, things to do, this weekend)">
         <P>Your <b>zip code</b> (Settings → Nearby; 45245 until you change it) tells LifeTracker where home is. Distances are straight-line miles from the middle of that zip; the drive time is a real road route when the free route service answers, otherwise a guess marked <b>“about”</b>.</P>
-        <P><b>Places → 🔎 Nearby → 🔎 Find</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added). The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google (if Gemini is used up, Claude searches the web instead: paid, a few cents, within its daily limit), and a place is kept only if its page really came back from that search.</P>
-        <P><b>🎉 Things to do</b>: restaurants, fun places (parks, museums, bowling…), events (looked up on the web, always with a link to where they were found) and day trips farther away. Every search is remembered for a while, so asking again costs nothing.</P>
+        <P><b>Places → 🔎 Nearby → 🔎 Find</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word (slide the row of words sideways for more). Opening Nearby never searches by itself: nothing is looked up until you tap a word, tap Find or pick a group in Things to do. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added); it lights up as <b>✓ In Contacts</b>. Tap it again to take it back out (only a contact added from that place; one you already had, or one found in your emails, stays), with <b>↶ Undo</b> for a few seconds. The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google (if Gemini is used up, Claude searches the web instead: paid, a few cents, within its daily limit), and a place is kept only if its page really came back from that search.</P>
+        <P><b>🎉 Things to do</b>: tap <b>Food</b>, <b>Fun</b>, <b>Events</b> or <b>Trips</b>: restaurants, fun places (parks, museums, bowling…), events (looked up on the web, always with a link to where they were found) and day trips farther away. Every search is remembered for a while, so asking again costs nothing.</P>
         <P><b>This weekend</b>: every Friday morning you get a short list of ideas close by and a bit farther, each with miles and drive time: a card on Home (Friday to Sunday), a heads-up and the morning email. Turn it off in Settings → Nearby. The <b>💬 Ask</b> bar knows your zip too: “find me a dentist” answers with your contacts and the closest ones.</P>
         <Example caption="Made-up search for “dentist”: closest first, with miles and drive time.">
           <SpotList title="“dentist” closest first" spots={SPOTS} contacts={[]} onAdd={() => undefined} />
           <Credit by={['OpenStreetMap']} />
+        </Example>
+        <Example caption="🎉 Things to do when you open it: nothing looked up yet, waiting for a tap.">
+          <TodoButtons value={null} onPick={() => undefined} />
         </Example>
         <Example caption="Made-up “This weekend” card on Home (Friday to Sunday).">
           <WeekendCard w={WEEKEND_EX} onAll={() => undefined} />
@@ -374,8 +377,8 @@ export function Guide() {
         <Example caption="The rest of the week, Home shows the way in to Nearby.">
           <NearbyLink zip="45245" onGo={() => undefined} toDo={3} onList={() => undefined} />
         </Example>
-        <P><b>📌 My list</b>: tap <b>＋ My list</b> on anything in Find, Things to do or the weekend list to keep it for later (it shows <b>✓ On my list</b> after that, so it’s never saved twice). <b>Places → 📌 My list</b> shows them all with the miles and drive time from when you saved them. Search by name, street, kind or a word from your note; show <b>To do</b>, <b>✓ Done</b> or <b>All</b>; sort by closest, newest or planned day. Tap a place to change its name, note, planned day, address, phone or website, or to delete it (it asks first).</P>
-        <P>Went there? Tap <b>✓ Been there</b>: a <b>BEEN THERE ✓</b> stamp lands on the card with the day you went, and you can give it 1 to 5 stars (or skip). Changed your mind? Open it and tap <b>↩ Not done yet</b>. Home shows how many are still to do, and 💬 Ask knows the names on your list.</P>
+        <P><b>📌 My list</b>: tap <b>＋ My list</b> on anything in Find, Things to do or the weekend list to keep it for later (it lights up as <b>✓ On my list</b>, so it’s never saved twice; tap it again to take it off My list, with <b>↶ Undo</b> that puts it back with its note and stars). <b>Places → 📌 My list</b> shows them all with the miles and drive time from when you saved them. Search by name, street, kind or a word from your note; show <b>To do</b>, <b>✓ Done</b> or <b>All</b>; sort by closest, newest or planned day. Tap a place to change its name, note, planned day, address, phone or website, or to delete it (it asks first).</P>
+        <P>Went there? Tap <b>✓ Been there</b>: a <b>BEEN THERE ✓</b> stamp lands on the card with the day you went, and you can give it 1 to 5 stars (or skip). Tapped it by mistake? Tap the lit <b>✓ Been there</b> again: it goes back to “to do”, the stamp and stars come off (↶ Undo puts them back). You can also open it and tap <b>↩ Not done yet</b>. Home shows how many are still to do, and 💬 Ask knows the names on your list.</P>
         <Example caption="Made-up My list: one planned for tomorrow, one already done (with its stamp and 5 stars).">
           {LIST_EX.map((p) => <PlaceCard key={p.id} p={p} fresh={p.done} onOpen={() => undefined} onDone={() => undefined} onRate={() => undefined} />)}
         </Example>
