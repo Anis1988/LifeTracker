@@ -4,7 +4,9 @@ import { api } from '../lib/supabase';
 import { Empty, Seg, Sheet, errText, toast } from '../components/ui';
 import { ContactDetails, ContactForm, ContactGroup, KindChips, MergePicker, SearchBox, arrange, kindOptions } from '../components/Contacts';
 import { NearbyView } from '../components/Nearby';
+import { MyListView } from '../components/MyList';
 import { settingsHref } from '../components/SettingsGrid';
+import { takeParam, useView } from '../lib/nav';
 import type { Contact } from '../../supabase/functions/_shared/model.ts';
 
 const ago = (iso?: string | null) => {
@@ -12,6 +14,29 @@ const ago = (iso?: string | null) => {
   const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
   return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
 };
+
+/** 📍 Places: 📇 Contacts · 🔎 Nearby · 📌 My list, one switch at the top (remembers the last one). */
+export function Places() {
+  const st = useStore();
+  const [view, pick] = useView('places');
+  const toDo = st.places.filter((p) => !p.done).length;
+  return (
+    <div className="mx-auto max-w-2xl space-y-4">
+      <Seg label="Places" className="[&>button]:px-1 [&>button]:text-[13px] sm:[&>button]:px-3 sm:[&>button]:text-sm" options={[['contacts', '📇 Contacts'], ['nearby', '🔎 Nearby'], ['list', `📌 My list${toDo ? ` · ${toDo}` : ''}`]]} value={view} onChange={pick} />
+      {view === 'contacts' ? <Contacts /> : view === 'nearby' ? (
+        <div className="stagger space-y-3">
+          <h1 className="text-[28px] font-semibold leading-tight">Nearby</h1>
+          <NearbyView />
+        </div>
+      ) : (
+        <div className="stagger space-y-3">
+          <div><p className="label">{toDo} to do · {st.places.length - toDo} done</p><h1 className="text-[28px] font-semibold leading-tight">My list</h1></div>
+          <MyListView onFind={() => pick('nearby')} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** 📇 Your references: dentist, garage, insurer… found in Gmail, appointments and bills, or added by you. Searchable. */
 export function Contacts() {
@@ -23,9 +48,6 @@ export function Contacts() {
   const [edit, setEdit] = useState<Partial<Contact> | null>(null);
   const [merge, setMerge] = useState<Contact | null>(null);
   const [busy, setBusy] = useState(false);
-  // 📍 Nearby (places near your zip, things to do) lives here too: the places you might add to Contacts.
-  const [view, setView] = useState<'mine' | 'nearby'>(() => { try { return /[?&]nearby/.test(location.hash) || sessionStorage.getItem('lt.contacts') === 'nearby' ? 'nearby' : 'mine'; } catch { return 'mine'; } });
-  const pickView = (v: 'mine' | 'nearby') => { setView(v); try { sessionStorage.setItem('lt.contacts', v); } catch { /* private mode */ } };
   const open = st.contacts.find((c) => c.id === openId) ?? null;
   const options = useMemo(() => kindOptions(st.contacts), [st.contacts]);
   const groups = useMemo(() => arrange(st.contacts, { q, kind, sort }), [st.contacts, q, kind, sort]);
@@ -33,11 +55,11 @@ export function Contacts() {
   const active = st.contacts.filter((c) => c.status === 'active').length;
   const gmail = !!st.status?.google.gmail;
 
-  // "#/contacts?c=<id>" (from an appointment on Home) opens that card.
+  // "#/places/contacts?c=<id>" (an appointment, the search) opens that card; "?add" (＋) the new-contact form.
   useEffect(() => {
-    const id = location.hash.match(/[?&]c=([\w-]+)/)?.[1];
-    if (id) { setOpenId(id); pickView('mine'); history.replaceState(null, '', '#/contacts'); }
-    else if (/[?&]nearby/.test(location.hash)) { pickView('nearby'); history.replaceState(null, '', '#/contacts'); }
+    const id = takeParam('c', '#/places/contacts');
+    if (id) setOpenId(id);
+    if (takeParam('add', '#/places/contacts') !== null) setEdit({});
   }, []);
   // A kind with nothing left (after "Not a contact" or a merge): back to All.
   useEffect(() => { if (!options.some((o) => o.id === kind)) setKind('all'); }, [options, kind]);
@@ -61,11 +83,8 @@ export function Contacts() {
           <p className="label">{active} saved</p>
           <h1 className="text-[28px] font-semibold leading-tight">Contacts</h1>
         </div>
-        {view === 'mine' && <button className="btn-primary" onClick={() => setEdit({})}>＋ Add</button>}
+        <button className="btn-primary" onClick={() => setEdit({})}>＋ Add</button>
       </div>
-      <Seg label="Contacts or nearby" options={[['mine', '📇 My contacts'], ['nearby', '📍 Nearby']]} value={view} onChange={pickView} />
-      {view === 'nearby' && <NearbyView />}
-      {view === 'mine' && <>
       {active > 0 && (
         <div className="space-y-2">
           <SearchBox q={q} onChange={setQ} />
@@ -99,7 +118,6 @@ export function Contacts() {
           <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!st.settings.contacts.on ? <>Finding contacts in emails is off (<a className="tap underline decoration-teal-500/50 underline-offset-2" href={settingsHref('contacts')}>Settings → Contacts</a>).</> : gmail ? `New ones come by themselves every morning. Last look ${ago(st.status?.mail?.contactsScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
         </div>
       )}
-      </>}
 
       {open && (
         <Sheet title={open.name} onClose={() => setOpenId(null)}>

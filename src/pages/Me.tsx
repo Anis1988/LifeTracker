@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
-import { Fold, Sheet, errText, toast } from '../components/ui';
+import { Fold, Seg, Sheet, errText, toast } from '../components/ui';
 import { AboutMe } from '../components/AboutMe';
-import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, PasswordCheck, SenderRow, WeekCard, senderFilter, type SenderView } from '../components/Me';
-import { useVaultOpen } from './Vault';
+import { BreachList, BrokerList, CreditCard, FindingRow, PasswordCheck, SenderRow, WeekCard, senderFilter, type SenderView } from '../components/Me';
+import { Vault } from './Vault';
+import { Settings } from './Settings';
+import { useView } from '../lib/nav';
+import { appsUrl } from '../lib/links';
 import { weekSummary } from '../../supabase/functions/_shared/week.ts';
 import type { LifeDate, Sender } from '../../supabase/functions/_shared/model.ts';
 import { DateForm, DateRow } from '../components/Dates';
@@ -15,8 +18,23 @@ const ago = (iso?: string | null) => {
   return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
 };
 
-/** 👤 Everything about you: your name online, people-search sites, breaches, mailing lists, documents, credit. */
-export function Me(_: { go: (tab: string) => void }) {
+/** 👤 Me: 📁 Vault · 🛡️ Privacy · ⚙️ Settings, one switch at the top (remembers the last one), then the Guide and My apps. */
+export function MePage() {
+  const [view, pick] = useView('me');
+  return (
+    <div className="mx-auto max-w-4xl space-y-4">
+      <div className="mx-auto max-w-2xl"><Seg label="Me" options={[['vault', '📁 Vault'], ['privacy', '🛡️ Privacy'], ['settings', '⚙️ Settings']]} value={view} onChange={pick} /></div>
+      {view === 'vault' ? <Vault /> : view === 'privacy' ? <Privacy /> : <Settings />}
+      <div className="mx-auto flex max-w-2xl flex-wrap justify-center gap-2 pt-2">
+        <a href="#/guide" className="btn">❓ Guide</a>
+        <a href={appsUrl()} className="btn">📱 My apps</a>
+      </div>
+    </div>
+  );
+}
+
+/** 🛡️ Everything about you: your name online, people-search sites, breaches, mailing lists, dates, credit. */
+export function Privacy() {
   const st = useStore();
   const s = st.settings;
   const [busy, setBusy] = useState('');
@@ -31,10 +49,6 @@ export function Me(_: { go: (tab: string) => void }) {
   const lines = useMemo(() => weekSummary({ items: st.items, findings: st.findings, senders: st.senders, papers: s.papers.on ? st.papers : [], settings: s, spent: st.spent, dates: st.dates, purchases: st.purchases }), [st.items, st.findings, st.senders, st.papers, s, st.spent, st.dates, st.purchases]);
   const senders = st.senders.filter(senderFilter(view, s.unsub.days));
   const hasProfile = s.me.names.length > 0 || s.me.emails.length > 0;
-  // 🪪 Documents with a date now live in 📁 Vault (same documents): the ones that expire or are due, soonest first.
-  const vaultOpen = useVaultOpen();
-  const dated = st.papers.filter((p) => p.expires);
-  const toVault = (q = '') => { location.hash = `#/vault${q}`; window.scrollTo(0, 0); };
 
   const run = async (part: 'online' | 'breaches' | 'lists' | 'week', label: string) => {
     setBusy(part);
@@ -69,7 +83,7 @@ export function Me(_: { go: (tab: string) => void }) {
 
   return (
     <div className="stagger mx-auto max-w-2xl space-y-3">
-      <h1 className="text-[28px] font-semibold leading-tight">Me</h1>
+      <h1 className="text-[28px] font-semibold leading-tight">Privacy</h1>
       <Fold icon="👤" title="About me" subtitle={hasProfile ? [s.me.names[0], s.me.places[0]].filter(Boolean).join(' · ') : 'Add your name so LifeTracker can look for you online'} open={!hasProfile}>
         <p className="text-sm text-slate-600 dark:text-slate-300">Private: only you can see it. Sent to the free Gemini only to run the searches.</p>
         <AboutMe me={s.me} onSave={(me) => st.saveSettings({ ...s, me })} onCheck={() => void run('online', 'Your name online')} />
@@ -130,17 +144,6 @@ export function Me(_: { go: (tab: string) => void }) {
         <div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{st.dates.map((d) => <DateRow key={d.id} d={d} onOpen={() => setDate(d)} />)}</div>
         <button className="btn-primary" onClick={() => setDate({})}>＋ Add a date</button>
         <p className="text-xs text-slate-500 dark:text-slate-400">A heads-up before each one, on Home’s timeline, and in your Google Calendar (repeating).</p>
-      </Fold>
-
-      <Fold icon="🪪" title="Documents that expire" subtitle={dated.length ? `${dated.length} with a date${vaultOpen ? ` · next ${dated[0].name}` : ''} · in 📁 Vault` : 'Passport, licence, vaccines… now in 📁 Vault'} open={dated.length > 0 && vaultOpen}>
-        {vaultOpen
-          ? <div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{dated.slice(0, 8).map((p) => <PaperRow key={p.id} p={p} onOpen={() => toVault(`?doc=${p.id}`)} />)}</div>
-          : <p className="text-sm text-slate-600 dark:text-slate-300">🔒 Your Vault is locked: open it to see them.</p>}
-        <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" onClick={() => toVault('?add')}>📷 Add a document</button>
-          <button className="btn" onClick={() => toVault()}>Open 📁 Vault</button>
-        </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Heads-ups {s.papers.remind.join(', ')} days before a document expires (30 and 7 for things due again, like a vaccine), and in your Google Calendar.</p>
       </Fold>
 
       <Fold icon="🔒" title="Credit freeze & reports" subtitle={`${(['equifax', 'experian', 'transunion'] as const).filter((b) => s.credit[b] === 'frozen').length} of 3 frozen`}>

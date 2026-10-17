@@ -26,6 +26,11 @@ import { LockScreen, PeopleEditor, ReadingCard, VaultDetails, VaultGroup, arrang
 import { PAPER_DEFAULTS, withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 import { SettingsSearch, SettingsTiles } from '../components/SettingsGrid';
+import { PhoneTabBar } from '../components/Nav';
+import { SearchResults } from '../components/Search';
+import { QuickAddList } from '../components/QuickAdd';
+import { searchAll } from '../lib/search';
+import { AddedCard } from './Home';
 
 /* made-up examples, only for this guide */
 const d = (days: number) => new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
@@ -192,9 +197,9 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and the <b>🔔 Inbox</b> at the top lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
-        <P>The tabs at the bottom: <b>Home</b>, <b>Money</b> (bills, spending, returns), <b>Contacts</b> (with 📍 Nearby), <b>Vault</b> (your documents), <b>Me</b> and <b>Settings</b>. At the top: My apps, the 🔔 Inbox and this Guide.</P>
-        <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…, kept in your Vault) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
+        <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
+        <P>Four tabs at the bottom: <b>Home</b> (today at a glance), <b>Money</b> (Bills · Spending · Returns), <b>Places</b> (Contacts · Nearby · My list) and <b>Me</b> (Vault · Privacy · Settings). The round <b>＋</b> in the middle adds anything. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>. The Guide and My apps are at the bottom of Me.</P>
+        <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
           <div className="space-y-2">
             <MonthHero total={1842} usual={2120} soFarUsual={2120} bills={2940} monthName="October" />
@@ -202,7 +207,42 @@ export function Guide() {
             <TimelineList moments={timeline({ items: EX, papers: PAPERS, dates: DATES, purchases: BUYS }, 30)} max={5} />
           </div>
         </Example>
+        <P>Below the Ask bar, <b>What was added</b> shows the newest 3 things LifeTracker added by itself, each with ↶ Undo; <b>See all</b> opens the whole list (the 🔔 Inbox).</P>
+        <Example caption="Made-up What was added card on Home.">
+          <AddedCard list={FEED} fresh={2} />
+        </Example>
         <P>The three rings: <b>Spending</b> (this month against a usual month), <b>Bills</b> (how many of this month’s bills already came), <b>Privacy</b> (credit bureaus frozen). Tap one to open it. <b>Coming up</b> mixes bills, free trials ending, renewals, documents, important dates and return windows; tap <b>See all</b> for the next 60 days.</P>
+      </Fold>
+
+      <Fold icon="🧭" title="Finding your way (tabs, search, ＋)">
+        <P>Each tab has a switch at the top for its parts (like <b>Bills | Spending | Returns</b>), and it remembers the part you used last on this phone. Tap the tab again any time; the phone’s back button closes an open panel first, then goes back to Home.</P>
+        <Example caption="Made-up tab bar: Places is open; ＋ sits in the middle.">
+          <PhoneTabBar tab="places" example />
+        </Example>
+        <P><b>Where did it go?</b> Nothing was removed, things just moved:</P>
+        <div className="card overflow-hidden !p-0">
+          <table className="w-full text-left text-sm">
+            <thead><tr className="label"><th className="px-3 py-2 font-normal">Before</th><th className="px-3 py-2 font-normal">Now</th></tr></thead>
+            <tbody className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">
+              {[['Contacts tab', 'Places → 📇 Contacts'], ['Contacts → 📍 Nearby', 'Places → 🔎 Nearby'], ['Nearby → 📌 My list', 'Places → 📌 My list'], ['Vault tab', 'Me → 📁 Vault'], ['Me tab', 'Me → 🛡️ Privacy'], ['Documents that expire (Me)', 'Me → 📁 Vault (same documents)'], ['Settings tab', 'Me → ⚙️ Settings'], ['Guide and My apps (top)', 'Bottom of Me, and in Settings'], ['🆕 “added by itself” card', 'Home → What was added (the 🔔 bell still opens all)']].map(([a, b]) => (
+                <tr key={a}><td className="px-3 py-2.5 text-slate-500 dark:text-slate-400">{a}</td><td className="px-3 py-2.5 font-semibold">{b}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <P>Old links still work: “Settings → Nearby” and the like open the right square in Me → Settings.</P>
+        <P><b>🔎 Search</b> (the magnifier at the top, on every page) looks through everything already on your phone as you type: bills, purchases and receipts, contacts, My list, your Vault documents (only while the Vault is open), appointments and the Settings squares. Results come grouped; tap one and it opens right where it lives. No AI and nothing sent anywhere.</P>
+        <Example caption="Made-up search for “example”.">
+          <SearchResults q="example" example groups={searchAll({ items: EX, tx: RECEIPTS, contacts: CONTACTS, places: LIST_EX, papers: [], appts: APPTS, rules: RULES }, 'example', { vaultOpen: false, max: 2 }).slice(0, 3)} />
+        </Example>
+        <P><b>＋ Add</b>: a receipt (photo or PDF, read at once), a bill, a bill as a photo or PDF, a document to the Vault, a place (opens Nearby’s search) or a contact. Each opens the usual way of adding it.</P>
+        <Example caption="Made-up ＋ panel (the receipt button sits above these).">
+          <QuickAddList example />
+        </Example>
+        <P><b>💬 Ask can open things</b>: “open my lease”, “show Example Dental”, “where is my passport?” finds it on your phone (no AI, nothing paid) and gives you an <b>Open</b> button.</P>
+        <Example caption="Made-up “open” question.">
+          <AskChat turns={[{ q: 'show Example Dental', a: 'Here it is: Example Dental (Dr. Example · (555) 010-0100 · 12 Example St), in Contacts.', by: 'this phone (no AI)', open: { label: 'Open Example Dental', href: '#/guide' } }]} />
+        </Example>
       </Fold>
 
       <Fold icon="🫧" title="How it looks and feels">
@@ -226,7 +266,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="⚙️" title="Settings">
-        <P>Settings is a grid of squares, one per topic (About me, Google, Appointments, Spending, Bank, Vault, Contacts, Nearby, AI…). Each square shows in a few words how it’s set right now: a teal dot when it’s on, a grey one when it’s off. Tap a square and its settings slide up in a panel; ✕ (or the phone’s back button) closes it. Everything saves as soon as you change it.</P>
+        <P><b>Me → ⚙️ Settings</b> is a grid of squares, one per topic (About me, Google, Appointments, Spending, Bank, Vault, Contacts, Nearby, AI…, plus My apps and this Guide). Each square shows in a few words how it’s set right now: a teal dot when it’s on, a grey one when it’s off. Tap a square and its settings slide up in a panel; ✕ (or the phone’s back button) closes it. Everything saves as soon as you change it.</P>
         <P>Can’t find something? Type in the <b>search box</b> at the top: “zip”, “PIN”, “budget”, “Gmail”… only the squares that have it stay. When another page says “Settings → Nearby”, tapping it opens that square straight away.</P>
         <Example caption="Made-up example of the Settings grid.">
           <div className="space-y-2.5">
@@ -296,9 +336,10 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📇" title="Contacts (your dentist, garage, insurer…)">
-        <P>The <b>Contacts</b> tab keeps the places you deal with: name, kind (dentist, doctor, car, home repairs, hair & beauty, pet, school, bank, insurance, utilities, government, restaurant, shop), the person if there is one, phone, website, address, email and a short line on what they are to you. Tap the phone button to call, or open a card for the website, the map and the email.</P>
+        <P><b>Places → 📇 Contacts</b> keeps the places you deal with: name, kind (dentist, doctor, car, home repairs, hair & beauty, pet, school, bank, insurance, utilities, government, restaurant, shop), the person if there is one, phone, website, address, email and a short line on what they are to you. Tap the phone button to call, or open a card for the website, the map and the email.</P>
         <P><b>They come by themselves</b> (your choice: straight in, no OK needed): from your <b>appointments</b> (who and where), your <b>bills</b> (insurance, bank, car, health, utilities: not streaming) and the shops in Returns, and every morning from <b>Gmail</b>: the sender, and the phone number, website and street address in the email’s signature, read with free rules. Newsletters, private emails from friends, big online services and “no-reply” emails without real details are skipped. Only when the free rules can’t tell who sent an email does the AI look (free AIs first, a few a day at most, and never twice for the same sender). <b>Look in my emails now</b> runs it at once.</P>
         <P><b>No doubles</b>: the same place found in an appointment, a bill and an email (or typed by you) is one card. Cards are matched by phone number (“(555) 010-0100” = “555.010.0100”), website, email address, or a name that means the same (“The Example Dental Office LLC” = “Example Dental”); new details are added to the card, never twice. Two branches with different phones and streets stay two cards. Two cards that are really one? Open one → <b>⇄ Same as…</b>.</P>
+        <P>Add one with <b>＋ Add</b> here, or the round ＋ in the tab bar → A contact.</P>
         <P><b>Your edits win</b>: what you type (＋ Add or ✎ Edit) is never changed by the automatic finds; they can only fill in what’s missing. Not a contact? Open it → <b>✕ Not a contact</b>: it goes away for good and won’t come back from your emails (Settings → Contacts can show it again). ★ Favourites stay at the top.</P>
         <P><b>Search</b> finds anything as you type: a name, the person, a kind (“dentist”), a few digits of the phone (“555 0100”), the website, a street, an email or words in the notes. The chips show one kind; <b>A–Z</b> groups by kind, <b>Recent</b> shows the newest first. An appointment on Home shows its contact card with a Call button.</P>
         <Example caption="Made-up contacts: kind chips, a favourite at the top, then by kind.">
@@ -320,7 +361,7 @@ export function Guide() {
 
       <Fold icon="📍" title="Nearby (places, things to do, this weekend)">
         <P>Your <b>zip code</b> (Settings → Nearby; 45245 until you change it) tells LifeTracker where home is. Distances are straight-line miles from the middle of that zip; the drive time is a real road route when the free route service answers, otherwise a guess marked <b>“about”</b>.</P>
-        <P><b>Contacts → 📍 Nearby → 🔎 Find a place</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added). The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google (if Gemini is used up, Claude searches the web instead: paid, a few cents, within its daily limit), and a place is kept only if its page really came back from that search.</P>
+        <P><b>Places → 🔎 Nearby → 🔎 Find</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added). The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google (if Gemini is used up, Claude searches the web instead: paid, a few cents, within its daily limit), and a place is kept only if its page really came back from that search.</P>
         <P><b>🎉 Things to do</b>: restaurants, fun places (parks, museums, bowling…), events (looked up on the web, always with a link to where they were found) and day trips farther away. Every search is remembered for a while, so asking again costs nothing.</P>
         <P><b>This weekend</b>: every Friday morning you get a short list of ideas close by and a bit farther, each with miles and drive time: a card on Home (Friday to Sunday), a heads-up and the morning email. Turn it off in Settings → Nearby. The <b>💬 Ask</b> bar knows your zip too: “find me a dentist” answers with your contacts and the closest ones.</P>
         <Example caption="Made-up search for “dentist”: closest first, with miles and drive time.">
@@ -333,7 +374,7 @@ export function Guide() {
         <Example caption="The rest of the week, Home shows the way in to Nearby.">
           <NearbyLink zip="45245" onGo={() => undefined} toDo={3} onList={() => undefined} />
         </Example>
-        <P><b>📌 My list</b>: tap <b>＋ My list</b> on anything in Find, Things to do or the weekend list to keep it for later (it shows <b>✓ On my list</b> after that, so it’s never saved twice). Contacts → 📍 Nearby → 📌 My list shows them all with the miles and drive time from when you saved them. Search by name, street, kind or a word from your note; show <b>To do</b>, <b>✓ Done</b> or <b>All</b>; sort by closest, newest or planned day. Tap a place to change its name, note, planned day, address, phone or website, or to delete it (it asks first).</P>
+        <P><b>📌 My list</b>: tap <b>＋ My list</b> on anything in Find, Things to do or the weekend list to keep it for later (it shows <b>✓ On my list</b> after that, so it’s never saved twice). <b>Places → 📌 My list</b> shows them all with the miles and drive time from when you saved them. Search by name, street, kind or a word from your note; show <b>To do</b>, <b>✓ Done</b> or <b>All</b>; sort by closest, newest or planned day. Tap a place to change its name, note, planned day, address, phone or website, or to delete it (it asks first).</P>
         <P>Went there? Tap <b>✓ Been there</b>: a <b>BEEN THERE ✓</b> stamp lands on the card with the day you went, and you can give it 1 to 5 stars (or skip). Changed your mind? Open it and tap <b>↩ Not done yet</b>. Home shows how many are still to do, and 💬 Ask knows the names on your list.</P>
         <Example caption="Made-up My list: one planned for tomorrow, one already done (with its stamp and 5 stars).">
           {LIST_EX.map((p) => <PlaceCard key={p.id} p={p} fresh={p.done} onOpen={() => undefined} onDone={() => undefined} onRate={() => undefined} />)}
@@ -341,7 +382,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📁" title="Vault (your documents)">
-        <P>The <b>Vault</b> tab keeps your important papers in one safe place: your pet’s vaccines and vet records (like Daizy 🐶), medical papers, IDs and passports, the house (deed, lease, warranties, manuals), the car (registration, title, insurance card), school, taxes, contracts, certificates… Bills and receipts are not kept here: they belong in <b>Money</b>.</P>
+        <P><b>Me → 📁 Vault</b> keeps your important papers in one safe place: your pet’s vaccines and vet records (like Daizy 🐶), medical papers, IDs and passports, the house (deed, lease, warranties, manuals), the car (registration, title, insurance card), school, taxes, contracts, certificates… Bills and receipts are not kept here: they belong in <b>Money</b>.</P>
         <P><b>📷 Scan</b>: take a photo of the page with the camera, or pick several photos or a PDF at once (several pages become <b>one PDF</b>, made on your phone). That’s all: it’s <b>read and saved by itself</b> straight away. The AI reads it once and fills in the title, the folder, who it’s for, the date on it, and when it expires or is <b>due again</b> (like Daizy’s next rabies shot), then its card opens. Something wrong, or a page to add? Tap <b>✎ Edit</b>. A receipt goes to Money → Spending instead, and a file you already have isn’t saved twice (the one you have opens). It uses the free AIs first, Claude only if they can’t, and the same file is never read (or paid for) twice; if no AI can read it just then, it’s saved anyway for you to fill in. Only the last 4 characters of any number are kept.</P>
         <Example caption="Made-up scan of two pages, being read: it saves by itself, then the document opens.">
           <ReadingCard pages={2} />
@@ -383,7 +424,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📱" title="My apps (all your apps on one page)">
-        <P>Tap the four squares at the top (or Settings → <b>My apps</b>) to open a page with all your apps: Trend Videos, Trading, Scam Check, CalorieTracker, LifeTracker and CarLoaner. Each card shows a few words on how it’s doing, an <b>Open</b> button, and what its <b>paid AI</b> cost today, in the last 7 days and this month. The card at the top adds them all up.</P>
+        <P>Tap <b>📱 My apps</b> at the bottom of Me (or the My apps square in Me → Settings) to open a page with all your apps: Trend Videos, Trading, Scam Check, CalorieTracker, LifeTracker and CarLoaner. Each card shows a few words on how it’s doing, an <b>Open</b> button, and what its <b>paid AI</b> cost today, in the last 7 days and this month. The card at the top adds them all up.</P>
         <P>The first time, tap <b>🔑 Codes</b> and type each app’s access code (the one you already open it with), and CarLoaner’s address. They stay <b>only in that browser</b> and each code goes only to its own app. LifeTracker uses your sign-in. “Code needed” means a code is missing or wrong; “Couldn’t reach it” means the app didn’t answer. Tap ↻ for fresh numbers.</P>
         <P>Free AIs count as $0. “About” means an estimate: the app counts its AI calls and uses a rough price per call.</P>
         <Example caption="Made-up My apps page: the total, two apps that answered, one without its code and one that didn’t answer.">
@@ -396,7 +437,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🎂" title="Important dates and car care">
-        <P>In <b>Me → Important dates</b>: birthdays, anniversaries, oil changes, tire rotations, dentist and check-ups, the HVAC filter… Pick a starter (one tap) or type your own, the next date, how often it repeats and when to remind you. After each date it moves to the next one by itself.</P>
+        <P>In <b>Me → 🛡️ Privacy → Important dates</b>: birthdays, anniversaries, oil changes, tire rotations, dentist and check-ups, the HVAC filter… Pick a starter (one tap) or type your own, the next date, how often it repeats and when to remind you. After each date it moves to the next one by itself.</P>
         <P>You get a heads-up before each one, it’s on Home’s timeline, and it goes in your LifeTracker Google Calendar (repeating).</P>
         <Example caption="Made-up dates."><div>{DATES.map((x) => <DateRow key={x.id} d={x} />)}</div></Example>
       </Fold>
@@ -416,7 +457,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🆕" title="What was added (Inbox)">
-        <P><b>Inbox</b> is the 🔔 bell at the top of the screen. Nothing waits there for your OK any more: it shows <b>what LifeTracker added by itself</b> in the last 30 days, newest first: bills (from your bank, bill emails or documents), receipts from emails, documents from emails, contacts and appointments. The number on the bell is how many are new since you last looked (Home shows them too).</P>
+        <P><b>Inbox</b> is the 🔔 bell at the top of the screen. Nothing waits there for your OK any more: it shows <b>what LifeTracker added by itself</b> in the last 30 days, newest first: bills (from your bank, bill emails or documents), receipts from emails, documents from emails, contacts and appointments. The number on the bell is how many are new since you last looked. Home’s <b>What was added</b> card shows the newest 3.</P>
         <P>Tap one to see it where it went. Wrong? Tap <b>↶ Undo</b>: a bill is removed, a receipt taken off Spending (a bank purchase stays, without the receipt), a document deleted, a contact hidden, an appointment taken off your calendar, and <b>it won’t be added again</b>. Below the list: add a bill or document by hand (read at once), and import a bank CSV.</P>
         <Example caption="Made-up Inbox: what was added today, this week and earlier, each with Undo.">
           <AddedList list={FEED} onUndo={() => undefined} />
@@ -451,8 +492,8 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🕵️" title="Your name online">
-        <P>Fill in <b>About me</b> (at the top of Me, or in Settings): your name (and other spellings), your city, emails, phone numbers and usernames. Type each one (＋ adds another), then tap <b>Save</b>: a pop-up confirms what was saved, with a button to look for you right away. “Not saved yet” means you still need to tap Save. Every 7 days (you can change it) the free Gemini searches Google for them and sorts each page: your own profile, news, a people-search site, or <b>worrying</b> (a fake profile using your name, a scam, leaked documents or passwords, harassment).</P>
-        <P>Only pages that really came back from the search are kept, so nothing is made up. New ones show in <b>Me</b>; worrying ones also as a heads-up. Tap <b>It’s fine</b> or <b>Not me</b> to clear them. For a worrying page: report it to the site, and ask Google to hide it with “Results about you”.</P>
+        <P>Fill in <b>About me</b> (at the top of Me → Privacy, or in Settings): your name (and other spellings), your city, emails, phone numbers and usernames. Type each one (＋ adds another), then tap <b>Save</b>: a pop-up confirms what was saved, with a button to look for you right away. “Not saved yet” means you still need to tap Save. Every 7 days (you can change it) the free Gemini searches Google for them and sorts each page: your own profile, news, a people-search site, or <b>worrying</b> (a fake profile using your name, a scam, leaked documents or passwords, harassment).</P>
+        <P>Only pages that really came back from the search are kept, so nothing is made up. New ones show in <b>Me → Privacy</b>; worrying ones also as a heads-up. Tap <b>It’s fine</b> or <b>Not me</b> to clear them. For a worrying page: report it to the site, and ask Google to hide it with “Results about you”.</P>
         <Example caption="Made-up About me (Save does nothing here).">
           <AboutMe me={{ names: ['Jordan Example'], places: ['Example City'], emails: ['jordan@example.com'], phones: [], usernames: ['jordan_ex'] }} example />
         </Example>
@@ -471,7 +512,7 @@ export function Guide() {
 
       <Fold icon="🔓" title="Data breaches and passwords">
         <P>Sign up once (free) at <b>haveibeenpwned.com/NotifyMe</b> with each of your emails, or at Mozilla Monitor. When a site that has your email is hacked, they email you; LifeTracker reads that email in Gmail and tells you which password to change. No AI, nothing paid.</P>
-        <P><b>Is a password leaked?</b> Type it in Me: it never leaves your phone (only the first 5 characters of a scrambled code are sent), and it isn’t saved.</P>
+        <P><b>Is a password leaked?</b> Type it in Me → Privacy: it never leaves your phone (only the first 5 characters of a scrambled code are sent), and it isn’t saved.</P>
         <Example caption="Made-up breach."><BreachList rows={BREACH} /></Example>
       </Fold>
 
@@ -485,13 +526,13 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🪪" title="Documents that expire">
-        <P>Your passport, driver’s licence, ID, car registration or inspection, insurance card, Global Entry, visa… are kept in the <b>📁 Vault</b> (scan them there; the AI fills in the kind, name and expiry date). Me → Documents that expire lists the ones with a date, soonest first. Only the last 4 characters of the number are kept.</P>
+        <P>Your passport, driver’s licence, ID, car registration or inspection, insurance card, Global Entry, visa… are kept in the <b>📁 Vault</b> (scan them there; the AI fills in the kind, name and expiry date). They show in the Vault with their date (the soonest first in each folder) and on Home’s timeline. Only the last 4 characters of the number are kept.</P>
         <P>You get heads-ups 90, 30 and 7 days before, and on the day. With Google Calendar connected, a “Start renewing” day is added 90 days before (passports take weeks) and the expiry day itself.</P>
         <Example caption="Made-up documents."><div className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">{PAPERS.map((p) => <PaperRow key={p.id} p={p} />)}</div></Example>
       </Fold>
 
       <Fold icon="🔒" title="Credit freeze and reports">
-        <P>A <b>credit freeze</b> at the three credit bureaus is free, takes about 5 minutes each, and stops anyone from opening a loan or card in your name (the best protection against identity theft). You can lift it for a day when you apply for credit yourself. Me → Credit has the three freeze pages; mark each one done.</P>
+        <P>A <b>credit freeze</b> at the three credit bureaus is free, takes about 5 minutes each, and stops anyone from opening a loan or card in your name (the best protection against identity theft). You can lift it for a day when you apply for credit yourself. Me → Privacy → Credit has the three freeze pages; mark each one done.</P>
         <P>Every 4 months you get a reminder to look at your free credit reports at annualcreditreport.com for accounts you don’t know.</P>
         <Example caption="Made-up example: two of three frozen.">
           <CreditCard c={{ equifax: 'frozen', experian: 'frozen', transunion: 'not', lastReport: d(-40), reportMonths: 4 }} />

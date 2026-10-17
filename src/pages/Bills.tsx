@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { takeParam } from '../lib/nav';
 import { useStore } from '../lib/store';
 import { ItemForm, ItemRow, Totals } from '../components/Items';
 import { Empty, Money, Sheet, errText, toast } from '../components/ui';
@@ -12,6 +13,13 @@ export function Bills() {
   const [q, setQ] = useState('');
   const [show, setShow] = useState<'active' | 'all' | 'cancelled'>('active');
   const [open, setOpen] = useState<Partial<Item> | null>(null);
+  // "#/money/bills?item=<id>" (🔎 search) opens that bill; "?add" (＋) the new-bill form.
+  useEffect(() => {
+    const id = takeParam('item', '#/money/bills');
+    const it = id ? st.items.find((x) => x.id === id) : null;
+    if (it) setOpen(it);
+    if (takeParam('add', '#/money/bills') !== null) setOpen({});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const list = useMemo(() => st.items.filter((i) => (show === 'all' ? true : show === 'active' ? i.status !== 'cancelled' : i.status === 'cancelled'))
     .filter((i) => !q || `${i.name} ${i.merchant ?? ''} ${i.notes ?? ''}`.toLowerCase().includes(q.toLowerCase())), [st.items, q, show]);
   // 🆕 Bills added by themselves in the last 14 days (bank, bill emails, documents), each with ↶ Undo (remembered).

@@ -1,5 +1,6 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useStore } from '../lib/store';
+import { takeParam } from '../lib/nav';
 import { Empty, Seg, Sheet, errText, toast } from './ui';
 import { PhoneIcon, SearchBox, mapUrl, siteText, tel } from './Contacts';
 import { fmtPhone } from '../../supabase/functions/_shared/contacts.ts';
@@ -118,7 +119,7 @@ function PlaceForm({ p, onClose }: { p: ListPlace; onClose: () => void }) {
   );
 }
 
-/** Contacts → 📍 Nearby → 📌 My list. */
+/** Places → 📌 My list. */
 export function MyListView({ onFind }: { onFind: () => void }) {
   const st = useStore();
   const [q, setQ] = useState('');
@@ -138,6 +139,8 @@ export function MyListView({ onFind }: { onFind: () => void }) {
   const open = all.find((p) => p.id === openId) ?? null;
   const pickSort = (v: ListSort) => { setSort(v); try { localStorage.setItem('lt.listSort', v); } catch { /* private mode */ } };
   const pickFilter = (v: ListFilter) => { setFilter(v); setFresh(null); setAsking(null); };
+  // "#/places/list?p=<id>" (from the 🔎 search) opens that place.
+  useEffect(() => { const id = takeParam('p', '#/places/list'); if (id) { setOpenId(id); setFilter('all'); } }, []);
 
   const markDone = async (p: ListPlace) => {
     setFresh(p.id); setAsking(p.id);

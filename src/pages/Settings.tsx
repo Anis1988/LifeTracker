@@ -4,12 +4,13 @@ import { useStore } from '../lib/store';
 import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
 import { Field, Sheet, Toggle, errText, toast } from '../components/ui';
-import { SettingsSearch, SettingsTiles, settingsHref, type SettingsTile } from '../components/SettingsGrid';
+import { SETTINGS_INDEX as SEC, SettingsSearch, SettingsTiles, settingsHref, type SettingsTile } from '../components/SettingsGrid';
 import { NewPin, PeopleEditor, PinPad } from '../components/Vault';
 import { hashPin, lockVault, pinOk, unlockVault } from '../lib/vault';
 import { personIcon } from '../../supabase/functions/_shared/model.ts';
 import { AboutMe } from '../components/AboutMe';
 import { appsUrl } from '../lib/links';
+import { goTo } from '../lib/nav';
 import { TextsSetup } from '../components/Appointments';
 import { ZipField } from '../components/Nearby';
 import { zipOf } from '../../supabase/functions/_shared/place.ts';
@@ -18,7 +19,7 @@ import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../
 
 const REMINDS: [string, string][] = [['1440,120', '1 day and 2 hours before'], ['1440,60', '1 day and 1 hour before'], ['1440', '1 day before'], ['120', '2 hours before'], ['60', '1 hour before'], ['', 'No reminder']];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const secOfHash = () => location.hash.match(/^#\/settings\/([a-z]+)/)?.[1] ?? null;
+const secOfHash = () => location.hash.match(/^#\/me\/settings\/([a-z]+)/)?.[1] ?? null;
 
 const Ready = ({ ok, label }: { ok: boolean; label: string }) => (
   <span className={`chip ${ok ? 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200' : 'border-slate-900/10 dark:border-white/10 text-slate-500 dark:text-slate-400 dark:border-slate-700'}`}>{ok ? '✓' : '○'} {label}</span>
@@ -37,11 +38,11 @@ export function Settings() {
     setBusy('');
   };
 
-  // The grid: one section opens in a sheet. "#/settings/nearby" (from other pages) opens Nearby straight away.
+  // The grid: one section opens in a sheet. "#/me/settings/nearby" (from other pages) opens Nearby straight away.
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<string | null>(secOfHash);
   const show = (id: string | null) => {
-    history.replaceState(null, '', id ? settingsHref(id) : '#/settings');
+    history.replaceState(null, '', id ? settingsHref(id) : '#/me/settings');
     setOpen(id);
   };
   useEffect(() => {
@@ -50,7 +51,7 @@ export function Settings() {
     return () => window.removeEventListener('hashchange', f);
   }, []);
 
-  // Back from Google: "#/settings?google=connected"
+  // Back from Google: "#/settings?google=connected" (an old address, moved to "#/me/settings?google=…")
   useEffect(() => {
     const m = location.hash.match(/google=([^&]+)/);
     if (!m) return;
@@ -128,8 +129,8 @@ export function Settings() {
   const plus = gEmail.includes('@') ? `${gEmail.split('@')[0]}+${s.gmail.plusTag}@${gEmail.split('@')[1]}` : `you+${s.gmail.plusTag}@gmail.com`;
 
   const aboutBody = (<>
-    <p className="text-sm text-slate-600 dark:text-slate-300">Used to look for you online (Me → Your name online). Private: only you can see it. It is sent to the free Gemini only to run the searches.</p>
-    <AboutMe me={s.me} onSave={(me) => st.saveSettings({ ...s, me })} onCheck={() => { location.hash = '#/me'; window.scrollTo(0, 0); void api('run', { part: 'online' }).then(() => Promise.all([st.reload(), st.reloadStatus()])).catch((e) => toast('err', errText(e))); toast('info', 'Searching for you online… results appear in Me in a minute.'); }} />
+    <p className="text-sm text-slate-600 dark:text-slate-300">Used to look for you online (Me → Privacy → Your name online). Private: only you can see it. It is sent to the free Gemini only to run the searches.</p>
+    <AboutMe me={s.me} onSave={(me) => st.saveSettings({ ...s, me })} onCheck={() => { goTo('me', 'privacy'); void api('run', { part: 'online' }).then(() => Promise.all([st.reload(), st.reloadStatus()])).catch((e) => toast('err', errText(e))); toast('info', 'Searching for you online… results appear in Me → Privacy in a minute.'); }} />
     <Field label="Look for me online" hint="Free (Gemini with Google Search), a few searches each time.">
       <Toggle on={s.online.on} onChange={(v) => save({ online: { ...s.online, on: v } })} label="Look for me online" />
     </Field>
@@ -359,7 +360,7 @@ export function Settings() {
   </>);
 
   const nearbyBody = (<>
-    <p className="text-sm text-slate-600 dark:text-slate-300">Your zip code is used for Contacts → 📍 Nearby (the closest dentist, oil change, pizza…), things to do, the Friday “This weekend” list and the 💬 Ask bar (“find me a dentist”). Free first: the map is OpenStreetMap; only when it has little, and for events and day trips, the free Gemini searches Google (never Claude). Every search is kept, so it’s never paid twice.</p>
+    <p className="text-sm text-slate-600 dark:text-slate-300">Your zip code is used for Places → 🔎 Nearby (the closest dentist, oil change, pizza…), things to do, the Friday “This weekend” list and the 💬 Ask bar (“find me a dentist”). Free first: the map is OpenStreetMap; only when it has little, and for events and day trips, the free Gemini searches Google (never Claude). Every search is kept, so it’s never paid twice.</p>
     <Field label="Zip code" hint="Distances are from the middle of this zip code. Empty = 45245.">
       <ZipField zip={zipOf(s)} onSave={(zip) => st.saveSettings({ ...s, place: { ...s.place, zip } })} />
     </Field>
@@ -437,20 +438,21 @@ export function Settings() {
   const nContacts = st.contacts.filter((c) => c.status === 'active').length;
   const nBudgets = Object.keys(s.spend.budgets).length;
   const sections: (SettingsTile & { body?: ReactNode })[] = [
-    { id: 'about', icon: '👤', title: 'About me', status: s.me.names.length ? `${s.me.names[0]}${s.me.places[0] ? ` · ${s.me.places[0]}` : ''}` : 'Not filled in', off: !s.me.names.length, words: 'name names city places emails phones usernames look for me online search google gemini how often', body: aboutBody },
-    { id: 'google', icon: '📅', title: 'Google', status: status?.google.connected ? [status.google.calendar && 'Calendar', status.google.gmail && 'Gmail'].filter(Boolean).join(' + ') || 'Connected' : 'Not connected', off: !status?.google.connected, words: 'google calendar gmail connect disconnect bills renewals trials remind days before receipt emails forward plus', body: googleBody },
-    { id: 'appts', icon: '🗓️', title: 'Appointments', status: s.appts.on ? `On · emails${status?.phone?.since ? ' + texts' : ''}` : 'Off', off: !s.appts.on, words: 'appointments doctor dentist calendar remind reminders time zone texts sms android phone emails', body: apptsBody },
-    { id: 'spending', icon: '💸', title: 'Spending & returns', status: `${nBudgets} budget${nBudgets === 1 ? '' : 's'} · receipts ${s.receipts.on ? 'on' : 'off'}`, words: 'spending budgets budget warn receipts emails order emails returns warranties shops category reset last checked', body: spendingBody },
-    { id: 'bank', icon: '🏦', title: 'Bank & cards', status: !s.bank.alerts ? 'Off' : status?.google.gmail ? `${status.google.alertsRead ?? 0} purchases read` : 'Needs Gmail', off: !s.bank.alerts || !status?.google.gmail, words: 'bank cards alerts alert emails purchases simplefin csv read now disconnect', body: bankBody },
-    { id: 'vault', icon: '📁', title: 'Vault', status: `${st.papers.length} doc${st.papers.length === 1 ? '' : 's'} · ${lock.on ? '🔒 PIN' : 'no lock'}`, words: 'vault documents emails attachments heads-ups expire due people pets lock pin privacy', body: vaultBody },
-    { id: 'contacts', icon: '📇', title: 'Contacts', status: `${nContacts} saved · ${s.contacts.on ? 'auto' : 'by hand'}`, words: 'contacts find emails not a contact hidden show again', body: contactsBody },
-    { id: 'nearby', icon: '📍', title: 'Nearby', status: `${zipOf(s)} · weekend ${s.place.weekend ? 'on' : 'off'}`, words: 'nearby zip code home weekend friday things to do places distance', body: nearbyBody },
-    { id: 'mail', icon: '📭', title: 'Mailing lists', status: !s.unsub.on ? 'Off' : s.unsub.auto ? `Auto · ${s.unsub.days} days` : 'On · you choose', off: !s.unsub.on, words: 'mailing lists newsletters unsubscribe automatically headers tidy inbox spam block manage', body: mailBody },
-    { id: 'week', icon: '📊', title: 'My week', status: s.week.on ? `Email on ${DAYS[s.week.day]}` : 'Email off', off: !s.week.on, words: 'my week weekly email summary day send', body: weekBody },
-    { id: 'alerts', icon: '🔔', title: 'Heads-ups', status: s.notify.email ? 'App + email' : 'In the app', words: 'heads-ups notifications alerts email morning bills due autopay renewals contract warn days before', body: alertsBody },
-    { id: 'ai', icon: '🤖', title: 'AI', status: status ? `${nAi} AI${nAi === 1 ? '' : 's'} set up` : `${free.map((p) => providerOf(p).name).join(' → ')} → Claude`, words: 'ai that reads bills gemini groq openrouter claude paid free order daily limit model', body: aiBody },
-    { id: 'apps', icon: '📱', title: 'My apps', status: 'All your apps and their AI cost', href: appsUrl(), words: 'my apps other apps cost' },
-    { id: 'account', icon: '⚙️', title: 'Account & data', status: st.session.user.email ?? '', words: 'account data export download sign out log out keys server last run email', body: accountBody },
+    { ...SEC.about, status: s.me.names.length ? `${s.me.names[0]}${s.me.places[0] ? ` · ${s.me.places[0]}` : ''}` : 'Not filled in', off: !s.me.names.length, body: aboutBody },
+    { ...SEC.google, status: status?.google.connected ? [status.google.calendar && 'Calendar', status.google.gmail && 'Gmail'].filter(Boolean).join(' + ') || 'Connected' : 'Not connected', off: !status?.google.connected, body: googleBody },
+    { ...SEC.appts, status: s.appts.on ? `On · emails${status?.phone?.since ? ' + texts' : ''}` : 'Off', off: !s.appts.on, body: apptsBody },
+    { ...SEC.spending, status: `${nBudgets} budget${nBudgets === 1 ? '' : 's'} · receipts ${s.receipts.on ? 'on' : 'off'}`, body: spendingBody },
+    { ...SEC.bank, status: !s.bank.alerts ? 'Off' : status?.google.gmail ? `${status.google.alertsRead ?? 0} purchases read` : 'Needs Gmail', off: !s.bank.alerts || !status?.google.gmail, body: bankBody },
+    { ...SEC.vault, status: `${st.papers.length} doc${st.papers.length === 1 ? '' : 's'} · ${lock.on ? '🔒 PIN' : 'no lock'}`, body: vaultBody },
+    { ...SEC.contacts, status: `${nContacts} saved · ${s.contacts.on ? 'auto' : 'by hand'}`, body: contactsBody },
+    { ...SEC.nearby, status: `${zipOf(s)} · weekend ${s.place.weekend ? 'on' : 'off'}`, body: nearbyBody },
+    { ...SEC.mail, status: !s.unsub.on ? 'Off' : s.unsub.auto ? `Auto · ${s.unsub.days} days` : 'On · you choose', off: !s.unsub.on, body: mailBody },
+    { ...SEC.week, status: s.week.on ? `Email on ${DAYS[s.week.day]}` : 'Email off', off: !s.week.on, body: weekBody },
+    { ...SEC.alerts, status: s.notify.email ? 'App + email' : 'In the app', body: alertsBody },
+    { ...SEC.ai, status: status ? `${nAi} AI${nAi === 1 ? '' : 's'} set up` : `${free.map((p) => providerOf(p).name).join(' → ')} → Claude`, body: aiBody },
+    { ...SEC.apps, status: 'All your apps and their AI cost', href: appsUrl() },
+    { ...SEC.guide, status: 'How everything works, in plain words', href: '#/guide' },
+    { ...SEC.account, status: st.session.user.email ?? '', body: accountBody },
   ];
   const openSec = sections.find((x) => x.id === open && x.body);
 
