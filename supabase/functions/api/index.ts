@@ -9,6 +9,9 @@ import { refresh } from '../_shared/google.ts';
 import { blockOne, unsubscribeOne } from '../_shared/unsub.ts';
 import { ask } from '../_shared/ask.ts';
 import { summary } from '../_shared/summary.ts';
+import { homeOf, nearbySearch, thingsToDo, weekendFor } from '../_shared/nearbyFind.ts';
+import { fridayOf } from '../_shared/place.ts';
+import { todayIn } from '../_shared/money.ts';
 import { negotiate } from '../_shared/negotiate.ts';
 import { mimeOf, readVault } from '../_shared/vault.ts';
 import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow } from '../_shared/receipts.ts';
@@ -24,7 +27,7 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('bank-connect'), setupToken: z.string().min(20).max(2000) }),
   z.object({ action: z.literal('disconnect'), kind: z.enum(['simplefin', 'google']) }),
   z.object({ action: z.literal('google-start'), want: z.array(z.enum(['calendar', 'gmail', 'mailbox'])).min(1).max(3), back: z.string().url().max(300) }),
-  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail']) }),
+  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail', 'weekend']) }),
   z.object({ action: z.literal('phone-key') }),
   z.object({ action: z.literal('ask'), question: z.string().min(2).max(500), history: z.array(z.object({ q: z.string().max(500), a: z.string().max(2000) })).max(6).optional() }),
   z.object({ action: z.literal('unsubscribe'), id: z.string().uuid() }),
@@ -33,6 +36,7 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('sync'), full: z.boolean().optional() }),
   z.object({ action: z.literal('read-doc'), id: z.string().uuid() }),
   z.object({ action: z.literal('summary') }),
+  z.object({ action: z.literal('nearby'), op: z.enum(['home', 'search', 'todo', 'weekend']), zip: z.string().regex(/^\d{5}$/).optional(), q: z.string().max(80).optional(), kind: z.enum(['food', 'fun', 'events', 'trips']).optional() }),
   z.object({ action: z.literal('negotiate'), id: z.string().uuid(), okSwitch: z.boolean(), fresh: z.boolean().optional() }),
   z.object({ action: z.literal('receipt-add'), path: z.string().min(10).max(300) }),
   z.object({ action: z.literal('receipt'), op: z.enum(['edit', 'reread', 'delete']), id: z.string().uuid(), entry: z.boolean().optional(), details: z.object({ store: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), total: z.number().min(0).max(1e6), tax: z.number().min(0).max(1e6).nullable(), card: z.string().regex(/^\d{4}$/).nullable(), items: z.array(z.object({ name: z.string().max(60), qty: z.number().min(0).max(1e4).nullable(), price: z.number().min(-1e6).max(1e6).nullable() })).max(40) }).optional() }),
@@ -103,6 +107,14 @@ async function handle(req: Request): Promise<Response> {
       case 'summary':
         // 📱 "My apps" page: LifeTracker's card (read-only, no AI).
         return json(await summary(db, user.id, await settingsOf(db, user.id)));
+      case 'nearby': {
+        // 📍 Places near your zip (OpenStreetMap first, then the free Gemini with Google Search), things to do, this weekend.
+        const s = await settingsOf(db, user.id);
+        if (body.op === 'home') return json(await homeOf(db, user.id, { place: { zip: body.zip ?? s.place.zip } }));
+        if (body.op === 'search') return json(await nearbySearch(db, user.id, s, body.q ?? ''));
+        if (body.op === 'todo') return json(await thingsToDo(db, user.id, s, body.kind ?? 'fun'));
+        return json((await weekendFor(db, user.id, s, fridayOf(todayIn(s.appts.timeZone || 'America/New_York')))).w);
+      }
       case 'negotiate':
         // 💬 "Get a lower price": one AI read, then kept on the bill per price (free the next time).
         return json(await negotiate(db, user.id, await settingsOf(db, user.id), body.id, body.okSwitch, body.fresh));

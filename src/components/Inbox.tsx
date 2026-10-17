@@ -40,7 +40,7 @@ export function AddedList({ list, onUndo, onOpen, busy }: { list: AddedEntry[]; 
 }
 
 // '' = the title already starts with its own icon (documents, credit, breaches).
-const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭', budget: '', return: '', warranty: '', date: '', appt: '', vault: '' };
+const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭', budget: '', return: '', warranty: '', date: '', appt: '', vault: '', nearby: '' };
 export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: string) => void }) {
   if (!alerts.length) return null;
   return (
@@ -52,7 +52,7 @@ export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: s
             {ALERT_ICON[a.kind] && <span aria-hidden="true" className="tile !h-9 !w-9 !rounded-xl !text-base">{ALERT_ICON[a.kind]}</span>}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold leading-snug">{a.title}</p>
-              {a.body && <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">{a.body}</p>}
+              {a.body && <p className="mt-0.5 whitespace-pre-line text-xs leading-snug text-slate-500 dark:text-slate-400">{a.body}</p>}
             </div>
             {onSeen && <button className="btn-ghost -my-1 -mr-1 shrink-0 rounded-full text-base text-teal-700 dark:text-teal-300" onClick={() => onSeen(a.id)} aria-label="Got it">✓</button>}
           </li>

@@ -6,6 +6,8 @@ import { WeekCard } from '../components/Me';
 import { ApptCard, ApptDetails } from '../components/Appointments';
 import { AskBar, AskChat, MiniRings, MonthHero, TimelineList, askError, type Turn } from '../components/Dash';
 import { Sheet, errText, toast } from '../components/ui';
+import { NearbyLink, WeekendCard, WeekendLists } from '../components/Nearby';
+import { isWeekendNow, spotToContact, zipOf } from '../../supabase/functions/_shared/place.ts';
 import { api } from '../lib/supabase';
 import { timeline } from '../lib/timeline';
 import { addedFeed, seenAt } from '../lib/added';
@@ -42,7 +44,23 @@ export function Home({ go }: { go: (tab: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [chat, setChat] = useState<Turn[] | null>(null);
   const [thinking, setThinking] = useState(false);
+  const [weekendOpen, setWeekendOpen] = useState(false);
+  const [making, setMaking] = useState(false);
   const t = today();
+  // 🎉 This weekend's list (made Friday morning) from Friday to Sunday, for the zip in Settings.
+  const zip = zipOf(s);
+  const wk = st.weekend && st.weekend.home.zip === zip && isWeekendNow(st.weekend, t) ? st.weekend : null;
+  const dow = new Date(`${t}T12:00:00Z`).getUTCDay();
+  const makeWeekend = async () => {
+    setMaking(true);
+    try {
+      const x = await api<{ log: { steps: string[]; errors: string[] } }>('run', { part: 'weekend' });
+      toast(x.log.errors.length ? 'err' : 'ok', [...x.log.steps, ...x.log.errors].join(' · ') || 'Done.');
+      await st.reload();
+    } catch (e) { toast('err', errText(e)); }
+    setMaking(false);
+  };
+  const toNearby = () => { try { sessionStorage.setItem('lt.contacts', 'nearby'); } catch { /* private mode */ } go('contacts'); };
   // 🆕 Added by itself since the Inbox was last opened (Undo is there).
   const fresh = useMemo(() => { const since = seenAt(); return addedFeed(st).filter((e) => Date.parse(e.at) > since); }, [st]);
   const r = useMemo(() => spendReport(st.tx, s.spend.rules, t.slice(0, 7), Number(t.slice(8, 10))), [st.tx, s.spend.rules, t]);
@@ -124,12 +142,15 @@ export function Home({ go }: { go: (tab: string) => void }) {
       </div>
       <div className="stagger space-y-4">
         {(s.appts.on || st.appts.length > 0) && <ApptCard appts={st.appts} emailOn={s.appts.on} contacts={st.contacts} onRemove={(a) => st.removeAppt(a.id)} />}
+        {wk ? <WeekendCard w={wk} onAll={() => setWeekendOpen(true)} />
+          : <NearbyLink zip={zip} onGo={toNearby} onMake={s.place.weekend && (dow === 5 || dow === 6 || dow === 0) ? () => void makeWeekend() : undefined} making={making} />}
         <TimelineList moments={moments} onAll={() => setAll(true)} onOpen={(m) => openMoment(m)} />
         <WeekCard lines={lines} onOpen={() => go('me')} />
         <p className="text-center text-xs text-slate-500 dark:text-slate-400">🔄 Automatic check {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</p>
       </div>
       {all && <Sheet title="Next 60 days" onClose={() => setAll(false)}><TimelineList moments={timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases, appts: st.appts }, 60)} max={200} title="Timeline" onOpen={(m) => { setAll(false); openMoment(m); }} /></Sheet>}
       {chat && <Sheet title="Ask LifeTracker" onClose={() => setChat(null)}><AskChat turns={chat} busy={thinking} onAsk={(q) => void ask(q)} /><div className="mt-3"><AskBar onAsk={(q) => void ask(q)} disabled={thinking} /></div></Sheet>}
+      {weekendOpen && wk && <Sheet title="This weekend" onClose={() => setWeekendOpen(false)}><WeekendLists w={wk} contacts={st.contacts} onAdd={(x) => void st.saveContact(spotToContact(x)).then((r) => toast('ok', r.merged ? `${x.name} was already in Contacts.` : `${x.name} added to Contacts.`)).catch((e) => toast('err', errText(e)))} /></Sheet>}
       {appt && <Sheet title={appt.title} onClose={() => setAppt(null)}><ApptDetails a={appt} contact={contactForAppt(st.contacts, appt)} onRemove={async () => { await st.removeAppt(appt.id); setAppt(null); }} /></Sheet>}
       {open && (
         <Sheet title={open.name} onClose={() => setOpen(null)}>

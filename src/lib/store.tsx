@@ -8,6 +8,7 @@ import { today } from '../../supabase/functions/_shared/money.ts';
 import { allRows } from '../../supabase/functions/_shared/rows.ts';
 import { changedFields, contactKey, ownerMerge, sameContact, unionEmails, unionPhones } from '../../supabase/functions/_shared/contacts.ts';
 import { flushTexts } from './texts';
+import type { Weekend } from '../../supabase/functions/_shared/place.ts';
 
 /** What the server reports (bank, Google, AI use today, last automatic run, which keys are set). */
 export interface Status {
@@ -39,6 +40,7 @@ interface Store {
   dates: LifeDate[];
   appts: Appointment[]; // booked, from yesterday on
   contacts: Contact[]; // 📇 all of them, hidden ones too ("Not a contact")
+  weekend: Weekend | null; // 🎉 the newest "This weekend" list (made on Friday by the morning run)
   settings: Settings;
   status: Status | null;
   statusErr: string;
@@ -89,6 +91,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
   const [dates, setDates] = useState<LifeDate[]>([]);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [weekend, setWeekend] = useState<Weekend | null>(null);
   const [settings, setSettings] = useState<Settings>(withDefaults(null));
   const [status, setStatus] = useState<Status | null>(null);
   const [statusErr, setStatusErr] = useState('');
@@ -98,7 +101,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
     const since = new Date(Date.now() - 200 * 86400_000).toISOString().slice(0, 10);
     const yesterday = new Date(Date.parse(`${today()}T12:00:00Z`) - 86400_000).toISOString().slice(0, 10); // this phone's yesterday
     const recent = new Date(Date.now() - 45 * 86400_000).toISOString();
-    const [i, s, a, d, st, f, se, p, tx, pu, ld, ap, co] = await Promise.all([
+    const [i, s, a, d, st, f, se, p, tx, pu, ld, ap, co, nb] = await Promise.all([
       supabase.from('items').select('*').order('name'),
       supabase.from('suggestions').select('*').eq('status', 'accepted').not('item_id', 'is', null).gte('updated_at', recent).order('updated_at', { ascending: false }).limit(200),
       supabase.from('alerts').select('*').eq('seen', false).order('created_at', { ascending: false }).limit(50),
@@ -116,6 +119,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
       supabase.from('life_dates').select('*').order('next_date'),
       supabase.from('appointments').select('*').eq('status', 'booked').gte('day', yesterday).order('day').order('time').limit(200),
       supabase.from('contacts').select('*').order('name').limit(3000),
+      supabase.from('nearby').select('data').eq('kind', 'weekend').order('updated_at', { ascending: false }).limit(1),
     ]);
     setItems(check(i) ?? []);
     setAdded(((check(s) ?? []) as Suggestion[]).filter((x) => x.evidence?.auto));
@@ -131,6 +135,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
     setDates((ld.data as LifeDate[]) ?? []);
     setAppts((ap.data as Appointment[]) ?? []);
     setContacts((co.data as Contact[]) ?? []);
+    setWeekend(((nb.data?.[0]?.data ?? null) as Weekend | null)); // may not exist for a moment after an update
     const saved = withDefaults((st.data?.data ?? null) as Partial<Settings> | null);
     // 📅 Appointment times are in your time zone: remember this device's the first time.
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -161,7 +166,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
   }, [reload, reloadStatus]);
 
   const store = useMemo<Store>(() => ({
-    session, items, added, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus,
+    session, items, added, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, weekend, settings, status, statusErr, loading, reload, reloadStatus,
     saveSettings: async (s) => {
       const prev = settings;
       setSettings(s);
@@ -295,7 +300,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
       setContacts((cur) => [...cur.filter((x) => x.id !== keep.id && x.id !== other.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
       return saved;
     },
-  }), [session, items, added, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus]);
+  }), [session, items, added, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, weekend, settings, status, statusErr, loading, reload, reloadStatus]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

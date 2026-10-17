@@ -10,6 +10,8 @@ import { personIcon } from '../../supabase/functions/_shared/model.ts';
 import { AboutMe } from '../components/AboutMe';
 import { appsUrl } from '../lib/links';
 import { TextsSetup } from '../components/Appointments';
+import { ZipField } from '../components/Nearby';
+import { zipOf } from '../../supabase/functions/_shared/place.ts';
 import { allRows } from '../../supabase/functions/_shared/rows.ts';
 import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
 
@@ -355,6 +357,21 @@ export function Settings() {
           toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'Nothing new in your emails.');
           await Promise.all([st.reload(), st.reloadStatus()]);
         })}>{busy === 'contacts' ? <span className="spinner" /> : '✉️ Look in my emails now'}</button>
+      </Fold>
+
+      <Fold icon="📍" title="Nearby" subtitle={`Zip ${zipOf(s)} · ${s.place.weekend ? 'weekend list on Fridays' : 'weekend list off'}`}>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Your zip code is used for Contacts → 📍 Nearby (the closest dentist, oil change, pizza…), things to do, the Friday “This weekend” list and the 💬 Ask bar (“find me a dentist”). Free first: the map is OpenStreetMap; only when it has little, and for events and day trips, the free Gemini searches Google (never Claude). Every search is kept, so it’s never paid twice.</p>
+        <Field label="Zip code" hint="Distances are from the middle of this zip code. Empty = 45245.">
+          <ZipField zip={zipOf(s)} onSave={(zip) => st.saveSettings({ ...s, place: { ...s.place, zip } })} />
+        </Field>
+        <Field label="“This weekend” every Friday" hint={`Friday morning: things to do near you and a bit farther (miles + drive time). On Home from Friday to Sunday, as a heads-up${status?.keys.email && s.notify.email ? ' and in the morning email' : ''}.`}>
+          <Toggle on={s.place.weekend} onChange={(v) => save({ place: { ...s.place, weekend: v } })} label="This weekend list" />
+        </Field>
+        <button className="btn" disabled={!!busy} onClick={() => void run('weekend', async () => {
+          const r = await api<{ log: { steps: string[]; errors: string[] } }>('run', { part: 'weekend' });
+          toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'Done.');
+          await st.reload();
+        })}>{busy === 'weekend' ? <span className="spinner" /> : '🎉 Make this weekend’s list now'}</button>
       </Fold>
 
       <Fold icon="🤖" title="AI that reads bills" subtitle={`Free first (${free.map((p) => providerOf(p).name).join(' → ')}), then Claude if they can’t`}>

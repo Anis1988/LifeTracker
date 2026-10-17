@@ -125,7 +125,7 @@ export interface Suggestion {
   updated_at?: string;
 }
 
-export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt' | 'vault'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
+export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt' | 'vault' | 'nearby'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
 
 // ---------- 👤 Me: name online, people-search sites, breaches, mailing lists, documents that expire ----------
 export interface Finding {
@@ -330,6 +330,8 @@ export interface Settings {
   appts: { on: boolean; timeZone: string; remind: number[] };
   /** 📇 contacts found in emails (and appointments, bills) are added straight to Contacts (owner's choice). */
   contacts: { on: boolean };
+  /** 📍 Nearby: your zip code (places, things to do, the Ask bar); weekend = the "This weekend" list every Friday. */
+  place: { zip: string; weekend: boolean };
   /**
    * 📁 Vault: emails = save important document attachments found in Gmail (owner's choice: straight in); maxPerRun = most
    * attachments read by the AI per morning; people = who documents can be for; lock = the optional PIN screen (a privacy
@@ -369,6 +371,7 @@ export const DEFAULT_SETTINGS: Settings = {
   receipts: { on: true, maxPerRun: 4 },
   appts: { on: true, timeZone: '', remind: [1440, 120] },
   contacts: { on: true },
+  place: { zip: '45245', weekend: true },
   vault: { emails: true, maxPerRun: 6, people: [{ name: 'Me', kind: 'me' }], lock: { on: false, hash: '', salt: '', len: 0, minutes: 5, resetAsked: null } },
 };
 
@@ -398,6 +401,7 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     receipts: { ...d.receipts, ...s?.receipts },
     appts: { ...d.appts, ...s?.appts },
     contacts: { ...d.contacts, ...s?.contacts },
+    place: { ...d.place, ...s?.place, zip: /^\d{5}$/.test(s?.place?.zip?.trim() ?? '') ? s!.place!.zip.trim() : d.place.zip },
     vault: { ...d.vault, ...s?.vault, people: s?.vault?.people?.length ? s.vault.people : d.vault.people, lock: { ...d.vault.lock, ...s?.vault?.lock } },
   };
 }
