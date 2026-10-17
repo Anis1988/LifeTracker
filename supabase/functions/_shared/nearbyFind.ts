@@ -47,17 +47,45 @@ export const homeText = (h: Home) => `zip ${h.zip} (${h.town}, ${h.state})`;
 
 // ---------- OpenStreetMap ----------
 interface OsmEl { lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+// Public servers of the same map data, tried in turn (the main one is often busy).
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 async function overpass(q: string): Promise<OsmEl[]> {
   let last = '';
   for (const url of OVERPASS) {
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'User-Agent': UA(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(q)}`, signal: AbortSignal.timeout(25_000) });
+      const res = await fetch(url, { method: 'POST', headers: { 'User-Agent': UA(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(q)}`, signal: AbortSignal.timeout(20_000) });
       if (!res.ok) { last = `HTTP ${res.status}`; await res.body?.cancel(); continue; }
-      return ((await res.json()) as { elements?: OsmEl[] }).elements ?? [];
+      const j = (await res.json().catch(() => null)) as { elements?: OsmEl[]; remark?: string } | null;
+      // A busy server can answer 200 with no data and a "runtime error" remark: try the next one.
+      if (!j || (!j.elements?.length && /error|timed out/i.test(j.remark ?? ''))) { last = 'busy'; continue; }
+      return j.elements ?? [];
     } catch (e) { last = e instanceof Error ? e.message : String(e); }
   }
   throw new Error(`OpenStreetMap didn’t answer (${last})`);
+}
+
+/** Backup when every map server is busy: OpenStreetMap's own search (Nominatim), inside a box around home. One request per word, 1 a second. */
+async function nominatimNear(h: Home, words: string[], meters: number): Promise<OsmEl[]> {
+  const dLat = meters / 111_000, dLon = meters / (111_000 * Math.cos((h.lat * Math.PI) / 180));
+  const box = [h.lon - dLon, h.lat + dLat, h.lon + dLon, h.lat - dLat].map((x) => x.toFixed(4)).join(',');
+  const out: OsmEl[] = [];
+  for (const w of [...new Set(words)].slice(0, 3)) {
+    const wait = lastGeo + 1100 - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastGeo = Date.now();
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&viewbox=${box}&addressdetails=1&extratags=1&namedetails=1&countrycodes=us&q=${encodeURIComponent(w)}`,
+      { headers: { 'User-Agent': UA(), 'Accept-Language': 'en' }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
+    if (!res?.ok) { await res?.body?.cancel().catch(() => undefined); continue; }
+    const j = (await res.json().catch(() => [])) as { lat: string; lon: string; category?: string; type?: string; name?: string; address?: Record<string, string>; extratags?: Record<string, string> | null }[];
+    for (const x of j) {
+      const a = x.address ?? {};
+      out.push({ lat: Number(x.lat), lon: Number(x.lon), tags: {
+        ...(x.extratags ?? {}), name: x.name ?? '', ...(x.category && x.type ? { [x.category]: x.type } : {}),
+        'addr:housenumber': a.house_number ?? '', 'addr:street': a.road ?? '', 'addr:city': a.city ?? a.town ?? a.village ?? a.hamlet ?? '', 'addr:state': a.state ?? '', 'addr:postcode': a.postcode ?? '',
+      } });
+    }
+  }
+  return out;
 }
 /** "amenity=dentist" → ["amenity"="dentist"]; "cuisine~pizza" → ["cuisine"~"pizza",i]. Values are our own words only. */
 const sel = (f: string) => { const m = f.match(/^([\w:]+)([=~])(.+)$/)!; return m[2] === '=' ? `["${m[1]}"="${m[3]}"]` : `["${m[1]}"~"${m[3]}",i]`; };
@@ -159,7 +187,13 @@ function mix(list: Spot[], per: number, typeOf: (s: Spot) => string): Spot[] {
 async function osm(h: Home, filters: string[], name: string | null, meters: number): Promise<Spot[]> {
   const parts = around(filters, meters, h) + (name ? `nwr["name"~"${name}",i](around:${meters},${h.lat},${h.lon});` : '');
   if (!parts) return [];
-  const els = await overpass(`[out:json][timeout:25];(${parts});out center tags 250;`);
+  let els: OsmEl[];
+  try { els = await overpass(`[out:json][timeout:25];(${parts});out center tags 250;`); } catch (e) {
+    // "amenity=dentist" → "dentist"; the typed words too.
+    const words = [...(name ? [name] : []), ...filters.filter((f) => !f.includes('&')).map((f) => f.split(/[=~]/)[1].replace(/_/g, ' '))];
+    els = await nominatimNear(h, words, meters);
+    if (!els.length) throw e;
+  }
   return tidy(els.map((e) => spotOf(e, h)).filter((s): s is Spot => !!s));
 }
 
@@ -255,7 +289,8 @@ export async function nearbySearch(db: SupabaseClient, userId: string, s: Settin
   spots = spots.slice(0, 15);
   await routes(h, spots);
   const r: Cached = { home: h, q, spots, by: [...by], at: new Date().toISOString(), note: notes.join(' · ') || undefined, aiTried: ai };
-  if (spots.length || ai) await keep(db, userId, 'search', key, r);
+  // An empty answer after an error isn't kept (the next try asks again).
+  if (spots.length || (ai && !notes.length)) await keep(db, userId, 'search', key, r);
   return r;
 }
 /** What kind a typed search is, from the same words (for the icon and "Add to Contacts"). */
