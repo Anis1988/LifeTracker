@@ -22,12 +22,12 @@ export interface Status {
   email?: string;
 }
 
-const TX_COLS = 'id, posted, amount, description, merchant, item_id, account, source, receipt_path, note, details';
+const TX_COLS = 'id, posted, amount, description, merchant, item_id, account, source, receipt_path, note, details, created_at';
 
 interface Store {
   session: Session;
   items: Item[];
-  suggestions: Suggestion[];
+  added: Suggestion[]; // 🆕 bills added by themselves in the last 45 days (the Inbox feed, with Undo)
   alerts: Alert[];
   docs: Doc[];
   findings: Finding[];
@@ -48,7 +48,8 @@ interface Store {
   saveSettings: (s: Settings) => Promise<void>;
   saveItem: (i: Partial<Item> & { name: string }) => Promise<Item>;
   deleteItem: (id: string) => Promise<void>;
-  setSuggestion: (id: string, patch: Partial<Suggestion>) => Promise<void>;
+  /** 🆕 Undo a bill that was added by itself: the bill goes, and the find is remembered as "not a bill" (never again). */
+  undoBill: (s: Suggestion) => Promise<void>;
   seeAlert: (id: string) => Promise<void>;
   setFinding: (id: string, patch: Partial<Finding>) => Promise<void>;
   addBroker: (b: { id: string; name: string; domain: string }, patch: Partial<Finding>) => Promise<void>;
@@ -76,7 +77,7 @@ const check = <T,>(r: { data: T | null; error: { message: string } | null }): T 
 
 export function StoreProvider({ session, children }: { session: Session; children: ReactNode }) {
   const [items, setItems] = useState<Item[]>([]);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [added, setAdded] = useState<Suggestion[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
@@ -96,9 +97,10 @@ export function StoreProvider({ session, children }: { session: Session; childre
   const reload = useCallback(async () => {
     const since = new Date(Date.now() - 200 * 86400_000).toISOString().slice(0, 10);
     const yesterday = new Date(Date.parse(`${today()}T12:00:00Z`) - 86400_000).toISOString().slice(0, 10); // this phone's yesterday
+    const recent = new Date(Date.now() - 45 * 86400_000).toISOString();
     const [i, s, a, d, st, f, se, p, tx, pu, ld, ap, co] = await Promise.all([
       supabase.from('items').select('*').order('name'),
-      supabase.from('suggestions').select('*').eq('status', 'new').order('created_at', { ascending: false }),
+      supabase.from('suggestions').select('*').eq('status', 'accepted').not('item_id', 'is', null).gte('updated_at', recent).order('updated_at', { ascending: false }).limit(200),
       supabase.from('alerts').select('*').eq('seen', false).order('created_at', { ascending: false }).limit(50),
       supabase.from('documents').select('*').order('created_at', { ascending: false }).limit(200),
       supabase.from('settings').select('data').maybeSingle(),
@@ -116,7 +118,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
       supabase.from('contacts').select('*').order('name').limit(3000),
     ]);
     setItems(check(i) ?? []);
-    setSuggestions(check(s) ?? []);
+    setAdded(((check(s) ?? []) as Suggestion[]).filter((x) => x.evidence?.auto));
     setAlerts(check(a) ?? []);
     setDocs(check(d) ?? []);
     // The "Me" tables may not exist yet for a moment after an update: keep going without them.
@@ -159,7 +161,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
   }, [reload, reloadStatus]);
 
   const store = useMemo<Store>(() => ({
-    session, items, suggestions, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus,
+    session, items, added, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus,
     saveSettings: async (s) => {
       const prev = settings;
       setSettings(s);
@@ -179,9 +181,13 @@ export function StoreProvider({ session, children }: { session: Session; childre
       check(await supabase.from('items').delete().eq('id', id));
       setItems((cur) => cur.filter((x) => x.id !== id));
     },
-    setSuggestion: async (id, patch) => {
-      check(await supabase.from('suggestions').update(patch).eq('id', id));
-      setSuggestions((cur) => cur.filter((x) => x.id !== id || patch.status === 'new'));
+    undoBill: async (sg) => {
+      // Remembered first (so it never comes back), then the bill itself (its heads-ups go with it).
+      check(await supabase.from('suggestions').update({ status: 'ignored', item_id: null }).eq('id', sg.id));
+      if (sg.item_id) check(await supabase.from('items').delete().eq('id', sg.item_id));
+      setAdded((cur) => cur.filter((x) => x.id !== sg.id));
+      setItems((cur) => cur.filter((x) => x.id !== sg.item_id));
+      setAlerts((cur) => cur.filter((x) => !sg.item_id || x.item_id !== sg.item_id));
     },
     seeAlert: async (id) => {
       setAlerts((cur) => cur.filter((x) => x.id !== id));
@@ -289,7 +295,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
       setContacts((cur) => [...cur.filter((x) => x.id !== keep.id && x.id !== other.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
       return saved;
     },
-  }), [session, items, suggestions, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus]);
+  }), [session, items, added, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, settings, status, statusErr, loading, reload, reloadStatus]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

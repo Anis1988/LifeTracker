@@ -118,10 +118,11 @@ export interface Suggestion {
   trial_ends: string | null;
   merchant: string | null;
   details: ItemDetails;
-  evidence: { charges?: { date: string; amount: number }[]; subject?: string; from?: string; documentId?: string; note?: string };
-  status: 'new' | 'accepted' | 'ignored';
+  evidence: { charges?: { date: string; amount: number }[]; subject?: string; from?: string; documentId?: string; note?: string; auto?: boolean };
+  status: 'new' | 'accepted' | 'ignored'; // 🆕 accepted + evidence.auto = added to Bills by itself; ignored = undone (never again)
   item_id: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt' | 'vault'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }

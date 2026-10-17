@@ -35,7 +35,7 @@ export async function summary(db: SupabaseClient, userId: string, s: Settings): 
     db.from('items').select('*').eq('user_id', userId).eq('status', 'active'),
     db.from('appointments').select('title, day, time').eq('user_id', userId).eq('status', 'booked').gte('day', t).order('day').order('time').limit(20),
     db.from('alerts').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('seen', false),
-    db.from('suggestions').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'new'),
+    db.from('suggestions').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'accepted').not('item_id', 'is', null).gte('updated_at', `${weekStart}T00:00:00Z`),
     db.from('ai_usage').select('day, provider, n').eq('user_id', userId).gte('day', since),
   ]);
 
@@ -51,11 +51,11 @@ export async function summary(db: SupabaseClient, userId: string, s: Settings): 
   const todays = ap.filter((a) => a.day === t);
   if (todays.length) lines.push({ icon: '📅', text: todays.length === 1 ? `Today: ${todays[0].title}${todays[0].time ? ` at ${todays[0].time}` : ''}` : `${todays.length} appointments today`, tone: 'info' });
   else if (ap[0]) lines.push({ icon: '📅', text: `Next: ${ap[0].title}, ${shortDay(ap[0].day)}`, tone: 'info' });
-  // Heads-ups and things waiting in Inbox.
-  const heads = alerts.count ?? 0, inbox = sugg.count ?? 0;
-  lines.push(heads || inbox
-    ? { icon: '🔔', text: [heads ? `${heads} heads-up${heads === 1 ? '' : 's'}` : '', inbox ? `${inbox} waiting in Inbox` : ''].filter(Boolean).join(' · '), tone: 'warn' }
-    : { icon: '✅', text: 'Nothing waiting for you', tone: 'good' });
+  // Heads-ups, and bills added by themselves this week (fully automatic: nothing waits for an OK).
+  const heads = alerts.count ?? 0, added = sugg.count ?? 0;
+  lines.push(heads || added
+    ? { icon: '🔔', text: [heads ? `${heads} heads-up${heads === 1 ? '' : 's'}` : '', added ? `${added} bill${added === 1 ? '' : 's'} added by itself this week` : ''].filter(Boolean).join(' · '), tone: heads ? 'warn' : 'info' }
+    : { icon: '✅', text: 'Nothing new for you', tone: 'good' });
 
   // AI calls and cost.
   const rows = (usage.data as { day: string; provider: Provider; n: number }[]) ?? [];

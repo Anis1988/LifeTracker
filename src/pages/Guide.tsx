@@ -3,13 +3,14 @@ import { Empty, Fold, Seg, Toggle } from '../components/ui';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
 import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
 import { PurchaseRow, SpendingView } from '../components/Spending';
-import { ReceiptDetailsView, SpendRow } from '../components/Receipts';
+import { ReceiptCard, ReceiptDetailsView } from '../components/Receipts';
 import { matchSpend } from '../../supabase/functions/_shared/receiptText.ts';
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { DateRow } from '../components/Dates';
 import { timeline } from '../lib/timeline';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
-import { AlertList, DocRow, SuggestionCard } from '../components/Inbox';
+import { AddedList, AddedRow, AlertList, DocRow } from '../components/Inbox';
+import type { AddedEntry } from '../lib/added';
 import { AlertBanks } from '../components/Bank';
 import { AboutMe } from '../components/AboutMe';
 import { ApptCard } from '../components/Appointments';
@@ -17,8 +18,8 @@ import { ScriptView } from '../components/Negotiate';
 import { ContactDetails, ContactGroup, KindChips, SearchBox, arrange, kindOptions } from '../components/Contacts';
 import { APPS, AppCard, TotalCard, type AppSummary } from '../components/Apps';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
-import { LockScreen, PeopleEditor, VaultDetails, VaultForm, VaultGroup, arrangeVault, vaultChips } from '../components/Vault';
-import { PAPER_DEFAULTS, withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Suggestion } from '../../supabase/functions/_shared/model.ts';
+import { LockScreen, PeopleEditor, ReadingCard, VaultDetails, VaultGroup, arrangeVault, vaultChips } from '../components/Vault';
+import { PAPER_DEFAULTS, withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender } from '../../supabase/functions/_shared/model.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
 
 /* made-up examples, only for this guide */
@@ -31,8 +32,18 @@ const EX: Item[] = [
   { ...base, id: 'g4', name: 'Example Music App', category: 'subscription', amount: 10.99, cycle: 'monthly', next_due: d(9), trial_ends: d(9) },
   { ...base, id: 'g5', name: 'Example Power Co', category: 'utility', amount: 96, cycle: 'monthly', next_due: d(18) },
 ] as Item[];
-const SUGG: Suggestion = { id: 's1', key: 'example gym', source: 'bank', name: 'Example Gym', category: 'membership', amount: 39, currency: 'USD', cycle: 'monthly', next_due: d(6), ends_on: null, trial_ends: null, merchant: 'example gym', details: {}, evidence: { charges: [{ date: d(-54), amount: 39 }, { date: d(-24), amount: 39 }] }, status: 'new', item_id: null, created_at: '' };
+// 🆕 Made-up "What was added" feed (the 🔔 Inbox): each with ↶ Undo.
+const ago = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+const FEED: AddedEntry[] = [
+  { key: 'f1', kind: 'bill', id: 'f1', icon: '🏋️', title: 'Example Gym', sub: '$39.00 every month · from your bank', where: 'Money → Bills', at: ago(2) },
+  { key: 'f2', kind: 'receipt', id: 'f2', icon: '🧾', title: 'Example Cafe', sub: '$23.45 · receipt from an email · matched to your bank', where: 'Money → Spending', at: ago(5) },
+  { key: 'f3', kind: 'appt', id: 'f3', icon: '🦷', title: 'Dentist: cleaning', sub: 'Thu, Oct 22, 3:30 PM · from a text', where: 'Calendar', at: ago(30) },
+  { key: 'f4', kind: 'doc', id: 'f4', icon: '🐾', title: 'Rabies vaccine certificate', sub: 'Pets · Daizy · from an email', where: 'Vault', at: ago(52) },
+  { key: 'f5', kind: 'contact', id: 'f5', icon: '🚗', title: 'Example Auto Repair', sub: 'Car · from your emails', where: 'Contacts', at: ago(200) },
+];
+const NEW_BILL = { ...base, id: 'g6', name: 'Example Gym', category: 'membership', amount: 39, cycle: 'monthly', next_due: d(6), source: 'bank', price_history: [] } as Item;
 const ALERTS: Alert[] = [
+  { id: 'a0', kind: 'found', key: '', title: 'Added: Example Gym $39.00 monthly — from your bank', body: 'Added to your bills by itself. Not a bill, or wrong? Tap Undo in the 🔔 Inbox (it won’t come back).', item_id: null, seen: false, created_at: '' },
   { id: 'a1', kind: 'price', key: '', title: 'Example Streaming went up: $15.49 → $17.99', body: 'That’s $30.00 more a year. Worth checking if you still need it.', item_id: null, seen: false, created_at: '' },
   { id: 'a2', kind: 'trial', key: '', title: `Example Music App: free trial ends in 3 days`, body: 'Cancel before then if you don’t want to pay $10.99.', item_id: null, seen: false, created_at: '' },
 ];
@@ -123,10 +134,13 @@ const SCRIPT = {
 const RULES = { 'example market': 'groceries', 'example gas': 'gas', 'example cafe': 'dining', 'example pharmacy': 'health' };
 const REPORT = spendReport(TX, RULES, ym(0), 31);
 // 🧾 made-up receipts in Spending
+const MARKET = ['Bananas', 'Whole milk, 1 gal', 'Sourdough bread', 'Eggs, dozen', 'Baby spinach', 'Cheddar cheese', 'Chicken thighs', 'Rice, 2 lb', 'Olive oil', 'Apples, 3 lb', 'Greek yogurt', 'Coffee beans'];
 const RECEIPTS: SpendTx[] = [
   { id: 'r1', posted: d(-2), amount: -23.45, description: 'Example Cafe', merchant: 'example cafe', source: 'alert', account: 'Example Bank card', receipt_path: 'example.jpg', note: 'From email: Your receipt from Example Cafe — Example Cafe, ' + d(-2),
     details: { store: 'Example Cafe', date: d(-2), total: 23.45, tax: 1.75, card: '4821', read: 'free', items: [{ name: 'Oat latte', qty: 2, price: 11.0 }, { name: 'Blueberry muffin', qty: 1, price: 3.95 }, { name: 'Tip', qty: null, price: 6.75 }] } },
-  { id: 'r2', posted: d(-6), amount: -86.12, description: 'Example Hardware', merchant: 'example hardware', source: 'receipt', account: 'Receipt', receipt_path: 'example.pdf', note: 'Added by hand on ' + d(-6),
+  { id: 'r3', posted: d(-4), amount: -64.37, description: 'Example Market', merchant: 'example market', source: 'receipt', account: 'Receipt', receipt_path: 'example-2.jpg', note: 'Added by hand on ' + d(-4),
+    details: { store: 'Example Market', date: d(-4), total: 64.37, tax: 2.15, card: '4821', read: 'ai', by: 'Gemini Flash (free)', items: MARKET.map((name, k) => ({ name, qty: k % 4 === 1 ? 2 : 1, price: [0.89, 7.58, 5.49, 4.29, 3.99, 6.49, 9.12, 3.29, 8.99, 4.99, 5.79, 11.49][k] })) } },
+  { id: 'r2', posted: d(-6), amount: -86.12, description: 'Example Hardware', merchant: 'example hardware', source: 'receipt', account: 'Receipt', receipt_path: 'example.pdf', note: 'From email: Your Example Hardware receipt — Example Hardware, ' + d(-6),
     details: { store: 'Example Hardware', date: d(-6), total: 86.12, tax: 5.62, card: null, read: 'ai', by: 'Gemini Flash (free)', items: [{ name: 'Paint roller kit', qty: 1, price: 24.5 }, { name: 'Wall paint, 1 gal', qty: 2, price: 56.0 }] } },
 ];
 
@@ -149,7 +163,7 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works by itself as much as possible: every hour it reads your bank’s purchase-alert emails and receipts in Gmail, and the documents you upload, then fills your Google Calendar. Anything new it finds waits in <b>Inbox</b> (the 🔔 bell at the top, with a number when something is waiting) for your OK: nothing is added, paid or cancelled without you. The exceptions, your choice: <b>appointments</b> in your emails and texts go straight into your calendar, the places you deal with (dentist, garage, insurer…) go straight into <b>Contacts</b>, and important documents attached to your emails go straight into your <b>Vault</b> (you can remove any of them).</P>
+        <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and the <b>🔔 Inbox</b> at the top lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
         <P>The tabs at the bottom: <b>Home</b>, <b>Money</b> (bills, spending, returns), <b>Contacts</b>, <b>Vault</b> (your documents), <b>Me</b> and <b>Settings</b>. At the top: My apps, the 🔔 Inbox and this Guide.</P>
         <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…, kept in your Vault) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
@@ -176,7 +190,7 @@ export function Guide() {
             </div>
             <span className="btn-primary w-full">Run the check now</span>
             <div className="card flex items-center gap-3 !py-3"><div className="skel h-11 w-11 shrink-0 !rounded-2xl" /><div className="flex-1 space-y-2"><div className="skel h-3.5 w-2/3" /><div className="skel h-3 w-1/3" /></div></div>
-            <Empty icon="📬">Nothing waiting. New bills show up here for your OK.</Empty>
+            <Empty icon="📬">Nothing new lately. What’s added by itself shows up here.</Empty>
           </div>
         </Example>
         <P>The app icon is a small glowing planet with a ring and an amber moon: your life in the middle, with what’s coming up going around it.</P>
@@ -196,20 +210,21 @@ export function Guide() {
         <Example caption="Made-up month: eating out over its usual amount, groceries with a budget.">
           <SpendingView r={REPORT} budgets={{ groceries: 450, dining: 200 }} monthName="This month" />
         </Example>
-        <P><b>🧾 Receipts go to Spending.</b> A receipt in your email (the email itself, or a photo or PDF attached to it) is read <b>by itself</b>: the shop, the date, the total, the tax, the card’s last 4 and <b>what you bought</b>, line by line. Most receipt emails are read with free patterns; a photo or PDF is read by the AI once (the free ones first) and never paid for twice. Got a paper receipt? Tap <b>📷 Add a receipt</b> and take a photo (or pick a photo or PDF).</P>
-        <P>The small picture of the receipt sits on the side (📄 for a PDF, ✉️ when the receipt is the email itself). <b>Tap the picture</b> for full screen (tap again to zoom in), with ⬇ Download, ↗ Share and 🗑 Delete. Tap the purchase for its sheet: the details read from the receipt, the lines bought, where it came from (“From email: subject — sender, date”), the category (change it like any shop), ✎ Edit details, ✨ Read again (asks first: it uses one AI read) and 🗑 Delete (the receipt only, or the purchase too).</P>
-        <P><b>Never counted twice</b>: the same purchase is often in your bank alert emails too. When the amount is the same (to the cent), the dates are within 3 days and the shop names match (“Example Cafe” = “SQ *EXAMPLE CAFE 1234”), the receipt is <b>attached to that purchase</b> instead of adding a second one, whichever comes first. The same receipt email or file is never added twice.</P>
-        <Example caption="Made-up receipts: one matched to a bank alert, one added by hand.">
-          <div className="card"><p className="label mb-1">🧾 Receipts</p><ul>{RECEIPTS.map((t) => <SpendRow key={t.id} t={t} rules={{}} example />)}</ul></div>
+        <P><b>🧾 Receipts go to Spending, written out in full.</b> A receipt in your email (the email itself, or a photo or PDF attached to it) is read <b>by itself</b>, and a paper one too: tap <b>📷 Add a receipt</b>, take a photo (or pick a photo or PDF) and it’s read and saved at once, nothing to press after. Most receipt emails are read with free patterns; a photo or PDF is read by the AI once (the free ones first) and never paid for twice.</P>
+        <P>Each receipt is a card in <b>Money → Spending</b>: the shop, the date and the category, then <b>everything you bought</b>, line by line (the name, how many × the price of one, and the line’s total), then the tax, the <b>total</b> and the card’s last 4. A long receipt shows its first 8 lines and <b>+N more</b> opens the rest right there. The receipt’s picture sits <b>small on the right</b> (the first page for a PDF, ✉️ when the receipt is the email itself). It’s the same card for a receipt you scanned and one from an email; a chip says which, and <b>🏦 Matched to your bank</b> when it’s the same purchase as a bank alert.</P>
+        <Example caption="Made-up receipts: a cafe receipt from an email (matched to a bank alert), a long grocery receipt you scanned (+4 more), and a PDF receipt from an email.">
+          <ul className="space-y-3">{RECEIPTS.map((t) => <ReceiptCard key={t.id} t={t} rules={RULES} example />)}</ul>
         </Example>
+        <P><b>Tap the small picture</b> for full screen (tap again to zoom in) with <b>⬇ Download</b>, ↗ Share and 🗑 Delete. <b>Tap the shop</b> for its sheet: where it came from (“From email: subject — sender, date”), the category (change it like any shop), ✎ Edit details, ✨ Read again (one AI read, at once) and 🗑 Delete (the receipt only, or the purchase too; it asks first).</P>
         <Example caption="Made-up receipt sheet: what was read from it.">
           <div className="card"><ReceiptDetailsView t={RECEIPTS[0]} rules={{}} example actions={{ edit: () => undefined, del: () => undefined }} /></div>
         </Example>
+        <P><b>Never counted twice</b>: the same purchase is often in your bank alert emails too. When the amount is the same (to the cent), the dates are within 3 days and the shop names match (“Example Cafe” = “SQ *EXAMPLE CAFE 1234”), the receipt is <b>attached to that purchase</b> instead of adding a second one, whichever comes first. The same receipt email or file is never added twice.</P>
         <P><b>🔎 Search</b> finds any purchase as you type: a shop, something on a receipt (“latte”), an amount (“23.45”), a month (“March”), a category or words from the email it came from. It all happens on your phone.</P>
         <Example caption="Made-up search: “latte” finds the cafe receipt.">
           <div className="space-y-2">
             <SearchBox q="latte" onChange={() => undefined} placeholder="Shop, item, 23.45, March…" label="Search spending and receipts" />
-            <div className="card"><ul>{RECEIPTS.filter((t) => matchSpend(t, 'latte')).map((t) => <SpendRow key={t.id} t={t} rules={{}} example />)}</ul></div>
+            <ul className="space-y-3">{RECEIPTS.filter((t) => matchSpend(t, 'latte')).map((t) => <ReceiptCard key={t.id} t={t} rules={RULES} example />)}</ul>
           </div>
         </Example>
         <P><b>How often</b>: your Gmail is checked <b>every hour</b> by itself for receipts, bank alerts, bills, orders and documents (free checks first, so most hours cost nothing). Settings → Spending & returns shows when it last checked.</P>
@@ -260,9 +275,9 @@ export function Guide() {
 
       <Fold icon="📁" title="Vault (your documents)">
         <P>The <b>Vault</b> tab keeps your important papers in one safe place: your pet’s vaccines and vet records (like Daizy 🐶), medical papers, IDs and passports, the house (deed, lease, warranties, manuals), the car (registration, title, insurance card), school, taxes, contracts, certificates… Bills and receipts are not kept here: they belong in <b>Money</b>.</P>
-        <P><b>📷 Scan</b>: take a photo of each page with the camera (or pick photos or a PDF). The pages are made smaller on your phone and can become <b>one PDF</b>. Tap <b>✨ Read it and fill in for me</b>: the AI reads it once and fills in the title, the folder, who it’s for, the date on it, and when it expires or is <b>due again</b> (like Daizy’s next rabies shot). Check it (filled-in boxes say ✨ suggested) and tap <b>Save</b>. It uses the free AIs first, Claude only if they can’t, and the same file is never read (or paid for) twice. Only the last 4 characters of any number are kept.</P>
-        <Example caption="Made-up scan: two pages, read by the AI and filled in, ready to save.">
-          <div className="card"><VaultForm s={VS} userId="" doc={{ ...PAPER_DEFAULTS, name: 'Rabies vaccine certificate', folder: 'pets', holder: 'Daizy', doc_date: d(-325), expires: d(40), due_kind: 'due', tags: ['rabies', 'vet'], summary: 'Rabies vaccine given to Daizy (dog). The next one is due in a year.' }} example={{ filled: ['name', 'folder', 'holder', 'doc_date', 'expires', 'tags'], pages: 2 }} /></div>
+        <P><b>📷 Scan</b>: take a photo of the page with the camera, or pick several photos or a PDF at once (several pages become <b>one PDF</b>, made on your phone). That’s all: it’s <b>read and saved by itself</b> straight away. The AI reads it once and fills in the title, the folder, who it’s for, the date on it, and when it expires or is <b>due again</b> (like Daizy’s next rabies shot), then its card opens. Something wrong, or a page to add? Tap <b>✎ Edit</b>. A receipt goes to Money → Spending instead, and a file you already have isn’t saved twice (the one you have opens). It uses the free AIs first, Claude only if they can’t, and the same file is never read (or paid for) twice; if no AI can read it just then, it’s saved anyway for you to fill in. Only the last 4 characters of any number are kept.</P>
+        <Example caption="Made-up scan of two pages, being read: it saves by itself, then the document opens.">
+          <ReadingCard pages={2} />
         </Example>
         <P><b>Find anything</b>: the search looks in the title, who it’s for, the folder, tags, your notes and the words read from the document (“rabies”, “Daizy”, “W-2”). The chips show one folder, or one person or pet. A date coming up shows on the right (amber when it’s close); you get a heads-up before it (30 and 7 days for something due again, 90, 30 and 7 for something that expires), it’s on Home’s timeline, and it goes in your LifeTracker calendar (you can turn either off per document).</P>
         <Example caption="Made-up Vault: folders, people and pets, Daizy’s vaccines on top.">
@@ -282,7 +297,7 @@ export function Guide() {
         <Example caption="Made-up document card, found in an email.">
           <div className="card"><VaultDetails p={VAULT[0]} s={VS} example onEdit={() => undefined} onDelete={() => undefined} /></div>
         </Example>
-        <P><b>From your emails</b> (Gmail, read-only): every hour, files attached to your emails are looked at. A free check first (the file name, the subject, the words): vaccine and vet records, medical results, certificates, insurance policies, contracts, leases, tax forms, registrations, tickets and permits are <b>saved straight into the Vault</b> (your choice), with <b>“From email: subject — sender, date”</b> in the note and a heads-up. <b>Receipts, invoices and bills go to Money instead</b>: a bill shows up in Inbox to add (like one you upload), and a receipt from a business goes to <b>Money → Spending</b> with its picture and what was read from it (it also shows in Returns only when the store has a return window). Scanned a receipt in the Vault? It offers <b>Put it in Spending instead</b>. Newsletters, ads and logos are skipped. Only files the free check can’t place go to the AI (free ones first, 6 a run by default), and the same file is never saved twice. <b>✉️ Look in my emails now</b> (in the Vault) runs it at once; turn it off in Settings → Vault.</P>
+        <P><b>From your emails</b> (Gmail, read-only): every hour, files attached to your emails are looked at. A free check first (the file name, the subject, the words): vaccine and vet records, medical results, certificates, insurance policies, contracts, leases, tax forms, registrations, tickets and permits are <b>saved straight into the Vault</b> (your choice), with <b>“From email: subject — sender, date”</b> in the note and a heads-up. <b>Receipts, invoices and bills go to Money instead</b>: a bill goes straight into <b>Money → Bills</b> (like one you upload), and a receipt from a business goes to <b>Money → Spending</b>, written out with its picture (it also shows in Returns only when the store has a return window). A receipt you scan in the Vault goes to Spending by itself. Newsletters, ads and logos are skipped. Only files the free check can’t place go to the AI (free ones first, 6 a run by default), and the same file is never saved twice. <b>✉️ Look in my emails now</b> (in the Vault) runs it at once; turn it off in Settings → Vault.</P>
         <Example caption="Made-up heads-up when a document is found in an email."><AlertList alerts={VAULT_ALERT} /></Example>
         <P><b>People & pets</b> (Settings → Vault): the names documents can be for, each with an icon (pets get a paw, or 🐶, 🐱…). The AI picks one of them when it reads a document.</P>
         <Example caption="Made-up list: you, Daizy the dog and Sam."><PeopleEditor people={VS.vault.people} onChange={() => undefined} /></Example>
@@ -322,28 +337,34 @@ export function Guide() {
       <Fold icon="📋" title="Your bills">
         <P>Tap <b>＋ Add</b> in <b>Money → Bills</b>, pick a kind (subscription, insurance…), type the amount and how often, and the next payment date. The date moves forward by itself after each payment. <b>Autopay off</b> means you get a heads-up to pay it.</P>
         <P>Marking one <b>✂️ cancelled</b> keeps it in your history and shows how much you save a year.</P>
+        <P><b>Added by themselves</b>: when your bank shows the same company charging about the same amount at a steady rhythm (every week, month, quarter or year), or an email or a document is a bill, it goes <b>straight into your bills</b> (no OK needed), with a heads-up like “Added: Example Gym $39.00 monthly — from your bank”. New ones sit at the top of Money → Bills for 2 weeks with a <b>✨ new</b> mark. Not a bill, or not yours? Tap <b>↶ Undo</b>: it’s taken away and <b>won’t come back</b>. Already have it? Then it isn’t added twice: your bill gets the new date, amount or renewal instead (a price change gets a heads-up).</P>
+        <Example caption="Made-up bill found in a bank account and added by itself, with its Undo, and the same bill in the list.">
+          <div className="card !px-3 !py-2"><p className="label px-1 pb-0.5 pt-1.5">🆕 Added by itself · 1</p><ul><AddedRow e={FEED[0]} onUndo={() => undefined} /></ul></div>
+          <div><ItemRow i={NEW_BILL} fresh /></div>
+        </Example>
         <Example caption="Made-up bills: the monthly total, a price rise (↑ price) and a free trial.">
           <Totals items={EX} />
           <div>{EX.slice(0, 4).map((i) => <ItemRow key={i.id} i={i} />)}</div>
         </Example>
       </Fold>
 
-      <Fold icon="🔎" title="Found for you (Inbox)">
-        <P><b>Inbox</b> is the 🔔 bell at the top of the screen; the number on it is how many are waiting (Home shows them too). When your bank shows the same company charging about the same amount at a steady rhythm (every week, month, quarter or year), or an email or document looks like a bill, it appears in <b>Inbox</b>. Tap <b>Add to my bills</b> (you can change anything first) or <b>Not a bill</b> (it won’t come back).</P>
-        <Example caption="Made-up example found in a bank account.">
-          <SuggestionCard s={SUGG} />
+      <Fold icon="🆕" title="What was added (Inbox)">
+        <P><b>Inbox</b> is the 🔔 bell at the top of the screen. Nothing waits there for your OK any more: it shows <b>what LifeTracker added by itself</b> in the last 30 days, newest first: bills (from your bank, bill emails or documents), receipts from emails, documents from emails, contacts and appointments. The number on the bell is how many are new since you last looked (Home shows them too).</P>
+        <P>Tap one to see it where it went. Wrong? Tap <b>↶ Undo</b>: a bill is removed, a receipt taken off Spending (a bank purchase stays, without the receipt), a document deleted, a contact hidden, an appointment taken off your calendar, and <b>it won’t be added again</b>. Below the list: add a bill or document by hand (read at once), and import a bank CSV.</P>
+        <Example caption="Made-up Inbox: what was added today, this week and earlier, each with Undo.">
+          <AddedList list={FEED} onUndo={() => undefined} />
         </Example>
       </Fold>
 
       <Fold icon="🔔" title="Heads-ups">
-        <P>On Home (and by email each morning if you turn it on): a price went up, a free trial ends in 3 days, a renewal or contract end is coming (30 days before by default), a bill not on autopay is due, or a new bill was found.</P>
+        <P>On Home (and by email each morning if you turn it on): a price went up, a free trial ends in 3 days, a renewal or contract end is coming (30 days before by default), a bill not on autopay is due, or a bill was <b>added by itself</b> (with Undo in the 🔔 Inbox).</P>
         <Example caption="Made-up heads-ups."><AlertList alerts={ALERTS} /></Example>
       </Fold>
 
       <Fold icon="🏦" title="Your bank (free, by email)">
         <P>LifeTracker reads your bank the free way: your banks <b>email you each purchase</b>, and every hour LifeTracker finds those alert emails in your Gmail and reads the amount, the shop and the date. No bank password, no bank login, nothing paid, and no AI (free patterns). It only reads: nothing can be paid or moved.</P>
         <P>Once per bank: in its app, turn on <b>purchase / transaction alerts by email</b> for every card, for any amount ($0.01). Settings → Bank & cards shows the steps for Bank of America, SoFi and Capital One. Gmail must be connected (Settings → Google).</P>
-        <P>Deposits, payments to your card and statements are skipped. The purchases go into the same bill finder: the same company charging about the same amount every month (or year) shows up in Inbox, and price rises are flagged. The first time it also looks back over your old alert emails (300 at a time, so a big inbox takes a few mornings or taps on Read now: Gmail only allows so many reads a minute).</P>
+        <P>Deposits, payments to your card and statements are skipped. The purchases go into the same bill finder: the same company charging about the same amount every month (or year) is <b>added to your bills by itself</b> (Undo in the 🔔 Inbox), and price rises are flagged. The first time it also looks back over your old alert emails (300 at a time, so a big inbox takes a few mornings or taps on Read now: Gmail only allows so many reads a minute).</P>
         <Example caption="Made-up example of Settings → Bank & cards.">
           <AlertBanks gmail read={128} banks={['Bank of America', 'Capital One']} />
         </Example>
@@ -415,12 +436,12 @@ export function Guide() {
       </Fold>
 
       <Fold icon="✉️" title="Gmail receipts and forwarding">
-        <P>Tick <b>Also read Gmail receipts</b>: every hour it looks for receipt, invoice, renewal and “free trial” emails (read-only). A free check first skips ads and shipping notices; only emails that look like bills are read by the AI.</P>
+        <P>Tick <b>Also read Gmail receipts</b>: every hour it looks for receipt, invoice, renewal and “free trial” emails (read-only). A free check first skips ads and shipping notices; only emails that look like bills are read by the AI, and a bill goes <b>straight into your bills</b> (or updates the one you have).</P>
         <P>To add a bill from any email, <b>forward it to yourself with “+lifetracker”</b> (for example you+lifetracker@gmail.com, shown in Settings): it is picked up the next morning.</P>
       </Fold>
 
       <Fold icon="📄" title="Documents (bills, policies, statements)">
-        <P>In Inbox (the 🔔 bell at the top), <b>Add a bill or document</b>: a photo or PDF of a bill, an insurance policy, a mortgage statement or a renewal letter. It is kept privately (only you can open it), and the AI reads the amount, dates, policy number, coverage and anything to watch out for. Bill files found attached to your emails show up here too, marked ✉️ with the email they came from. A paper that turns out not to be a bill (a contract, a certificate) can go to your Vault with <b>📁 Move to Vault</b>.</P>
+        <P>In Inbox (the 🔔 bell at the top), <b>Add a bill or document</b>: a photo or PDF of a bill, an insurance policy, a mortgage statement or a renewal letter. It is kept privately (only you can open it), and it’s <b>read at once</b>: the amount, dates, policy number, coverage and anything to watch out for. A bill goes <b>straight into your bills</b> (or updates the one you have), with Undo in the Inbox. Bill files found attached to your emails show up here too, marked ✉️ with the email they came from. A paper that turns out not to be a bill (a contract, a certificate) can go to your Vault with <b>📁 Move to Vault</b>.</P>
         <Example caption="Made-up example of a read document."><DocRow d={DOC} /></Example>
       </Fold>
 

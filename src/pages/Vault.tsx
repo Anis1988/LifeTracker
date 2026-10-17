@@ -158,7 +158,7 @@ function VaultList() {
       {!docs.length && !busy && (
         <Empty icon="📁">
           <p>Keep every important paper here: your pet’s vaccines, medical papers, IDs, the car, the house, school, taxes, contracts…</p>
-          <p className="mt-1.5">Scan it with the camera and it’s read for you, or let LifeTracker find them in your emails{gmail ? '' : ' (connect Gmail in Settings)'}.</p>
+          <p className="mt-1.5">Scan it with the camera and it’s read and saved by itself, or let LifeTracker find them in your emails{gmail ? '' : ' (connect Gmail in Settings)'}.</p>
           <div className="mt-3 flex flex-wrap justify-center gap-2">
             <button className="btn-primary" onClick={() => setEdit({})}>📷 Scan a document</button>
             {gmail && <button className="btn" onClick={() => void look()}>✉️ Look in my emails</button>}
@@ -169,7 +169,7 @@ function VaultList() {
       {docs.length > 0 && (
         <div className="panel flex flex-wrap items-center gap-3 text-sm">
           <button className="btn" disabled={busy || !gmail || !s.vault.emails} onClick={() => void look()}>{busy ? <><span className="spinner" /> Looking…</> : '✉️ Look in my emails now'}</button>
-          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!s.vault.emails ? 'Finding documents in emails is off (Settings → Vault).' : gmail ? `Important files attached to your emails come by themselves every hour; receipts go to Money → Spending, bills to Inbox. Last checked ${ago(st.status?.mail?.vaultScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
+          <span className="min-w-0 flex-1 basis-40 text-xs text-slate-500 dark:text-slate-400">{!s.vault.emails ? 'Finding documents in emails is off (Settings → Vault).' : gmail ? `Important files attached to your emails come by themselves every hour; receipts go to Money → Spending, bills to Money → Bills. Last checked ${ago(st.status?.mail?.vaultScanned)}.` : 'Connect Gmail (Settings → Google) to find them by themselves.'}</span>
         </div>
       )}
 
@@ -181,10 +181,11 @@ function VaultList() {
       {edit && (
         <Sheet title={edit.id ? `Edit ${edit.name}` : 'Add a document'} onClose={() => setEdit(null)}>
           <VaultForm doc={edit} s={s} userId={st.session.user.id} existing={docs}
-            onSave={async (p) => { const saved = await st.savePaper(p); toast('ok', `${saved.name} saved in your Vault.`); setTimeout(() => setOpenId(saved.id), 50); }}
+            onSave={async (p) => { const saved = await st.savePaper(p); toast('ok', edit.id ? `${saved.name} saved.` : `Read and saved in your Vault: ${saved.name}. Change anything with ✎ Edit.`); setTimeout(() => setOpenId(saved.id), 50); }}
+            onExisting={(p) => { setEdit(null); setTimeout(() => setOpenId(p.id), 50); }}
             onDelete={edit.id ? () => st.deletePaper(edit as Paper) : undefined}
             onDone={() => setEdit(null)} read={(path) => api<VaultReadResult>('vault-read', { path })}
-            onReceipt={async (path) => { const r = await api<{ text: string }>('receipt-add', { path }); toast('ok', r.text); await st.reload(); }} />
+            onReceipt={async (path) => { const r = await api<{ text: string }>('receipt-add', { path }); toast('ok', `🧾 A receipt: ${r.text}`); await st.reload(); }} />
         </Sheet>
       )}
     </div>

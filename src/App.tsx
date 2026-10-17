@@ -12,6 +12,7 @@ import { Me } from './pages/Me';
 import { Contacts } from './pages/Contacts';
 import { Vault } from './pages/Vault';
 import { appsUrl } from './lib/links';
+import { addedFeed, unseen } from './lib/added';
 
 // Tabs (line icons, like the rest of the Liquid Glass look). Inbox (the bell) and Guide sit in the header.
 const TABS = [
@@ -113,6 +114,8 @@ function Main() {
   // Me: worrying pages, people-search listings and breaches still to handle.
   const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
   const badge = (t: Tab): number => (t === 'me' ? meCount : 0);
+  // 🔔 New in the Inbox: things added by themselves since the Inbox was last opened on this device.
+  const fresh = tab === 'inbox' ? 0 : unseen(addedFeed(st));
   return (
     <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom,0px))] sm:pb-10">
       <Aurora />
@@ -130,10 +133,10 @@ function Main() {
           <a href={appsUrl()} aria-label="My apps" title="My apps" className="btn ml-auto h-11 w-11 !p-0 text-slate-600 dark:text-slate-300 sm:ml-1">
             <Icon d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" className="h-5 w-5" />
           </a>
-          {/* 🔔 Inbox: what was found for you (bills, documents), waiting for your OK. */}
-          <button onClick={() => go('inbox')} aria-label={`Inbox${st.suggestions.length ? `: ${st.suggestions.length} waiting` : ''}`} title="Inbox" aria-current={tab === 'inbox' ? 'page' : undefined} className={`btn relative ml-1 h-11 w-11 !overflow-visible !p-0 ${tab === 'inbox' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
+          {/* 🔔 Inbox: what was added by itself lately (bills, receipts, documents, contacts, appointments), each with an Undo. */}
+          <button onClick={() => go('inbox')} aria-label={`Inbox${fresh ? `: ${fresh} new` : ''}`} title="Inbox" aria-current={tab === 'inbox' ? 'page' : undefined} className={`btn relative ml-1 h-11 w-11 !overflow-visible !p-0 ${tab === 'inbox' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
             <Icon d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0" className="h-5 w-5" />
-            {st.suggestions.length ? <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-amber-400 px-1 text-center text-[10px] font-bold leading-[18px] text-slate-900 shadow-[0_0_12px_-2px_rgba(251,191,36,0.9)] ring-2 ring-white/80 dark:ring-[#0b1020]/80">{st.suggestions.length}</span> : null}
+            {fresh ? <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-amber-400 px-1 text-center text-[10px] font-bold leading-[18px] text-slate-900 shadow-[0_0_12px_-2px_rgba(251,191,36,0.9)] ring-2 ring-white/80 dark:ring-[#0b1020]/80">{fresh}</span> : null}
           </button>
           <button onClick={() => go('guide')} aria-label="Guide" className={`btn ml-1 h-11 w-11 !p-0 ${tab === 'guide' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
             <Icon d="M12 17h.01M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" className="h-5 w-5" />

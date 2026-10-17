@@ -1,33 +1,41 @@
 import { useRef, useState } from 'react';
-import { CYCLES, catOf, type Alert, type Doc, type Suggestion } from '../../supabase/functions/_shared/model.ts';
-import { Money, errText, shortDate, toast } from './ui';
+import type { Alert, Doc } from '../../supabase/functions/_shared/model.ts';
+import { feedGroups, type AddedEntry } from '../lib/added';
+import { errText, shortDate, toast } from './ui';
 import { api, supabase } from '../lib/supabase';
 
-const SOURCE: Record<Suggestion['source'], string> = { bank: '🏦 Found in your bank', email: '✉️ Found in your email', document: '📄 Found in a document' };
-
-/** "Is this a bill?" Also drawn in the Guide with made-up data (no buttons there). */
-export function SuggestionCard({ s, onAdd, onIgnore }: { s: Suggestion; onAdd?: () => void; onIgnore?: () => void }) {
-  const cyc = CYCLES.find((c) => c.id === s.cycle)?.label.toLowerCase();
+/** 🆕 One thing added by itself (the Inbox feed): what, where it went, when, and ↶ Undo. Also in the Guide (no buttons there). */
+export function AddedRow({ e, onUndo, onOpen, busy }: { e: AddedEntry; onUndo?: () => void; onOpen?: () => void; busy?: boolean }) {
   return (
-    <article className="card space-y-2">
-      <p className="label">{SOURCE[s.source]}</p>
-      <div className="flex items-start gap-3">
-        <span className="tile" aria-hidden="true">{catOf(s.category ?? 'other').icon}</span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[17px] font-semibold leading-snug">{s.name}</p>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            {s.amount != null ? <Money n={Number(s.amount)} /> : 'Amount unknown'}{cyc ? ` ${cyc}` : ''}{s.next_due ? ` · next ${shortDate(s.next_due)}` : ''}{s.trial_ends ? ` · trial ends ${shortDate(s.trial_ends)}` : ''}{s.ends_on ? ` · renews ${shortDate(s.ends_on)}` : ''}
-          </p>
-          {s.evidence?.charges?.length ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Charges: {s.evidence.charges.map((c) => `${shortDate(c.date)} $${c.amount.toFixed(2)}`).join(' · ')}</p> : null}
-          {s.evidence?.subject && <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">“{s.evidence.subject}”</p>}
-          {s.evidence?.note && <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{s.evidence.note}</p>}
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <button className="btn-primary flex-1" onClick={onAdd}>＋ Add to my bills</button>
-        <button className="btn" onClick={onIgnore}>Not a bill</button>
-      </div>
-    </article>
+    <li className="flex items-center gap-2 border-t border-slate-900/[0.06] py-2 first:border-0 dark:border-white/[0.06]">
+      <button className="tap -ml-1 flex min-h-[56px] min-w-0 flex-1 items-center gap-3 rounded-[18px] px-1 py-1.5 text-left" onClick={onOpen} aria-label={`${e.title}: open in ${e.where}`}>
+        <span className="tile !h-10 !w-10 !text-lg" aria-hidden="true">{e.icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block break-words text-sm font-semibold leading-snug">{e.title}</span>
+          <span className="block break-words text-xs text-slate-500 dark:text-slate-400">{e.sub}</span>
+          <span className="block text-[11px] text-teal-800/80 dark:text-teal-200/70">✓ Added to {e.where} · {ago(e.at)}</span>
+        </span>
+      </button>
+      <button className="btn shrink-0 px-3 text-xs" disabled={busy} onClick={onUndo} aria-label={`Undo: remove ${e.title}`}>{busy ? <span className="spinner" /> : '↶ Undo'}</button>
+    </li>
+  );
+}
+function ago(at: string): string {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 60000));
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : m < 2880 ? 'yesterday' : `${Math.round(m / 1440)} days ago`;
+}
+
+/** The feed, grouped (Today, This week, Earlier). */
+export function AddedList({ list, onUndo, onOpen, busy }: { list: AddedEntry[]; onUndo?: (e: AddedEntry) => void; onOpen?: (e: AddedEntry) => void; busy?: string }) {
+  return (
+    <>
+      {feedGroups(list).map((g) => (
+        <section key={g.title} className="card !px-3 !py-2">
+          <p className="label px-1 pb-0.5 pt-1.5">{g.title} <span className="num">· {g.list.length}</span></p>
+          <ul>{g.list.map((e) => <AddedRow key={e.key} e={e} busy={busy === e.key} onUndo={onUndo && (() => onUndo(e))} onOpen={onOpen && (() => onOpen(e))} />)}</ul>
+        </section>
+      ))}
+    </>
   );
 }
 
@@ -58,7 +66,7 @@ export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: s
 const ACCEPT = 'application/pdf,image/*,.txt,.eml';
 const safeName = (n: string) => n.normalize('NFKD').replace(/[^\w.-]+/g, '_').slice(-80);
 
-/** Upload bills, statements and policies: kept privately, then the AI reads them (free AIs first). */
+/** Upload bills, statements and policies: kept privately, then read at once by the AI (free AIs first); a bill goes straight into Bills. */
 export function Uploader({ userId, onDone }: { userId: string; onDone: () => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState('');
@@ -73,7 +81,10 @@ export function Uploader({ userId, onDone }: { userId: string; onDone: () => voi
         if (up.error) throw new Error(up.error.message);
         const ins = await supabase.from('documents').insert({ path, file_name: f.name, mime, size: f.size }).select().single();
         if (ins.error) throw new Error(ins.error.message);
-        await api('read-doc', { id: ins.data.id }).catch((e) => toast('err', `${f.name}: ${errText(e)}`));
+        // Read at once; a bill goes straight into Bills (or updates the one you have), with an Undo in this Inbox.
+        await api<{ doc?: Doc; itemId?: string }>('read-doc', { id: ins.data.id })
+          .then((r) => toast('ok', r.itemId ? `${r.doc?.extracted?.name || f.name}: in your bills now (Undo is in this Inbox).` : `${f.name}: read${r.doc?.extracted?.isBill === false ? ', not a bill' : ''}.`))
+          .catch((e) => toast('err', `${f.name}: ${errText(e)}`));
       } catch (e) {
         toast('err', `${f.name}: ${errText(e)}`);
       }
@@ -121,7 +132,7 @@ export function DocRow({ d, onChange, onMove }: { d: Doc; onChange?: () => void;
           {d.origin && <p className="truncate text-xs text-slate-500 dark:text-slate-400">✉️ {d.origin}</p>}
         </div>
         <span className={`chip ${d.status === 'done' ? 'border-emerald-300 text-emerald-800 dark:text-emerald-200' : d.status === 'failed' ? 'border-red-300 text-red-700 dark:text-red-300' : 'border-slate-900/10 dark:border-white/10 text-slate-600 dark:text-slate-300'}`}>
-          {d.status === 'done' ? (x?.isBill ? (d.item_id ? 'linked' : 'in Inbox') : 'not a bill') : d.status === 'failed' ? 'failed' : 'reading…'}
+          {d.status === 'done' ? (x?.isBill ? (d.item_id ? '✓ in Bills' : 'not added') : 'not a bill') : d.status === 'failed' ? 'failed' : 'reading…'}
         </span>
       </div>
       {x?.summary && <p className="text-sm text-slate-700 dark:text-slate-300">{x.summary}</p>}

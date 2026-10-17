@@ -97,7 +97,7 @@ export function Contacts() {
             onFavorite={() => void act(() => st.setContact(open.id, { favorite: !open.favorite }))}
             onEdit={() => { setEdit(open); setOpenId(null); }}
             onMerge={() => { setMerge(open); setOpenId(null); }}
-            onHide={() => { if (confirm(`${open.name} is not a contact? It’s taken off and won’t come back from your emails.`)) { setOpenId(null); void act(() => st.setContact(open.id, { status: 'hidden' }), `${open.name} removed. Settings → Contacts can bring it back.`); } }}
+            onHide={() => { setOpenId(null); void act(() => st.setContact(open.id, { status: 'hidden' }), `${open.name} removed; it won’t come back from your emails. Settings → Contacts can bring it back.`); }}
             onDelete={() => { if (confirm(`Delete ${open.name}?`)) { setOpenId(null); void act(() => st.deleteContact(open.id), 'Deleted.'); } }} />
         </Sheet>
       )}
