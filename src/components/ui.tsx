@@ -129,14 +129,16 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
 }
 
 // ---------- toasts ----------
-type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string };
+type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string; undo?: () => void };
 let toasts: Toast[] = [];
 const subs = new Set<(t: Toast[]) => void>();
-export function toast(kind: Toast['kind'], text: string) {
-  const t = { id: Date.now() + Math.random(), kind, text };
+const dropToast = (id: number) => { toasts = toasts.filter((x) => x.id !== id); subs.forEach((f) => f(toasts)); };
+/** A short message at the top. With `undo`, it carries a ↶ Undo button (and stays a little longer). */
+export function toast(kind: Toast['kind'], text: string, undo?: () => void) {
+  const t = { id: Date.now() + Math.random(), kind, text, undo };
   toasts = [...toasts, t];
   subs.forEach((f) => f(toasts));
-  setTimeout(() => { toasts = toasts.filter((x) => x.id !== t.id); subs.forEach((f) => f(toasts)); }, kind === 'err' ? 7000 : 3500);
+  setTimeout(() => dropToast(t.id), kind === 'err' ? 7000 : undo ? 6500 : 3500);
 }
 export function Toasts() {
   const [list, setList] = useState<Toast[]>([]);
@@ -144,10 +146,44 @@ export function Toasts() {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[calc(12px+env(safe-area-inset-top,0px))] z-50 flex flex-col items-center gap-2 px-4" aria-live="polite">
       {list.map((t) => (
-        <div key={t.id} className={`pointer-events-auto max-w-md rounded-2xl border border-white/15 px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_40px_-12px_rgba(0,0,0,0.6)] backdrop-blur-xl animate-[popin_.45s_cubic-bezier(.34,1.56,.64,1)] ${t.kind === 'err' ? 'bg-red-700/90' : t.kind === 'ok' ? 'bg-teal-800/90' : 'bg-slate-800/90'}`}>{t.text}</div>
+        <div key={t.id} className={`pointer-events-auto max-w-md rounded-2xl border border-white/15 px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_40px_-12px_rgba(0,0,0,0.6)] backdrop-blur-xl animate-[popin_.45s_cubic-bezier(.34,1.56,.64,1)] ${t.kind === 'err' ? 'bg-red-700/90' : t.kind === 'ok' ? 'bg-teal-800/90' : 'bg-slate-800/90'} ${t.undo ? 'flex items-center gap-3 !py-1.5 !pr-1.5' : ''}`}>
+          {t.undo ? <><span className="min-w-0 flex-1">{t.text}</span><button className="tap min-h-[44px] shrink-0 rounded-xl bg-white/15 px-3 font-bold text-white" onClick={() => { dropToast(t.id); t.undo!(); }}>↶ Undo</button></> : t.text}
+        </div>
       ))}
     </div>
   );
+}
+
+/**
+ * A row of chips that scrolls sideways (one line, no scrollbar, snaps to a chip): a soft fade on the side with more to see,
+ * and the chosen chip (aria-selected / aria-pressed) scrolled into view. Put the `strip` class on the element.
+ */
+export function useStrip<T extends HTMLElement>(key: unknown) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    const edges = () => {
+      box.dataset.l = box.scrollLeft > 2 ? '1' : '';
+      box.dataset.r = box.scrollLeft + box.clientWidth < box.scrollWidth - 2 ? '1' : '';
+    };
+    edges();
+    box.addEventListener('scroll', edges, { passive: true });
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(edges);
+    ro?.observe(box);
+    return () => { box.removeEventListener('scroll', edges); ro?.disconnect(); };
+  }, []);
+  useEffect(() => {
+    const box = ref.current;
+    const el = box?.querySelector<HTMLElement>('[aria-selected="true"], [aria-pressed="true"]');
+    if (!box || !el) return;
+    const left = el.offsetLeft - 16, right = el.offsetLeft + el.offsetWidth + 16 - box.clientWidth;
+    const to = left < box.scrollLeft ? left : right > box.scrollLeft ? right : null;
+    if (to === null) return;
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    box.scrollTo?.({ left: Math.max(0, to), behavior: calm ? 'auto' : 'smooth' });
+  }, [key]);
+  return ref;
 }
 
 export const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));

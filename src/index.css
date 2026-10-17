@@ -120,6 +120,13 @@
 
   /* Chips that scroll sideways (Contacts → kinds): a glowing pill slides to the chosen one. */
   .no-bar { scrollbar-width: none; } .no-bar::-webkit-scrollbar { display: none; }
+  /* Chip rows: one line that scrolls sideways (useStrip in ui.tsx), snaps to a chip, fades on the side with more to see. */
+  .strip { display: flex; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; touch-action: pan-x pan-y;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fl, 0px), #000 calc(100% - var(--fr, 0px)), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 var(--fl, 0px), #000 calc(100% - var(--fr, 0px)), transparent 100%); }
+  .strip::-webkit-scrollbar { display: none; }
+  .strip > * { scroll-snap-align: start; flex-shrink: 0; }
+  .strip[data-l="1"] { --fl: 28px; } .strip[data-r="1"] { --fr: 36px; }
   .chippill { position: absolute; top: 4px; bottom: 4px; left: 0; border-radius: 9999px; pointer-events: none; background: linear-gradient(135deg, var(--a), var(--a2));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 0 18px -6px var(--a); transition: transform .5s cubic-bezier(.34, 1.4, .64, 1); }
 

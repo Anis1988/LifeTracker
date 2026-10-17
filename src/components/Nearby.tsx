@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
-import { Empty, Seg, errText, toast } from './ui';
+import { Empty, Seg, errText, toast, useStrip } from './ui';
 import { PhoneIcon, SearchBox, mapUrl, siteText, tel } from './Contacts';
-import { fmtPhone, sameContact } from '../../supabase/functions/_shared/contacts.ts';
+import { contactKey, fmtPhone, sameContact } from '../../supabase/functions/_shared/contacts.ts';
 import { TODO_KINDS, driveText, milesText, spotKind, spotToContact, zipOf, type NearbyResult, type Spot, type TodoKind, type Weekend } from '../../supabase/functions/_shared/place.ts';
 import { settingsHref } from './SettingsGrid';
 import type { Contact } from '../../supabase/functions/_shared/model.ts';
@@ -12,7 +12,19 @@ import { takeParam } from '../lib/nav';
 
 /** 📍 Nearby: places near your zip (closest first, miles + drive time), things to do, and this weekend's list. */
 
-const inContacts = (list: Contact[], s: Spot) => { const c = spotToContact(s); return list.some((x) => x.status === 'active' && sameContact(x, c)); };
+const contactFor = (list: Contact[], s: Spot) => { const c = spotToContact(s); return list.find((x) => x.status === 'active' && sameContact(x, c)) ?? null; };
+const addedHere = new Set<string>(); // contacts made from a Nearby tap during this visit of the app
+
+/**
+ * Was this contact made from this place (by "＋ Contacts")? Then "✓ In Contacts" can take it away again.
+ * Same identity key as when it was added, only "added by you", and the "… near you" line it was saved with.
+ * A contact found in your emails, or one you already had, is never removed from here.
+ */
+function fromSpot(c: Contact, s: Spot) {
+  if (addedHere.has(c.id)) return true;
+  const k = contactKey(spotToContact(s));
+  return (c.key === k || c.key.startsWith(`${k}#`)) && c.sources.every((x) => x === 'hand') && (c.description ?? '').startsWith(`${spotKind(s.kind).label} near you:`);
+}
 
 /** Miles from your zip and the drive time ("about" = an estimate). */
 export function Distance({ s }: { s: Spot }) {
@@ -44,12 +56,10 @@ export function SpotRow({ s, added, onAdd, listed, onSave }: { s: Spot; added?: 
         {s.website && <a href={s.website} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Website of ${s.name}: ${siteText(s.website)}`}>🌐 Site</a>}
         {s.source && s.source !== s.website && <a href={s.source} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Where ${s.name} was found`}>🔗 Source</a>}
         <a href={mapUrl(s.address ? `${s.name}, ${s.address}` : `${s.lat},${s.lon}`)} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Map of ${s.name}`}>🗺️ Map</a>
-        {onSave && (listed
-          ? <span className="chip min-h-[44px] border-violet-500/25 bg-violet-500/10 px-3 text-violet-800 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-200">✓ On my list</span>
-          : <button className="btn !px-3 text-xs" onClick={onSave}>＋ My list</button>)}
-        {onAdd && (added
-          ? <span className="chip min-h-[44px] border-teal-500/25 bg-teal-500/10 px-3 text-teal-800 dark:border-teal-300/20 dark:bg-teal-300/10 dark:text-teal-200">✓ In Contacts</span>
-          : <button className="btn !px-3 text-xs" onClick={onAdd}>＋ Contacts</button>)}
+        {onSave && <button className={`btn !px-3 text-xs ${listed ? '!border-violet-500/30 !bg-violet-500/10 !bg-none text-violet-800 dark:!border-violet-300/25 dark:!bg-violet-300/10 dark:text-violet-200' : ''}`} aria-pressed={!!listed} onClick={onSave}
+          aria-label={listed ? `${s.name} is on My list. Tap to take it off` : `Save ${s.name} to My list`}>{listed ? '✓ On my list' : '＋ My list'}</button>}
+        {onAdd && <button className={`btn !px-3 text-xs ${added ? '!border-teal-500/30 !bg-teal-500/10 !bg-none text-teal-800 dark:!border-teal-300/25 dark:!bg-teal-300/10 dark:text-teal-200' : ''}`} aria-pressed={!!added} onClick={onAdd}
+          aria-label={added ? `${s.name} is in Contacts. Tap to take it out` : `Add ${s.name} to Contacts`}>{added ? '✓ In Contacts' : '＋ Contacts'}</button>}
       </div>
     </li>
   );
@@ -60,7 +70,7 @@ export function SpotList({ title, spots, contacts, onAdd, places, onSave }: { ti
   return (
     <section className="card !px-3 !py-2">
       <p className="label px-1 pb-0.5 pt-1.5">{title} <span className="num">· {spots.length}</span></p>
-      <ul>{spots.map((s, i) => <SpotRow key={`${s.name}-${i}`} s={s} added={contacts ? inContacts(contacts, s) : undefined} onAdd={onAdd && (() => onAdd(s))} listed={places ? !!onList(places, s) : undefined} onSave={onSave && (() => onSave(s))} />)}</ul>
+      <ul>{spots.map((s, i) => <SpotRow key={`${s.name}-${i}`} s={s} added={contacts ? !!contactFor(contacts, s) : undefined} onAdd={onAdd && (() => onAdd(s))} listed={places ? !!onList(places, s) : undefined} onSave={onSave && (() => onSave(s))} />)}</ul>
     </section>
   );
 }
@@ -81,15 +91,37 @@ export function Credit({ by, note }: { by: string[]; note?: string }) {
   );
 }
 
-/** 📌 "＋ My list": saves a snapshot (a second tap on the same place does nothing new). */
-export function useSaveToList() {
+/**
+ * The two light-up buttons on a place, as on/off switches:
+ * "＋ My list" saves a snapshot, tapping "✓ On my list" takes it off again (↶ Undo puts the same one back, note and stars too);
+ * "＋ Contacts" adds it, tapping "✓ In Contacts" takes it out again, only when it was added from this place (↶ Undo).
+ */
+export function useSpotToggles() {
   const st = useStore();
-  return async (s: Spot) => {
+  const toggleList = async (s: Spot) => {
     try {
-      const r = await st.savePlace(s);
-      toast('ok', r.already ? `${s.name} is already on My list.` : `📌 ${s.name} saved to My list.`);
+      const old = onList(st.places, s);
+      if (!old) { await st.savePlace(s); toast('ok', `📌 ${s.name} saved to My list.`); return; }
+      await st.deletePlace(old.id);
+      toast('ok', `${old.name} taken off My list.`, () => void st.restorePlace(old).catch((e) => toast('err', errText(e))));
     } catch (e) { toast('err', errText(e)); }
   };
+  const toggleContact = async (s: Spot) => {
+    try {
+      const old = contactFor(st.contacts, s);
+      if (!old) {
+        const r = await st.saveContact(spotToContact(s));
+        if (!r.merged) addedHere.add(r.contact.id);
+        toast('ok', r.merged ? `${s.name} was already in Contacts: details added.` : `${s.name} added to Contacts.`);
+        return;
+      }
+      if (!fromSpot(old, s)) { toast('info', `${old.name} was already in your Contacts, so it stays. To remove it, open it in Places → Contacts.`); return; }
+      await st.deleteContact(old.id);
+      addedHere.delete(old.id);
+      toast('ok', `${old.name} taken out of Contacts.`, () => void st.restoreContact(old).then(() => { addedHere.add(old.id); }).catch((e) => toast('err', errText(e))));
+    } catch (e) { toast('err', errText(e)); }
+  };
+  return { toggleList, toggleContact };
 }
 
 type Mode = 'find' | 'todo';
@@ -100,23 +132,23 @@ export function NearbyView() {
   const st = useStore();
   const zip = zipOf(st.settings);
   const [mode, setMode] = useState<Mode>(() => { try { return localStorage.getItem('lt.nearbyMode') === 'todo' && !/[?&]find/.test(location.hash) ? 'todo' : 'find'; } catch { return 'find'; } });
-  const save = useSaveToList();
+  const { toggleList: save, toggleContact: add } = useSpotToggles();
   const [q, setQ] = useState('');
   const [res, setRes] = useState<NearbyResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const [kind, setKind] = useState<TodoKind>('fun');
+  const [kind, setKind] = useState<TodoKind | null>(null); // nothing is looked up until you tap one
+  const quick = useStrip<HTMLDivElement>(res?.q);
   const [todo, setTodo] = useState<Partial<Record<TodoKind, NearbyResult>>>({});
   const [weekendOpen, setWeekendOpen] = useState(false);
 
-  const pickMode = (m: Mode) => { setMode(m); try { localStorage.setItem('lt.nearbyMode', m); } catch { /* private mode */ } if (m === 'todo' && !todo[kind]) void loadTodo(kind); };
+  // Opening Nearby (or switching to Things to do) never searches by itself: only a tap on a word or a group, or Find.
+  const pickMode = (m: Mode) => { setMode(m); try { localStorage.setItem('lt.nearbyMode', m); } catch { /* private mode */ } };
   // ＋ → "A place" lands here with "?find": the search box is ready to type in.
   const findBox = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (takeParam('find', '#/places/nearby') === null) return;
     setTimeout(() => findBox.current?.querySelector('input')?.focus(), 80);
   }, []);
-  // Things to do remembered from last time: load its list straight away.
-  useEffect(() => { if (mode === 'todo' && !todo[kind]) void loadTodo(kind); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const search = async (text = q) => {
     const t = text.trim();
     if (t.length < 2) return;
@@ -131,15 +163,11 @@ export function NearbyView() {
     try { const r = await api<NearbyResult>('nearby', { op: 'todo', kind: k }); setTodo((cur) => ({ ...cur, [k]: r })); } catch (e) { toast('err', errText(e)); }
     setBusy(false);
   };
-  const add = async (s: Spot) => {
-    try {
-      const r = await st.saveContact(spotToContact(s));
-      toast('ok', r.merged ? `${s.name} was already in Contacts: details added.` : `${s.name} added to Contacts.`);
-    } catch (e) { toast('err', errText(e)); }
-  };
   const submit = (e: FormEvent) => { e.preventDefault(); void search(); };
   const town = res?.home ?? Object.values(todo)[0]?.home ?? (st.weekend?.home.zip === zip ? st.weekend.home : null);
-  const cur = todo[kind];
+  const cur = kind ? todo[kind] : undefined;
+  const group = kind ? TODO_KINDS.find((k) => k.id === kind)! : null;
+  const people = kind !== 'events' && kind !== 'trips'; // events and day trips aren't contacts
 
   return (
     <div className="space-y-3">
@@ -155,8 +183,8 @@ export function NearbyView() {
             <div className="min-w-0 flex-1"><SearchBox q={q} onChange={setQ} placeholder="Dentist, oil change, pizza…" label="What are you looking for" /></div>
             <button className="btn-primary" type="submit" disabled={busy || q.trim().length < 2}>Find</button>
           </form>
-          <div className="no-bar -mx-4 flex gap-1.5 overflow-x-auto px-4 py-1">
-            {QUICK.map((w) => <button key={w} className="chip border-slate-900/10 bg-transparent text-slate-600 dark:border-white/10 dark:text-slate-300" onClick={() => void search(w)}>{w}</button>)}
+          <div ref={quick} className="strip -mx-4 gap-1.5 px-4 py-1" role="group" aria-label="Quick words">
+            {QUICK.map((w) => { const on = res?.q.toLowerCase() === w.toLowerCase(); return <button key={w} aria-pressed={on} className={`chip ${on ? 'border-teal-500/40 bg-teal-500/15 text-teal-900 dark:border-teal-300/30 dark:bg-teal-300/15 dark:text-teal-100' : 'border-slate-900/10 bg-transparent text-slate-600 dark:border-white/10 dark:text-slate-300'}`} onClick={() => void search(w)}>{w}</button>; })}
           </div>
           {busy && <Loading label="Looking near you" />}
           {res && !busy && (res.spots.length
@@ -173,14 +201,30 @@ export function NearbyView() {
             <span aria-hidden="true" className="text-teal-600 dark:text-teal-300">{weekendOpen ? '−' : '+'}</span>
           </button>}
           {weekendOpen && st.weekend && <WeekendLists w={st.weekend} contacts={st.contacts} onAdd={(s) => void add(s)} places={st.places} onSave={(s) => void save(s)} />}
-          <Seg label="Things to do" options={TODO_KINDS.map((k) => [k.id, `${k.icon} ${k.id === 'food' ? 'Food' : k.id === 'fun' ? 'Fun' : k.id === 'events' ? 'Events' : 'Trips'}`] as [TodoKind, string])} value={kind} onChange={(k) => void loadTodo(k)} />
+          <TodoButtons value={kind} busy={busy} onPick={(k) => void loadTodo(k)} />
           {busy && <Loading label="Looking for things to do" />}
-          {cur && !busy && (cur.spots.length
-            ? <SpotList title={TODO_KINDS.find((k) => k.id === kind)!.label} spots={cur.spots} contacts={kind === 'events' || kind === 'trips' ? undefined : st.contacts} onAdd={kind === 'events' || kind === 'trips' ? undefined : (s) => void add(s)} places={st.places} onSave={(s) => void save(s)} />
-            : <Empty icon={TODO_KINDS.find((k) => k.id === kind)!.icon}>{kind === 'events' ? 'No events found with a source page right now. Events are looked up on the web (free Gemini first, Claude if needed) and only kept with a real link.' : 'Nothing found this time. Try again later.'}</Empty>)}
+          {group && cur && !busy && (cur.spots.length
+            ? <SpotList title={group.label} spots={cur.spots} contacts={people ? st.contacts : undefined} onAdd={people ? (s) => void add(s) : undefined} places={st.places} onSave={(s) => void save(s)} />
+            : <Empty icon={group.icon}>{kind === 'events' ? 'No events found with a source page right now. Events are looked up on the web (free Gemini first, Claude if needed) and only kept with a real link.' : 'Nothing found this time. Try again later.'}</Empty>)}
           {cur && !busy && <Credit by={cur.by} note={cur.note} />}
+          {!kind && !busy && <Empty icon="🎉">Tap <b>Food</b>, <b>Fun</b>, <b>Events</b> or <b>Trips</b> to look for things to do near you. Nothing is looked up until you tap one.</Empty>}
         </>
       )}
+    </div>
+  );
+}
+
+const TODO_SHORT: Record<TodoKind, string> = { food: 'Food', fun: 'Fun', events: 'Events', trips: 'Trips' };
+/** 🎉 Things to do: four buttons, nothing picked (and nothing looked up) until you tap one. */
+export function TodoButtons({ value, busy, onPick }: { value: TodoKind | null; busy?: boolean; onPick: (k: TodoKind) => void }) {
+  return (
+    <div className="grid grid-cols-4 gap-2" role="group" aria-label="Things to do">
+      {TODO_KINDS.map((k) => (
+        <button key={k.id} type="button" aria-pressed={value === k.id} disabled={busy && value !== k.id} onClick={() => onPick(k.id)}
+          className={`btn !h-auto min-h-[64px] flex-col !gap-0.5 !px-1 py-2 text-xs ${value === k.id ? '!border-teal-500/40 !bg-teal-500/15 !bg-none text-teal-900 dark:!border-teal-300/30 dark:!bg-teal-300/15 dark:text-teal-100' : ''}`}>
+          <span className="text-xl leading-none" aria-hidden="true">{k.icon}</span>{TODO_SHORT[k.id]}
+        </button>
+      ))}
     </div>
   );
 }

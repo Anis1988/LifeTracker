@@ -69,11 +69,15 @@ interface Store {
   saveContact: (c: Partial<Contact> & { name: string }) => Promise<{ contact: Contact; merged: boolean }>;
   setContact: (id: string, patch: Partial<Pick<Contact, 'favorite' | 'status'>>) => Promise<void>;
   deleteContact: (id: string) => Promise<void>;
+  /** ↶ Undo of a delete: puts the very same contact back. */
+  restoreContact: (c: Contact) => Promise<void>;
   mergeContacts: (keep: Contact, other: Contact) => Promise<Contact>;
   /** 📌 Save a Nearby find to My list (already there = that one, not a second copy). */
   savePlace: (s: Spot) => Promise<{ place: ListPlace; already: boolean }>;
   editPlace: (id: string, patch: Partial<Omit<ListPlace, 'id' | 'user_id' | 'created_at' | 'updated_at'>>) => Promise<void>;
   deletePlace: (id: string) => Promise<void>;
+  /** ↶ Undo of a delete: puts the very same saved place back (note, planned day, been there, stars). */
+  restorePlace: (p: ListPlace) => Promise<void>;
 }
 const Ctx = createContext<Store | null>(null);
 export const useStore = () => useContext(Ctx)!;
@@ -301,6 +305,11 @@ export function StoreProvider({ session, children }: { session: Session; childre
       check(await supabase.from('contacts').delete().eq('id', id));
       setContacts((cur) => cur.filter((x) => x.id !== id));
     },
+    restoreContact: async (c) => {
+      const { created_at: _c, updated_at: _u, ...row } = c;
+      const saved = check(await supabase.from('contacts').insert({ ...row, user_id: session.user.id }).select().single()) as Contact;
+      setContacts((cur) => [...cur.filter((x) => x.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
+    },
     mergeContacts: async (keep, other) => {
       const m = ownerMerge(keep, other);
       // Delete first: the merged card may take the other one's phone/website (one row per place).
@@ -326,6 +335,11 @@ export function StoreProvider({ session, children }: { session: Session; childre
     deletePlace: async (id) => {
       check(await supabase.from('nearby_list').delete().eq('id', id));
       setPlaces((cur) => cur.filter((x) => x.id !== id));
+    },
+    restorePlace: async (p) => {
+      const { updated_at: _u, ...row } = p;
+      const saved = check(await supabase.from('nearby_list').insert({ ...row, user_id: session.user.id }).select().single()) as ListPlace;
+      setPlaces((cur) => [saved, ...cur.filter((x) => x.id !== saved.id)].sort((a, b) => b.created_at.localeCompare(a.created_at)));
     },
   }), [session, items, added, alerts, docs, findings, senders, papers, spent, tx, purchases, dates, appts, contacts, places, weekend, settings, status, statusErr, loading, reload, reloadStatus]);
 
