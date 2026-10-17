@@ -211,10 +211,31 @@ export function applyRead(d: Partial<Paper>, r: VaultReadResult, typed: Set<stri
   return { next, filled };
 }
 
-export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onDone, read, onReceipt, example }: {
+/** "Reading it…": shown while a new scan is read and saved by itself (also in the Guide). */
+export function ReadingCard({ pages = 1 }: { pages?: number }) {
+  return (
+    <div className="card space-y-3" role="status" aria-label="Reading and saving">
+      <div className="flex items-center gap-3">
+        <span className="orb !h-12 !w-12 !text-xl" aria-hidden="true">✨</span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">Reading {pages > 1 ? `${pages} pages` : 'it'}… it saves by itself</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Title, folder, who it’s for, dates. You can change anything afterwards with ✎ Edit.</p>
+        </div>
+      </div>
+      {[0, 1, 2].map((i) => <div key={i} className="space-y-1.5"><div className="skel h-3 w-24" /><div className="skel h-10 w-full !rounded-2xl" /></div>)}
+    </div>
+  );
+}
+
+/**
+ * 📷 Scan / add / edit a Vault document. A NEW document is read and saved by itself as soon as its pages are picked
+ * (owner's choice: fully automatic): upload → AI read (free first, cached by the file's hash) → saved → its card opens;
+ * a receipt goes to Money → Spending instead. Edit it afterwards. The same file is never saved twice.
+ */
+export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onDone, read, onReceipt, onExisting, example }: {
   doc: Partial<Paper>; s: Settings; userId: string; existing?: Paper[];
   onSave?: (p: Partial<Paper> & { name: string }) => Promise<unknown>; onDelete?: () => Promise<void>; onDone?: () => void;
-  read?: (path: string) => Promise<VaultReadResult>; onReceipt?: (path: string) => Promise<void>; example?: { filled: string[]; pages: number };
+  read?: (path: string) => Promise<VaultReadResult>; onReceipt?: (path: string) => Promise<void>; onExisting?: (p: Paper) => void; example?: { filled: string[]; pages: number };
 }) {
   const [receipt, setReceipt] = useState<string | null>(null); // 🧾 the AI says it's a receipt: offer Money → Spending
   const [d, setD] = useState<Partial<Paper>>({ ...PAPER_DEFAULTS, ...doc, tags: doc.tags ?? [], files: doc.files ?? [] });
@@ -236,6 +257,8 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
   pagesRef.current = pages;
   const folderId = useRef(doc.id ?? crypto.randomUUID());
 
+  // A new document with the AI on hand: read and saved by itself as soon as the pages are picked.
+  const auto = !doc.id && !!read && !!onSave && !example;
   const add = async (list: FileList | null) => {
     const fs = Array.from(list ?? []);
     if (!fs.length) return;
@@ -244,6 +267,7 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
       const big = fs.find((f) => f.size > 40 * 1024 * 1024);
       if (big) throw new Error(`${big.name}: too big (40 MB at most).`);
       const next = await Promise.all(fs.map(shrink));
+      if (auto) { setBusy(''); await autoSave([...pages, ...next].slice(0, 30)); return; }
       setPages((c) => [...c, ...next].slice(0, 30));
     } catch (e) { toast('err', errText(e)); }
     setBusy('');
@@ -251,13 +275,14 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
   const willCombine = one && pages.length > 1;
 
   /** Pages → (one PDF) → the private bucket. Returns the new paths and the file's hash. */
-  const upload = async (): Promise<{ paths: string[]; hash: string | null }> => {
-    if (!pages.length) return { paths: [], hash: null };
-    const final = willCombine ? [await combine(pages, d.name || 'Document')] : pages;
+  const upload = async (list: Page[] = pages, combineThem = willCombine): Promise<{ paths: string[]; hash: string | null }> => {
+    if (!list.length) return { paths: [], hash: null };
+    const final = combineThem ? [await combine(list, d.name || 'Document')] : list;
     for (const f of final) if (f.file.size > 15 * 1024 * 1024) throw new Error('A file is bigger than 15 MB: take the photos again a bit further away, or untick “one PDF”.');
     const hash = final.length === 1 ? await sha256(final[0].file) : await sha256(new Blob([(await Promise.all(final.map((f) => sha256(f.file)))).join('')]));
     const dup = existing.find((x) => x.file_hash === hash && x.id !== d.id);
-    if (dup && !confirm(`You already have this file in your Vault: “${dup.name}”. Save it again?`)) throw new Error('Not saved twice.');
+    // The same file is never kept twice: the one you already have opens instead (no question asked).
+    if (dup) { list.forEach((p) => p.url && URL.revokeObjectURL(p.url)); setPages([]); toast('info', `Already in your Vault: “${dup.name}”.`); onExisting?.(dup); throw new Error('Not saved twice.'); }
     const paths: string[] = [];
     for (const [i, f] of final.entries()) {
       const path = `${userId}/vault/${folderId.current}/${Date.now().toString(36)}-${i + 1}-${safeName(f.name)}`;
@@ -267,7 +292,7 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
       fresh.current.push(path);
     }
     setPages([]);
-    pages.forEach((p) => p.url && URL.revokeObjectURL(p.url));
+    list.forEach((p) => p.url && URL.revokeObjectURL(p.url));
     // The file's fingerprint is kept for the first file only (the same file is then never saved or read twice).
     setD((c) => ({ ...c, files: [...(c.files ?? []), ...paths], file_hash: c.files?.length ? c.file_hash ?? null : hash }));
     return { paths, hash: d.files?.length ? null : hash };
@@ -287,6 +312,36 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
       toast('ok', r.cached ? 'Filled in from the last time this file was read (free).' : `Read by ${r.by}. Check it, then Save.`);
     } catch (e) { if (errText(e) !== 'Not saved twice.') toast('err', errText(e)); }
     setBusy('');
+  };
+
+  /** 📷 New scan: upload → read → saved straight away (a receipt → Money → Spending). If the AI can't read it now, it is saved anyway. */
+  const autoSave = async (list: Page[]) => {
+    if (!onSave || !read) return;
+    setPages(list);
+    setBusy('read');
+    let paths: string[] = [], hash: string | null = null;
+    try {
+      ({ paths, hash } = await upload(list, list.length > 1));
+    } catch (e) { setPages([]); if (errText(e) !== 'Not saved twice.') toast('err', errText(e)); setBusy(''); return; }
+    let r: VaultReadResult | null = null, why = '';
+    try { r = await read(paths[0]); } catch (e) { why = errText(e); }
+    try {
+      if (r?.route === 'receipt' && onReceipt) {
+        saved.current = true;
+        await onReceipt(paths[0]);
+        onDone?.();
+        return;
+      }
+      const base: Partial<Paper> = { ...d, files: [...(d.files ?? []), ...paths], file_hash: hash };
+      const next = r ? applyRead(base, r, typed.current).next : base;
+      await onSave({
+        ...next, name: (next.name || folderOf(next.folder).label).trim().slice(0, 120), holder: next.holder?.trim() || null, notes: next.notes?.trim() || null,
+        number_end: next.number_end?.replace(/\s/g, '').slice(-4) || null, source: 'scan',
+      });
+      saved.current = true;
+      if (!r) toast('info', `Saved. It couldn’t be read just now (${why.slice(0, 80)}): tap ✎ Edit to fill it in.`);
+      onDone?.();
+    } catch (e) { saved.current = false; toast('err', errText(e)); setBusy(''); }
   };
 
   const save = async () => {
@@ -347,15 +402,15 @@ export function VaultForm({ doc, s, userId, existing = [], onSave, onDelete, onD
             <Toggle on={one} onChange={setOne} label="Make one PDF" />
           </label>
         )}
-        {(pages.length > 0 || example) && read && (
-          <button className="btn w-full !border-violet-400/40" disabled={!!busy} onClick={() => void scanAndRead()}>{busy === 'read' ? <><span className="spinner" /> Reading it…</> : '✨ Read it and fill in for me'}</button>
+        {pages.length > 0 && read && !auto && (
+          <button className="btn w-full !border-violet-400/40" disabled={!!busy} onClick={() => void scanAndRead()}>{busy === 'read' ? <><span className="spinner" /> Reading it…</> : '✨ Read the new pages and fill in'}</button>
         )}
-        {!pages.length && !example && <p className="text-center text-xs text-slate-500 dark:text-slate-400">{total ? plural(total, 'file') + ' kept · add more pages above' : 'Take photos of each page (or pick photos / a PDF). They are made smaller on this phone, then kept privately.'}</p>}
+        {!pages.length && !example && <p className="text-center text-xs text-slate-500 dark:text-slate-400">{total ? plural(total, 'file') + ' kept · add more pages above' : auto ? 'Take a photo of each page (pick several at once for one PDF), or pick photos / a PDF: it’s read and saved by itself. Change anything afterwards.' : 'Take photos of each page (or pick photos / a PDF). They are made smaller on this phone, then kept privately.'}</p>}
         {busy === 'pages' && <p className="text-center text-xs text-slate-500 dark:text-slate-400"><span className="spinner" /> Getting the pages ready…</p>}
       </div>
 
       {busy === 'read' ? (
-        <div className="card space-y-3" role="status" aria-label="Reading">{[0, 1, 2, 3].map((i) => <div key={i} className="space-y-1.5"><div className="skel h-3 w-24" /><div className="skel h-10 w-full !rounded-2xl" /></div>)}</div>
+        <ReadingCard pages={pages.length || 1} />
       ) : (
         <div className="space-y-3">
           <label className="block text-sm font-semibold">Title<Sug on={filled.includes('name')} />

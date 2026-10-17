@@ -77,7 +77,7 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
   // 🧾 Receipts the Vault once put in Returns move to Spending (once).
   if (want('bills') || mail) await step('Receipts moved', () => moveOldReceipts(db, userId));
   if (want('purchases') || want('mail')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until, mails));
-  // 📁 Important documents attached to emails → Vault (owner's choice: straight in); receipts → Spending, bills → Inbox.
+  // 📁 Important documents attached to emails → Vault (owner's choice: straight in); receipts → Spending, bills → Bills.
   if (want('bills') || mail) await step('Vault', () => vaultEmailStep(db, userId, s, alerts, until + 10_000));
   // 🧾 Plain receipt emails → Spending (free patterns first).
   if (want('bills') || mail) await step('Receipts', () => receiptEmailStep(db, userId, s, until + 10_000, mails));
@@ -177,8 +177,6 @@ async function detectStep(db: SupabaseClient, userId: string, s: Settings, alert
   if (!txs?.length) return;
   const found = findRecurring(txs as { posted: string; amount: number; description: string; merchant: string }[], s.bank.minCharges);
   const { data: items } = await db.from('items').select('*').eq('user_id', userId).neq('status', 'cancelled');
-  const { data: sugg } = await db.from('suggestions').select('key, status').eq('user_id', userId).eq('source', 'bank');
-  const known = new Map((sugg ?? []).map((x) => [x.key, x.status]));
   let matched = 0, fresh = 0;
   for (const r of found) {
     const item = (items as Item[] | null)?.find((i) => matchesItem(i, r.key));
@@ -202,19 +200,15 @@ async function detectStep(db: SupabaseClient, userId: string, s: Settings, alert
       await db.from('transactions').update({ item_id: item.id }).eq('user_id', userId).eq('merchant', r.key).is('item_id', null);
       continue;
     }
-    const st = known.get(r.key);
-    if (st === 'ignored' || st === 'accepted') continue;
-    const row = {
-      user_id: userId, key: r.key, source: 'bank', name: r.name, category: r.category, amount: r.amount, cycle: r.cycle, next_due: r.nextDue,
-      merchant: r.key, evidence: { charges: r.charges }, status: 'new',
-    };
-    await db.from('suggestions').upsert(row, { onConflict: 'user_id,source,key' });
-    if (!st) {
+    // 🆕 New: added to Bills straight away (owner's choice: fully automatic), with a heads-up and an Undo (remembered).
+    const res = await autoAddBill(db, userId, { source: 'bank', key: r.key, name: r.name, category: r.category, amount: r.amount, cycle: r.cycle, next_due: r.nextDue, merchant: r.key, evidence: { charges: r.charges } }, alerts, (items as Item[] | null) ?? undefined);
+    if (res.added && res.itemId) {
       fresh++;
-      alerts.push({ user_id: userId, kind: 'found', key: `bank:${r.key}`, item_id: null, title: `New bill found: ${r.name} ${money(r.amount)} ${r.cycle}`, body: 'Open Inbox to add it or ignore it.' });
+      await db.from('items').update({ last_charged: r.lastDate, last_amount: r.amount }).eq('id', res.itemId);
+      await db.from('transactions').update({ item_id: res.itemId }).eq('user_id', userId).eq('merchant', r.key).is('item_id', null);
     }
   }
-  return `${found.length} recurring payment(s): ${matched} matched to your bills, ${fresh} new to check`;
+  return `${found.length} recurring payment(s): ${matched} matched to your bills, ${fresh} new added to Bills`;
 }
 
 // ---------- ✉️ Gmail receipts ----------
@@ -260,8 +254,8 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
 }
 
 /**
- * What the AI found (email or document): updates the matching bill (new date, amount, renewal) or makes a
- * suggestion for you to OK. Never creates a bill by itself.
+ * What the AI found (email or document): updates the matching bill (new date, amount, renewal), or adds it to Bills by
+ * itself (owner's choice: fully automatic) with a heads-up and an Undo in the Inbox.
  */
 export async function applyExtracted(db: SupabaseClient, userId: string, x: Extracted, source: 'email' | 'document', key: string, evidence: Record<string, unknown>, items: Item[], alerts: NewAlert[]): Promise<{ itemId?: string; suggestionId?: string }> {
   const item = items.find((i) => matchesItem(i, merchantKey(x.merchant || x.name)) || i.name.toLowerCase() === x.name.toLowerCase());
@@ -281,18 +275,50 @@ export async function applyExtracted(db: SupabaseClient, userId: string, x: Extr
     for (const w of x.warnings.slice(0, 2)) alerts.push({ user_id: userId, kind: 'renewal', key: `${item.id}:${w.slice(0, 60)}`, item_id: item.id, title: `${item.name}: ${w}`.slice(0, 200), body: null });
     return { itemId: item.id };
   }
-  const { data: prev } = await db.from('suggestions').select('id, status').eq('user_id', userId).eq('source', source).eq('key', key).maybeSingle();
-  if (prev && prev.status !== 'new') return { suggestionId: prev.id };
-  const row = {
-    user_id: userId, key, source, name: x.name || x.merchant, category: x.category, amount: x.amount, currency: x.currency || 'USD', cycle: x.cycle,
+  const r = await autoAddBill(db, userId, {
+    source, key, name: x.name || x.merchant, category: x.category, amount: x.amount, currency: x.currency || 'USD', cycle: x.cycle,
     next_due: x.nextDue, ends_on: x.endsOn, trial_ends: x.trialEnds, merchant: merchantKey(x.merchant || x.name),
-    details: { policyNumber: x.policyNumber || undefined, coverage: x.coverage || undefined, deductible: x.deductible ?? undefined, balance: x.balance ?? undefined, rate: x.rate ?? undefined, last4: x.last4 || undefined },
-    evidence: { ...evidence, note: [x.summary, ...x.warnings].filter(Boolean).join(' ') }, status: 'new',
-  };
-  const { data } = await db.from('suggestions').upsert(row, { onConflict: 'user_id,source,key' }).select('id').single();
-  if (!prev) alerts.push({ user_id: userId, kind: 'found', key: `${source}:${key}`, item_id: null, title: `New ${source === 'email' ? 'bill in your email' : 'bill in a document'}: ${row.name}${x.amount ? ` ${money(x.amount)}` : ''}`, body: 'Open Inbox to add it or ignore it.' });
-  return { suggestionId: data?.id };
+    details: { policyNumber: x.policyNumber || undefined, coverage: x.coverage || undefined, deductible: x.deductible ?? undefined, balance: x.balance ?? undefined, rate: x.rate ?? undefined, last4: x.last4 || undefined, ...(typeof evidence.documentId === 'string' ? { documentId: evidence.documentId } : {}) },
+    evidence: { ...evidence, note: [x.summary, ...x.warnings].filter(Boolean).join(' ') },
+  }, alerts, items);
+  return { itemId: r.itemId, suggestionId: r.suggestionId };
 }
+
+const CYCLE_WORD: Record<string, string> = { weekly: 'weekly', biweekly: 'every 2 weeks', monthly: 'monthly', quarterly: 'every 3 months', semiannual: 'every 6 months', yearly: 'yearly', once: 'one time' };
+const FROM: Record<string, string> = { bank: 'from your bank', email: 'from your email', document: 'from a document' };
+
+/**
+ * 🆕 A bill found automatically (bank rhythm, a bill email, an uploaded or emailed bill document) goes straight into
+ * Bills (owner's choice: fully automatic, no OK needed), with a heads-up "Added: Netflix $17.99 monthly — from your
+ * bank". The `suggestions` row is the memory of what was added: status 'accepted' + item_id; Undo in the Inbox sets it
+ * to 'ignored' and deletes the bill, so the same find never comes back. A bill the owner deleted (item_id gone) is not
+ * added again either. Never pays, cancels or moves anything.
+ */
+export interface FoundBill {
+  source: 'bank' | 'email' | 'document'; key: string; name: string; category: string | null; amount: number | null; currency?: string; cycle: string | null;
+  next_due: string | null; ends_on?: string | null; trial_ends?: string | null; merchant: string | null; details?: Record<string, unknown>; evidence: Record<string, unknown>;
+}
+export async function autoAddBill(db: SupabaseClient, userId: string, b: FoundBill, alerts: NewAlert[], items?: Item[]): Promise<{ itemId?: string; suggestionId?: string; added: boolean }> {
+  const { data: prev } = await db.from('suggestions').select('id, status, item_id').eq('user_id', userId).eq('source', b.source).eq('key', b.key).maybeSingle();
+  if (prev && prev.status !== 'new') return { suggestionId: prev.id, itemId: prev.item_id ?? undefined, added: false }; // added before, or undone: never again
+  const name = (b.name || b.merchant || 'Bill').trim().slice(0, 120) || 'Bill';
+  const cycle = b.cycle && b.cycle in CYCLE_WORD ? b.cycle : 'monthly';
+  const amount = Number(b.amount ?? 0) || 0;
+  const details = Object.fromEntries(Object.entries(b.details ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+  const { data: item, error } = await db.from('items').insert({
+    user_id: userId, name, category: b.category || 'other', amount, currency: b.currency || 'USD', cycle, next_due: b.next_due, ends_on: b.ends_on ?? null,
+    trial_ends: b.trial_ends ?? null, merchant: b.merchant, details, source: b.source, autopay: b.source === 'bank',
+  }).select('*').single();
+  if (error || !item) throw new Error(`adding ${name}: ${error?.message ?? 'no row'}`);
+  items?.push(item as Item);
+  const { data: sug } = await db.from('suggestions').upsert({
+    user_id: userId, key: b.key, source: b.source, name, category: b.category, amount: b.amount, currency: b.currency || 'USD', cycle, next_due: b.next_due,
+    ends_on: b.ends_on ?? null, trial_ends: b.trial_ends ?? null, merchant: b.merchant, details, evidence: { ...b.evidence, auto: true }, status: 'accepted', item_id: item.id,
+  }, { onConflict: 'user_id,source,key' }).select('id').single();
+  alerts.push({ user_id: userId, kind: 'found', key: `${b.source}:${b.key}`, item_id: item.id, title: `Added: ${name}${amount ? ` ${money(amount)}` : ''} ${CYCLE_WORD[cycle]} — ${FROM[b.source]}`.slice(0, 200), body: 'Added to your bills by itself. Not a bill, or wrong? Tap Undo in the 🔔 Inbox (it won’t come back), or open it in Money → Bills to change it.' });
+  return { itemId: item.id, suggestionId: sug?.id, added: true };
+}
+
 
 // ---------- 📆 due dates roll forward ----------
 async function rollStep(db: SupabaseClient, userId: string): Promise<string | void> {

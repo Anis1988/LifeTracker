@@ -1,24 +1,23 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
-import { CsvImport, DocRow, SuggestionCard, Uploader } from '../components/Inbox';
-import { ItemForm } from '../components/Items';
-import { Empty, Sheet, errText, toast } from '../components/ui';
-import { PAPER_DEFAULTS, type Doc, type Item, type Suggestion } from '../../supabase/functions/_shared/model.ts';
-import { supabase } from '../lib/supabase';
+import { AddedList, CsvImport, DocRow, Uploader } from '../components/Inbox';
+import { Empty, errText, toast } from '../components/ui';
+import { PAPER_DEFAULTS, type Doc } from '../../supabase/functions/_shared/model.ts';
+import { api, supabase } from '../lib/supabase';
+import { addedFeed, markSeen, type AddedEntry } from '../lib/added';
 
 // A document that isn't a bill (a contract, a certificate…) can move to the Vault: same file, no copy.
 const FOLDER: Record<string, string> = { insurance: 'insurance', car: 'car', health: 'medical', tax: 'taxes', mortgage: 'home', rent: 'home', utility: 'home', loan: 'legal' };
 
-/** What was found automatically (bank, email, documents), waiting for your OK, and your documents. */
+/**
+ * 🔔 Inbox = what was added by itself lately (owner's choice: fully automatic, nothing waits for an OK), each with
+ * ↶ Undo (remembered: it won't come back), plus your bill documents and the bank CSV import.
+ */
 export function Inbox() {
   const st = useStore();
-  const [adding, setAdding] = useState<Suggestion | null>(null);
-  const saved = useRef<{ for: string; item: Item } | null>(null); // a retry after an error doesn't add the bill twice
-  const prefill = (s: Suggestion): Partial<Item> => ({
-    name: s.name, category: s.category ?? 'other', amount: Number(s.amount ?? 0), currency: s.currency ?? 'USD', cycle: s.cycle ?? 'monthly',
-    next_due: s.next_due, ends_on: s.ends_on, trial_ends: s.trial_ends, merchant: s.merchant, details: s.details ?? {}, source: s.source,
-    autopay: s.source === 'bank',
-  });
+  const [busy, setBusy] = useState('');
+  const feed = useMemo(() => addedFeed(st), [st]);
+  useEffect(() => { markSeen(); }, [feed.length]);
   const move = async (d: Doc) => {
     try {
       const x = d.extracted;
@@ -30,37 +29,44 @@ export function Inbox() {
       location.hash = `#/vault?doc=${saved.id}`;
     } catch (e) { toast('err', errText(e)); }
   };
-  const ignore = async (s: Suggestion) => {
-    try { await st.setSuggestion(s.id, { status: 'ignored' }); toast('info', `${s.name}: ignored. It won’t be suggested again.`); } catch (e) { toast('err', errText(e)); }
+  // ↶ Undo: takes it away and remembers it, so the same find never comes back.
+  const undo = async (e: AddedEntry) => {
+    setBusy(e.key);
+    try {
+      if (e.kind === 'bill') { const s = st.added.find((x) => x.id === e.id); if (s) await st.undoBill(s); }
+      else if (e.kind === 'receipt') { const t = st.tx.find((x) => x.id === e.id); await api('receipt', { op: 'delete', id: e.id, entry: t?.source === 'receipt' }); await st.reload(); }
+      else if (e.kind === 'doc') { const p = st.papers.find((x) => x.id === e.id); if (p) await st.deletePaper(p); }
+      else if (e.kind === 'contact') await st.setContact(e.id, { status: 'hidden' });
+      else if (e.kind === 'appt') await st.removeAppt(e.id);
+      toast('ok', `${e.title}: removed. It won’t be added again.`);
+    } catch (err) { toast('err', errText(err)); }
+    setBusy('');
+  };
+  const open = (e: AddedEntry) => {
+    const to = e.kind === 'bill' ? (sessionStorage.setItem('lt.money', 'bills'), '#/money') : e.kind === 'receipt' ? (sessionStorage.setItem('lt.money', 'spending'), '#/money')
+      : e.kind === 'doc' ? `#/vault?doc=${e.id}` : e.kind === 'contact' ? `#/contacts?c=${e.id}` : '#/home';
+    location.hash = to;
+    window.scrollTo(0, 0);
   };
   return (
     <div className="stagger mx-auto max-w-2xl space-y-4">
-      <h1 className="text-[28px] font-semibold leading-tight">Inbox</h1>
-      <section className="space-y-3">
-        <p className="label">Found for you ({st.suggestions.length})</p>
-        {st.suggestions.length ? st.suggestions.map((s) => <SuggestionCard key={s.id} s={s} onAdd={() => setAdding(s)} onIgnore={() => void ignore(s)} />)
-          : <Empty icon="📬">Nothing waiting. New bills found in your bank, Gmail or documents show up here for your OK; nothing is added without it.</Empty>}
-      </section>
+      <div>
+        <p className="label">Added by itself · last 30 days</p>
+        <h1 className="text-[28px] font-semibold leading-tight">Inbox</h1>
+      </div>
+      <p className="text-sm text-slate-600 dark:text-slate-300">LifeTracker adds what it finds by itself: bills, receipts, documents, contacts and appointments. Something wrong? Tap <b>↶ Undo</b>: it’s taken away and won’t come back. It never pays, cancels or moves money.</p>
+      {feed.length ? <AddedList list={feed} busy={busy} onUndo={(e) => void undo(e)} onOpen={open} />
+        : <Empty icon="📬">Nothing new lately. Bills found in your bank, Gmail or documents, receipts, documents, contacts and appointments show up here once they’re added.</Empty>}
       <section className="space-y-3">
         <p className="label">Bills & money documents</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Other papers (pet records, IDs, contracts…) belong in 📁 Vault.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">A bill you add here is read at once and goes straight into your bills. Other papers (pet records, IDs, contracts…) belong in 📁 Vault.</p>
         <Uploader userId={st.session.user.id} onDone={() => void st.reload()} />
         <div className="panel flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
           <CsvImport onDone={() => void st.reload()} />
-          <span className="min-w-0 flex-1 basis-48">No bank link? Download your transactions as CSV and the recurring ones are found.</span>
+          <span className="min-w-0 flex-1 basis-48">No bank link? Download your transactions as CSV and the recurring ones are added to your bills.</span>
         </div>
         {st.docs.map((d) => <DocRow key={d.id} d={d} onChange={() => void st.reload()} onMove={() => void move(d)} />)}
       </section>
-      {adding && (
-        <Sheet title="Add to my bills" onClose={() => setAdding(null)}>
-          <ItemForm item={prefill(adding)} onDone={() => setAdding(null)} onSave={async (i) => {
-            const item = saved.current?.for === adding.id ? await st.saveItem({ ...i, id: saved.current.item.id }) : await st.saveItem(i);
-            saved.current = { for: adding.id, item };
-            await st.setSuggestion(adding.id, { status: 'accepted', item_id: item.id });
-            toast('ok', `${item.name} added.`);
-          }} />
-        </Sheet>
-      )}
     </div>
   );
 }

@@ -51,7 +51,7 @@ export function categorize(tx: { description: string | null; merchant: string | 
 export interface SpendTx {
   posted: string; amount: number; description: string | null; merchant: string | null; item_id?: string | null;
   // 🧾 receipts (Money → Spending): the receipt file (or gmail:<id>), where the line came from, "From email: …"
-  id?: string; account?: string | null; source?: 'bank' | 'alert' | 'csv' | 'receipt'; receipt_path?: string | null; note?: string | null; details?: ReceiptDetails | null;
+  id?: string; account?: string | null; source?: 'bank' | 'alert' | 'csv' | 'receipt'; receipt_path?: string | null; note?: string | null; details?: ReceiptDetails | null; created_at?: string;
 }
 export interface SpendReport {
   month: string; // YYYY-MM

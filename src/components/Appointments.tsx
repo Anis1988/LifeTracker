@@ -58,7 +58,8 @@ function ApptList({ list, onOpen }: { list: Appointment[]; onOpen: (a: Appointme
 export function ApptDetails({ a, onRemove, contact }: { a: Appointment; onRemove?: () => Promise<void>; contact?: Contact }) {
   const [busy, setBusy] = useState(false);
   const remove = async () => {
-    if (!onRemove || !confirm(`Remove “${a.title}” from your calendar?`)) return;
+    // Found by itself: removed at once (it's the Undo). One you added yourself: asked first.
+    if (!onRemove || (a.source === 'hand' && !confirm(`Remove “${a.title}” from your calendar?`))) return;
     setBusy(true);
     try { await onRemove(); toast('ok', 'Removed from your calendar.'); } catch (e) { toast('err', errText(e)); setBusy(false); }
   };

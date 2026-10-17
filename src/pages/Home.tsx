@@ -8,6 +8,7 @@ import { AskBar, AskChat, MiniRings, MonthHero, TimelineList, askError, type Tur
 import { Sheet, errText, toast } from '../components/ui';
 import { api } from '../lib/supabase';
 import { timeline } from '../lib/timeline';
+import { addedFeed, seenAt } from '../lib/added';
 import { weekSummary } from '../../supabase/functions/_shared/week.ts';
 import { contactForAppt } from '../../supabase/functions/_shared/contacts.ts';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
@@ -42,6 +43,8 @@ export function Home({ go }: { go: (tab: string) => void }) {
   const [chat, setChat] = useState<Turn[] | null>(null);
   const [thinking, setThinking] = useState(false);
   const t = today();
+  // 🆕 Added by itself since the Inbox was last opened (Undo is there).
+  const fresh = useMemo(() => { const since = seenAt(); return addedFeed(st).filter((e) => Date.parse(e.at) > since); }, [st]);
   const r = useMemo(() => spendReport(st.tx, s.spend.rules, t.slice(0, 7), Number(t.slice(8, 10))), [st.tx, s.spend.rules, t]);
   const moments = useMemo(() => timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases }, 30), [st.items, st.papers, st.dates, st.purchases, s.papers.on]); // appointments have their own card
   const bills = billsThisMonth(st.items, t);
@@ -110,10 +113,10 @@ export function Home({ go }: { go: (tab: string) => void }) {
           </>
         )}
         <AskBar onAsk={(q) => void ask(q)} disabled={thinking} />
-        {st.suggestions.length > 0 && (
+        {fresh.length > 0 && (
           <button className="card tap flex w-full items-center gap-3 text-left !border-teal-400/50 shadow-[0_0_30px_-12px_#5eead4]" onClick={() => go('inbox')}>
-            <span className="tile" aria-hidden="true">🔎</span>
-            <span className="flex-1 text-sm"><b>{st.suggestions.length} found</b> automatically: add them or ignore them.</span>
+            <span className="tile" aria-hidden="true">🆕</span>
+            <span className="min-w-0 flex-1 text-sm"><b>{fresh.length} added by itself</b>: {fresh.slice(0, 3).map((e) => e.title).join(', ')}{fresh.length > 3 ? '…' : ''}. Wrong? Undo in Inbox.</span>
             <span aria-hidden="true" className="text-teal-600 dark:text-teal-300">→</span>
           </button>
         )}

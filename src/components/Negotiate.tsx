@@ -93,7 +93,7 @@ export function NegotiateSheet({ item, onClose, onSave, onScript }: {
             <ScriptView s={n.script} by={n.by} />
             <div className="flex flex-wrap gap-2">
               <button className="btn flex-1" onClick={() => void navigator.clipboard?.writeText(asText(item, n.script)).then(() => toast('ok', 'Copied.'), () => toast('err', 'Couldn’t copy.'))}>📋 Copy</button>
-              <button className="btn flex-1" disabled={!!busy} onClick={() => { if (confirm('Write a new script? It uses 1 AI read.')) void write(true); }}>{busy === 'write' ? <span className="spinner" /> : '↻ New script'}</button>
+              <button className="btn flex-1" disabled={!!busy} onClick={() => void write(true)}>{busy === 'write' ? <span className="spinner" /> : '↻ New script'}</button>
             </div>
           </>
         ) : (

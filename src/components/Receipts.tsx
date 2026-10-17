@@ -8,9 +8,10 @@ import { api, supabase } from '../lib/supabase';
 import { Money, Sheet, errText, shortDate, toast } from './ui';
 
 /**
- * 🧾 Receipts in Money → Spending: a small picture of the receipt beside the purchase (tap = full screen), the details
- * read from it (shop, date, total, tax, card, the lines bought), Download / Share / Delete / Re-read / Edit, and
- * "📷 Add a receipt". Also drawn in the Guide with made-up data (no working buttons there).
+ * 🧾 Receipts in Money → Spending: each one written out in full (`ReceiptCard`: shop, date, category, every line bought,
+ * tax, total, card) with the receipt's picture small on the right (tap = full screen with Download / Share / Delete),
+ * the sheet (Re-read / Edit / Delete), and "📷 Add a receipt" (read and saved at once). Also drawn in the Guide with
+ * made-up data (no working buttons there).
  */
 export const hasReceipt = (t: SpendTx) => !!t.receipt_path;
 const isFile = (p: string | null | undefined): p is string => !!p && !p.startsWith('gmail:');
@@ -31,21 +32,108 @@ export function useThumbs(list: SpendTx[]): Record<string, string> {
   return urls;
 }
 
-/** The small picture: the photo, a 📄 for a PDF, a ✉️ for a receipt that is an email. In the Guide: a drawn receipt. */
-export function ReceiptThumb({ t, url, onView, big, example }: { t: SpendTx; url?: string; onView?: () => void; big?: boolean; example?: boolean }) {
+/** A PDF receipt's first page as a small picture (drawn on this device, once). */
+function usePdfThumb(path: string | null | undefined, on: boolean): string | null {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!on || !path || !isFile(path) || fileKind(path) !== 'pdf') return;
+    let live = true;
+    void import('../lib/pdfThumb').then((m) => m.pdfThumb(path)).then((u) => { if (live) setSrc(u); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [path, on]);
+  return src;
+}
+
+/** A drawn receipt (the Guide's made-up picture). */
+const DrawnReceipt = ({ lines = 6 }: { lines?: number }) => (
+  <span className="flex h-full w-full flex-col gap-[3px] bg-[#fbfaf6] p-1.5" aria-hidden="true">
+    <span className="mx-auto h-1 w-3/5 rounded-full bg-slate-400" />
+    {[85, 60, 75, 50, 70, 40, 65, 55].slice(0, lines).map((w, k) => <span key={k} className="h-[3px] rounded-full bg-slate-300" style={{ width: `${w}%` }} />)}
+    <span className="mt-auto h-1 w-2/3 self-end rounded-full bg-slate-500" />
+  </span>
+);
+
+/**
+ * The small picture: the photo, a PDF's first page (📄 if it can't be drawn), a ✉️ for a receipt that is an email.
+ * size: 'row' (list), 'card' (the receipt card, about 64 px wide), 'big' (the sheet). In the Guide: a drawn receipt.
+ */
+export function ReceiptThumb({ t, url, onView, big, size = big ? 'big' : 'row', example }: { t: SpendTx; url?: string; onView?: () => void; big?: boolean; size?: 'row' | 'card' | 'big'; example?: boolean }) {
   const p = t.receipt_path;
-  const size = big ? 'h-40 w-32' : 'h-14 w-11';
-  const inner = example ? (
-    <span className="flex h-full w-full flex-col gap-[3px] bg-white p-1.5" aria-hidden="true">
-      <span className="mx-auto h-1 w-3/5 rounded-full bg-slate-400" />
-      {[85, 60, 75, 50, 70, 40].map((w, k) => <span key={k} className="h-[3px] rounded-full bg-slate-300" style={{ width: `${w}%` }} />)}
-      <span className="mt-auto h-1 w-2/3 self-end rounded-full bg-slate-500" />
-    </span>
-  ) : url ? <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
-    : <span className={`flex h-full w-full items-center justify-center ${big ? 'text-4xl' : 'text-xl'}`} aria-hidden="true">{!p ? spendCat(categorize(t)).icon : p.startsWith('gmail:') ? '✉️' : fileKind(p) === 'pdf' ? '📄' : '🧾'}</span>;
-  const cls = `tap relative ${size} shrink-0 overflow-hidden rounded-xl border border-slate-900/10 bg-white/70 shadow-[0_6px_14px_-10px_rgba(0,0,0,.6)] dark:border-white/15 dark:bg-white/[0.06]`;
+  const pdf = usePdfThumb(p, !example && size !== 'row');
+  const box = size === 'big' ? 'h-40 w-32' : size === 'card' ? 'h-[84px] w-16' : 'h-14 w-11';
+  const shown = url ?? pdf ?? undefined;
+  const inner = example ? <DrawnReceipt lines={size === 'row' ? 6 : 8} />
+    : shown ? <img src={shown} alt="" className="h-full w-full bg-white object-cover object-top" loading="lazy" />
+    : <span className={`flex h-full w-full flex-col items-center justify-center gap-0.5 ${size === 'big' ? 'text-4xl' : 'text-xl'}`} aria-hidden="true">{!p ? spendCat(categorize(t)).icon : p.startsWith('gmail:') ? '✉️' : fileKind(p) === 'pdf' ? '📄' : '🧾'}{size === 'card' && p && fileKind(p) === 'pdf' && !p.startsWith('gmail:') ? <span className="text-[9px] font-bold tracking-wide text-slate-500 dark:text-slate-400">PDF</span> : null}</span>;
+  const cls = `tap relative ${box} shrink-0 overflow-hidden rounded-xl border border-slate-900/10 bg-white/70 shadow-[0_6px_14px_-10px_rgba(0,0,0,.6)] dark:border-white/15 dark:bg-white/[0.06]`;
   if (!p && !example) return <span className={`${cls.replace('tap ', '')}`}>{inner}</span>;
-  return <button className={cls} onClick={onView} aria-label={`Open the receipt of ${t.description ?? 'this purchase'} full screen`}>{inner}{!big && <span className="absolute bottom-0.5 right-0.5 rounded-full bg-slate-900/70 px-1 text-[9px] leading-4 text-white" aria-hidden="true">📎</span>}</button>;
+  const what = p?.startsWith('gmail:') ? 'Open the email of the receipt' : 'Open the receipt';
+  return <button className={cls} onClick={onView} aria-label={`${what} of ${t.details?.store || t.description || 'this purchase'} full screen`}>{inner}{size !== 'big' && <span className="absolute bottom-0.5 right-0.5 rounded-full bg-slate-900/70 px-1 text-[9px] leading-4 text-white" aria-hidden="true">{p?.startsWith('gmail:') ? '↗' : '⤢'}</span>}</button>;
+}
+
+const unit = (i: ReceiptItem) => (i.price != null && i.qty != null && i.qty > 1 ? Math.round((i.price / i.qty) * 100) / 100 : null);
+const SHOW = 8;
+
+/**
+ * 🧾 A receipt, written out in full in the Spending list (owner's request): shop, date, category, every line bought
+ * (name, qty × price, line total; the first 8, then "+N more" opens the rest in place), tax, total and card, with the
+ * receipt's picture small on the right (tap = full screen with Download). The same card for a scanned receipt and a
+ * receipt from an email. Tap the shop for the sheet (edit, re-read, delete). Also in the Guide with made-up data.
+ */
+export function ReceiptCard({ t, url, rules, onOpen, onView, example, startOpen }: { t: SpendTx; url?: string; rules: Record<string, string>; onOpen?: () => void; onView?: () => void; example?: boolean; startOpen?: boolean }) {
+  const [all, setAll] = useState(!!startOpen);
+  const d = t.details;
+  const cat = spendCat(categorize(t, rules));
+  const items = d?.items ?? [];
+  const shown = all ? items : items.slice(0, SHOW);
+  const total = d?.total || Math.abs(Number(t.amount));
+  const fromMail = !!t.note?.startsWith('From email') || !!t.receipt_path?.startsWith('gmail:');
+  const tag = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-semibold leading-4';
+  const row = 'flex items-baseline justify-between gap-3';
+  return (
+    <li className="card relative !rounded-[24px] !p-3.5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <button className="tap -m-1 block w-[calc(100%+0.5rem)] rounded-xl p-1 text-left" onClick={onOpen} aria-label={`${d?.store || t.description || 'Receipt'}: details, edit or delete`}>
+            <span className="block break-words text-[15px] font-semibold leading-snug">{d?.store || t.description || 'Receipt'}</span>
+            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{shortDate(d?.date || t.posted)} · <span aria-hidden="true">{cat.icon}</span> {cat.label}</span>
+          </button>
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            <span className={`${tag} border-violet-400/30 bg-violet-500/10 text-violet-800 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-100`}>{fromMail ? '✉️ From email' : t.source === 'receipt' || t.note?.startsWith('Added by hand') ? '📷 Scanned' : '🧾 Receipt'}</span>
+            {t.source && t.source !== 'receipt' && <span className={`${tag} border-teal-500/30 bg-teal-500/10 text-teal-800 dark:border-teal-300/20 dark:bg-teal-300/10 dark:text-teal-100`}>🏦 Matched to your bank</span>}
+          </div>
+        </div>
+        <ReceiptThumb t={t} url={url} onView={onView} size="card" example={example} />
+      </div>
+      {items.length > 0 && (
+        <ul className="mt-2.5 border-t border-dashed border-slate-900/15 pt-1.5 dark:border-white/15" aria-label="What you bought">
+          {shown.map((i, k) => {
+            const u = unit(i);
+            return (
+              <li key={k} className={`${row} py-[3px] text-[13px] leading-snug`}>
+                <span className="min-w-0 flex-1 break-words">
+                  {i.name}
+                  {(i.qty != null && i.qty !== 1) || u != null ? <span className="num block text-[11px] text-slate-500 dark:text-slate-400">{i.qty ?? 1} × {u != null ? money(u) : i.price != null ? money(i.price) : ''}</span> : null}
+                </span>
+                <span className="num shrink-0 text-right text-slate-800 dark:text-slate-100">{i.price != null ? money(i.price) : '—'}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {items.length > SHOW && (
+        <button className="tap mt-0.5 min-h-[36px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={() => setAll(!all)} aria-expanded={all}>
+          {all ? 'Show less' : `+${items.length - SHOW} more`}
+        </button>
+      )}
+      <div className={`${items.length ? 'mt-1.5 border-t border-slate-900/[0.08] pt-1.5 dark:border-white/[0.08]' : 'mt-2.5 border-t border-dashed border-slate-900/15 pt-2 dark:border-white/15'} space-y-0.5`}>
+        {d?.tax != null && <div className={`${row} text-[13px] text-slate-500 dark:text-slate-400`}><span>Tax</span><span className="num">{money(d.tax)}</span></div>}
+        <div className={`${row} text-[15px] font-semibold`}><span>Total</span><span className="num">{money(total)}</span></div>
+        {d?.card && <div className={`${row} text-xs text-slate-500 dark:text-slate-400`}><span>Card</span><span className="num">•••• {d.card}</span></div>}
+        {!items.length && <p className="pt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{fromMail ? 'No lines written on this receipt email.' : 'No lines could be read: tap the shop to add them.'}</p>}
+      </div>
+    </li>
+  );
 }
 
 /** One purchase in a list (receipt picture on the side when there is one). */
@@ -195,6 +283,7 @@ export function ReceiptViewer({ t, url, onClose, onDelete }: { t: SpendTx; url?:
   const [zoom, setZoom] = useState(false);
   const [src, setSrc] = useState(url);
   const title = t.details?.store || t.description || 'Receipt';
+  const pdf = usePdfThumb(p, true);
   useEffect(() => {
     if (!src && fileKind(p) === 'image') void signedUrls([p], 600).then((u) => setSrc(u[p])).catch((e) => toast('err', errText(e)));
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -217,8 +306,8 @@ export function ReceiptViewer({ t, url, onClose, onDelete }: { t: SpendTx; url?:
       </div>
       <div className="flex-1 overflow-auto overscroll-contain px-3 pb-6">
         {fileKind(p) === 'pdf' ? (
-          <div className="mx-auto mt-10 flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-white/15 bg-white/5 p-6 text-center text-white">
-            <span className="text-5xl" aria-hidden="true">📄</span>
+          <div className="mx-auto mt-6 flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-white/15 bg-white/5 p-6 text-center text-white">
+            {pdf ? <img src={pdf} alt={`First page of the receipt from ${title}`} className="w-full rounded-xl bg-white" /> : <span className="text-5xl" aria-hidden="true">📄</span>}
             <p className="text-sm">{fileName(p)}</p>
             <button className="btn-primary" onClick={() => void openFile(p).catch((e) => toast('err', errText(e)))}>Open the PDF</button>
           </div>
@@ -261,7 +350,7 @@ export function ReceiptSheet({ t, url, rules, onMove, onClose, onChanged, startD
             download: () => void run('dl', () => downloadFile(t.receipt_path!, `${safeName(`receipt-${title}-${t.posted}`)}.${fileKind(t.receipt_path!) === 'pdf' ? 'pdf' : 'jpg'}`)),
             share: () => void run('share', async () => { await shareFiles([t.receipt_path!], `Receipt: ${title}`); }),
             edit: t.receipt_path ? () => setMode('edit') : undefined,
-            reread: () => { if (confirm('Read this receipt again with the AI? It uses one AI read (the free AIs first).')) void run('reread', async () => { const r = await api<{ by: string }>('receipt', { op: 'reread', id: t.id }); toast('ok', `Read again by ${r.by}.`); await onChanged(); onClose(); }); },
+            reread: () => void run('reread', async () => { const r = await api<{ by: string }>('receipt', { op: 'reread', id: t.id }); toast('ok', `Read again by ${r.by}.`); await onChanged(); onClose(); }),
             del: () => setMode('delete'),
           }} />
           {mode === 'delete' && (
@@ -289,7 +378,7 @@ export function ReceiptSheet({ t, url, rules, onMove, onClose, onChanged, startD
   );
 }
 
-/** 📷 Add a receipt: a photo (camera or gallery) or a PDF → read → Spending (attached to the bank purchase when it's there). */
+/** 📷 Add a receipt: a photo (camera or gallery) or a PDF → read and saved at once → Spending (attached to the bank purchase when it's there), written out in full. */
 export function AddReceipt({ userId, onAdded, className = '' }: { userId: string; onAdded: (id?: string) => Promise<void> | void; className?: string }) {
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);

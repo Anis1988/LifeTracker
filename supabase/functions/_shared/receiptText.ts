@@ -4,7 +4,7 @@ import { classifyAttachment, type Route } from './vaultText.ts';
 /**
  * 🧾 Receipts → Spending, shared by the app and the server (plain TypeScript, no AI):
  *  - `emailKind`: is an email a receipt (→ Spending), a product order (→ Returns, for the return window), a bill
- *    (→ Inbox, the morning bill reader), or nothing (newsletter, ad, shipping update)?
+ *    (→ Bills, by the morning bill reader), or nothing (newsletter, ad, shipping update)?
  *  - `parseReceipt`: the business and the total read from a plain receipt email with free patterns (the AI only
  *    when these can't find a clear total);
  *  - `sameSpend`: is a receipt the same purchase as a bank line (amount ±$0.01, ±3 days, a similar shop name)?

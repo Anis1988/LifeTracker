@@ -17,7 +17,7 @@ import { detailsOf, receiptKnown, saveReceipt } from './receipts.ts';
  *  2. the AI reads only what's left (free AIs first, Claude last, daily limits, `vault.maxPerRun` a run), and never
  *     the same file twice (kept by the file's SHA-256);
  *  3. Vault documents are saved straight in (owner's choice) with "From email: <subject> — <sender>, <date>" in the note
- *     and a heads-up; bills go to Inbox like an uploaded bill; receipts go to Money → Spending with the receipt attached
+ *     and a heads-up; bills go to Bills by themselves (with an Undo) like an uploaded bill; receipts go to Money → Spending with the receipt attached
  *     (on the bank line of the same purchase when there is one: counted once), and also to Returns only when the store
  *     has a return window.
  * Runs every hour (with the appointments) and in the morning. The same attachment is never saved twice (file hash +
@@ -63,7 +63,7 @@ export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Sett
     if (!done) break;
   }
   await saveConnection(db, userId, 'vault', null, { seen: [...seen].slice(-4000), scanned: new Date().toISOString() });
-  if (vault || bills || receipts || stopped) return `${ids.length} email(s) with files: ${vault} to Vault, ${bills} bill(s) to Inbox, ${receipts} receipt(s) to Money → Spending, ${skipped} skipped for free${stopped ? ` (${stopped})` : ''}`;
+  if (vault || bills || receipts || stopped) return `${ids.length} email(s) with files: ${vault} to Vault, ${bills} bill(s) to Bills, ${receipts} receipt(s) to Money → Spending, ${skipped} skipped for free${stopped ? ` (${stopped})` : ''}`;
 }
 
 async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at: string, m: Mail, a: Attachment, route: Route, items: Item[], alerts: NewAlert[]): Promise<{ saved?: 'vault' | 'bill' | 'receipt'; reads: number }> {
@@ -106,7 +106,7 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
     }
   }
 
-  // 💳 Money: a bill → Inbox (like an uploaded bill), a receipt → Money → Spending with the receipt attached.
+  // 💳 Money: a bill → Bills by itself (like an uploaded bill), a receipt → Money → Spending with the receipt attached.
   const b = await readBill(db, userId, s, { mime, bytes }, hash);
   if (!b.cached) reads++;
   const x = b.data;
@@ -120,7 +120,7 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
   };
   if (x.isBill && moneyRoute !== 'receipt') {
     const docId = await keepAsDoc();
-    // Same key as the bill emails read in the morning ("mail:<company>"): one suggestion per company, not two.
+    // Same key as the bill emails read in the morning ("mail:<company>"): one bill per company, not two.
     const link = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, documentId: docId }, items, alerts);
     if (link.itemId) await db.from('documents').update({ item_id: link.itemId }).eq('id', docId);
     return { saved: 'bill', reads };
