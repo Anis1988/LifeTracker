@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { Empty, Seg, errText, toast, useStrip } from './ui';
@@ -26,17 +26,18 @@ function fromSpot(c: Contact, s: Spot) {
   return (c.key === k || c.key.startsWith(`${k}#`)) && c.sources.every((x) => x === 'hand') && (c.description ?? '').startsWith(`${spotKind(s.kind).label} near you:`);
 }
 
-/** Miles from your zip and the drive time ("about" = an estimate). */
-export function Distance({ s }: { s: Spot }) {
+/** Miles from your zip and the drive time ("about" = an estimate). pending = road times are being looked up (the number fades in when they come). */
+export function Distance({ s, pending }: { s: Spot; pending?: boolean }) {
   return (
     <span className="num inline-flex flex-wrap items-center gap-x-2 text-xs font-semibold text-teal-800 dark:text-teal-200">
-      <span>📍 {milesText(s.miles)}</span><span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span><span>🚗 {driveText(s)}</span>
+      <span>📍 {milesText(s.miles)}</span><span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+      <span className={`transition-opacity duration-500 ${pending ? 'opacity-50' : 'opacity-100'}`}><span key={driveText(s)} className="inline-block animate-[fade_.6s_ease-out]">🚗 {driveText(s)}</span></span>
     </span>
   );
 }
 
 /** One place: name, where, miles + drive time; call, website, map, "＋ My list" and "＋ Contacts". */
-export function SpotRow({ s, added, onAdd, listed, onSave }: { s: Spot; added?: boolean; onAdd?: () => void; listed?: boolean; onSave?: () => void }) {
+export function SpotRow({ s, added, onAdd, listed, onSave, pending }: { s: Spot; added?: boolean; onAdd?: () => void; listed?: boolean; onSave?: () => void; pending?: boolean }) {
   const k = spotKind(s.kind);
   const where = s.address || s.about || '';
   return (
@@ -48,7 +49,7 @@ export function SpotRow({ s, added, onAdd, listed, onSave }: { s: Spot; added?: 
           {s.when && <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">🗓️ {s.when}</p>}
           {where && <p className="truncate text-xs text-slate-500 dark:text-slate-400">{where}</p>}
           {s.about && s.address && <p className="truncate text-xs text-slate-600 dark:text-slate-300">{s.about}</p>}
-          <div className="mt-1"><Distance s={s} /></div>
+          <div className="mt-1"><Distance s={s} pending={pending} /></div>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 sm:pl-14">
@@ -65,13 +66,76 @@ export function SpotRow({ s, added, onAdd, listed, onSave }: { s: Spot; added?: 
   );
 }
 
-export function SpotList({ title, spots, contacts, onAdd, places, onSave }: { title: string; spots: Spot[]; contacts?: Contact[]; onAdd?: (s: Spot) => void; places?: ListPlace[]; onSave?: (s: Spot) => void }) {
+export function SpotList({ title, spots, contacts, onAdd, places, onSave, pending }: { title: string; spots: Spot[]; contacts?: Contact[]; onAdd?: (s: Spot) => void; places?: ListPlace[]; onSave?: (s: Spot) => void; pending?: boolean }) {
   if (!spots.length) return null;
   return (
     <section className="card !px-3 !py-2">
       <p className="label px-1 pb-0.5 pt-1.5">{title} <span className="num">· {spots.length}</span></p>
-      <ul>{spots.map((s, i) => <SpotRow key={`${s.name}-${i}`} s={s} added={contacts ? !!contactFor(contacts, s) : undefined} onAdd={onAdd && (() => onAdd(s))} listed={places ? !!onList(places, s) : undefined} onSave={onSave && (() => onSave(s))} />)}</ul>
+      <ul>{spots.map((s, i) => <SpotRow key={`${s.name}-${i}`} s={s} pending={pending && !s.route} added={contacts ? !!contactFor(contacts, s) : undefined} onAdd={onAdd && (() => onAdd(s))} listed={places ? !!onList(places, s) : undefined} onSave={onSave && (() => onSave(s))} />)}</ul>
     </section>
+  );
+}
+
+/** "🌐 Searching the web…": a row of shimmer where the web finds will appear. */
+export const WebLoading = () => (
+  <div className="card !px-3 !py-2" role="status" aria-label="Searching the web">
+    <p className="label px-1 pb-1 pt-1.5">🌐 Searching the web…</p>
+    {[0, 1].map((i) => <div key={i} className="flex items-center gap-3 py-2"><div className="skel h-11 w-11 shrink-0 !rounded-2xl" /><div className="flex-1 space-y-2"><div className="skel h-3.5 w-2/3" /><div className="skel h-3 w-1/2" /></div></div>)}
+  </div>
+);
+
+// ---------- results in steps: 🗺️ map → 🚗 road times → 🌐 web ----------
+/** One search as it fills in: the map's places at once, then road times, then (only if needed) the web's finds. */
+export interface Live { r: NearbyResult; extra: Spot[]; routing: boolean; web: 'no' | 'busy' | 'done' }
+type MapStep = NearbyResult & { done: boolean; web: boolean };
+type Ask = { op: 'search'; q: string } | { op: 'todo'; kind: TodoKind };
+const spotId = (x: Spot) => `${x.name}|${x.lat.toFixed(5)}|${x.lon.toFixed(5)}`;
+/** Road times from a later step, put on the places already on screen (nothing moves, only the numbers change). */
+const withTimes = (l: Live, from: Spot[], by: string[]): Live => {
+  const t = new Map(from.map((x) => [spotId(x), x]));
+  const fix = (x: Spot) => { const y = t.get(spotId(x)); return y ? { ...x, minutes: y.minutes, route: y.route } : x; };
+  return { ...l, r: { ...l.r, spots: l.r.spots.map(fix), by: [...new Set([...l.r.by, ...by])] }, extra: l.extra.map(fix) };
+};
+export const liveDone = (l?: Live) => !!l && !l.routing && l.web !== 'busy';
+
+/**
+ * Runs the steps as separate small requests. Starting a new search makes every late answer of the old one be ignored
+ * (each run has its own number). put() gets each new state of this run's result.
+ */
+function useSteps() {
+  const seq = useRef(0);
+  return async (ask: Ask, put: (f: (l: Live | undefined) => Live | undefined) => void) => {
+    const id = ++seq.current;
+    const mine = () => id === seq.current;
+    const m = await api<MapStep>('nearby', { ...ask, step: 'map' });
+    if (!mine()) return;
+    put(() => ({ r: m, extra: [], routing: !m.done, web: !m.done && m.web ? 'busy' : 'no' }));
+    if (m.done) return;
+    const routes = api<{ spots: Spot[]; by: string[] }>('nearby', { ...ask, step: 'routes' })
+      .then((r) => { if (mine()) put((l) => l && { ...withTimes(l, r.spots, r.by), routing: false }); })
+      .catch(() => { if (mine()) put((l) => l && { ...l, routing: false }); });
+    const web = m.web && api<NearbyResult & { extra: Spot[] }>('nearby', { ...ask, step: 'web' })
+      .then((w) => { if (mine()) put((l) => { if (!l) return l; const t = withTimes(l, w.spots, w.by); return { ...t, extra: w.extra, web: 'done', r: { ...t.r, note: w.note } }; }); })
+      .catch((e) => { if (mine()) put((l) => l && { ...l, web: 'done', r: { ...l.r, note: [l.r.note, errText(e)].filter(Boolean).join(' · ') } }); });
+    await Promise.all([routes, web]);
+  };
+}
+
+/** The places of one search: the map's list, then the web's finds under it (or the web's shimmer while it looks). */
+function LiveLists({ live, title, empty, contacts, onAdd, places, onSave }: { live: Live; title: string; empty: ReactNode; contacts?: Contact[]; onAdd?: (s: Spot) => void; places?: ListPlace[]; onSave?: (s: Spot) => void }) {
+  const { r, extra } = live;
+  const done = liveDone(live);
+  return (
+    <>
+      <SpotList title={title} spots={r.spots} pending={live.routing} contacts={contacts} onAdd={onAdd} places={places} onSave={onSave} />
+      {live.web === 'busy' && <WebLoading />}
+      {extra.length > 0 && <div className="animate-[fade_.4s_ease-out]">
+        <SpotList title={r.spots.length ? '🌐 Also found on the web' : title} spots={extra} pending={live.routing} contacts={contacts} onAdd={onAdd} places={places} onSave={onSave} />
+      </div>}
+      {live.web === 'done' && !extra.length && r.spots.length > 0 && <p className="px-1 text-xs text-slate-500 dark:text-slate-400">🌐 The web search found nothing more.</p>}
+      {done && !r.spots.length && !extra.length && empty}
+      {(r.spots.length > 0 || extra.length > 0 || done) && <Credit by={r.by} note={r.note} />}
+    </>
   );
 }
 
@@ -134,11 +198,12 @@ export function NearbyView() {
   const [mode, setMode] = useState<Mode>(() => { try { return localStorage.getItem('lt.nearbyMode') === 'todo' && !/[?&]find/.test(location.hash) ? 'todo' : 'find'; } catch { return 'find'; } });
   const { toggleList: save, toggleContact: add } = useSpotToggles();
   const [q, setQ] = useState('');
-  const [res, setRes] = useState<NearbyResult | null>(null);
+  const [res, setRes] = useState<Live | null>(null);
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<TodoKind | null>(null); // nothing is looked up until you tap one
-  const quick = useStrip<HTMLDivElement>(res?.q);
-  const [todo, setTodo] = useState<Partial<Record<TodoKind, NearbyResult>>>({});
+  const quick = useStrip<HTMLDivElement>(res?.r.q);
+  const [todo, setTodo] = useState<Partial<Record<TodoKind, Live>>>({});
+  const runFind = useSteps(), runTodo = useSteps(); // one run at a time in each
   const [weekendOpen, setWeekendOpen] = useState(false);
 
   // Opening Nearby (or switching to Things to do) never searches by itself: only a tap on a word or a group, or Find.
@@ -153,18 +218,23 @@ export function NearbyView() {
     const t = text.trim();
     if (t.length < 2) return;
     setQ(t); setBusy(true); setRes(null);
-    try { setRes(await api<NearbyResult>('nearby', { op: 'search', q: t })); } catch (e) { toast('err', errText(e)); }
+    // busy only until the map's places are on screen; road times and the web fill in after.
+    let first = true;
+    try { await runFind({ op: 'search', q: t }, (f) => { setRes((cur) => f(cur ?? undefined) ?? null); if (first) { first = false; setBusy(false); } }); } catch (e) { toast('err', errText(e)); }
     setBusy(false);
   };
   const loadTodo = async (k: TodoKind) => {
     setKind(k);
-    if (todo[k]) return;
+    if (liveDone(todo[k])) return;
     setBusy(true);
-    try { const r = await api<NearbyResult>('nearby', { op: 'todo', kind: k }); setTodo((cur) => ({ ...cur, [k]: r })); } catch (e) { toast('err', errText(e)); }
+    // Half-finished groups from an earlier tap are dropped (their late answers are ignored): this tap asks again.
+    setTodo((cur) => Object.fromEntries(Object.entries(cur).filter(([, l]) => liveDone(l))));
+    let first = true;
+    try { await runTodo({ op: 'todo', kind: k }, (f) => { setTodo((cur) => ({ ...cur, [k]: f(cur[k]) })); if (first) { first = false; setBusy(false); } }); } catch (e) { toast('err', errText(e)); }
     setBusy(false);
   };
   const submit = (e: FormEvent) => { e.preventDefault(); void search(); };
-  const town = res?.home ?? Object.values(todo)[0]?.home ?? (st.weekend?.home.zip === zip ? st.weekend.home : null);
+  const town = res?.r.home ?? Object.values(todo)[0]?.r.home ?? (st.weekend?.home.zip === zip ? st.weekend.home : null);
   const cur = kind ? todo[kind] : undefined;
   const group = kind ? TODO_KINDS.find((k) => k.id === kind)! : null;
   const people = kind !== 'events' && kind !== 'trips'; // events and day trips aren't contacts
@@ -184,13 +254,11 @@ export function NearbyView() {
             <button className="btn-primary" type="submit" disabled={busy || q.trim().length < 2}>Find</button>
           </form>
           <div ref={quick} className="strip -mx-4 gap-1.5 px-4 py-1" role="group" aria-label="Quick words">
-            {QUICK.map((w) => { const on = res?.q.toLowerCase() === w.toLowerCase(); return <button key={w} aria-pressed={on} className={`chip ${on ? 'border-teal-500/40 bg-teal-500/15 text-teal-900 dark:border-teal-300/30 dark:bg-teal-300/15 dark:text-teal-100' : 'border-slate-900/10 bg-transparent text-slate-600 dark:border-white/10 dark:text-slate-300'}`} onClick={() => void search(w)}>{w}</button>; })}
+            {QUICK.map((w) => { const on = res?.r.q.toLowerCase() === w.toLowerCase(); return <button key={w} aria-pressed={on} className={`chip ${on ? 'border-teal-500/40 bg-teal-500/15 text-teal-900 dark:border-teal-300/30 dark:bg-teal-300/15 dark:text-teal-100' : 'border-slate-900/10 bg-transparent text-slate-600 dark:border-white/10 dark:text-slate-300'}`} onClick={() => void search(w)}>{w}</button>; })}
           </div>
           {busy && <Loading label="Looking near you" />}
-          {res && !busy && (res.spots.length
-            ? <SpotList title={`“${res.q}” closest first`} spots={res.spots} contacts={st.contacts} onAdd={(s) => void add(s)} places={st.places} onSave={(s) => void save(s)} />
-            : <Empty icon="🔎">Nothing found for “{res.q}” near {res.home.zip}. Try another word (“dentist”, “auto repair”) or a shop’s name.</Empty>)}
-          {res && !busy && <Credit by={res.by} note={res.note} />}
+          {res && !busy && <LiveLists live={res} title={`“${res.r.q}” closest first`} contacts={st.contacts} onAdd={(s) => void add(s)} places={st.places} onSave={(s) => void save(s)}
+            empty={<Empty icon="🔎">Nothing found for “{res.r.q}” near {res.r.home.zip}. Try another word (“dentist”, “auto repair”) or a shop’s name.</Empty>} />}
           {!res && !busy && <Empty icon="📍">Type what you need: “dentist”, “oil change”, “pizza”… The closest places to your zip come first, with the miles and the drive time. Add one to your Contacts with one tap.</Empty>}
         </>
       ) : (
@@ -203,10 +271,8 @@ export function NearbyView() {
           {weekendOpen && st.weekend && <WeekendLists w={st.weekend} contacts={st.contacts} onAdd={(s) => void add(s)} places={st.places} onSave={(s) => void save(s)} />}
           <TodoButtons value={kind} busy={busy} onPick={(k) => void loadTodo(k)} />
           {busy && <Loading label="Looking for things to do" />}
-          {group && cur && !busy && (cur.spots.length
-            ? <SpotList title={group.label} spots={cur.spots} contacts={people ? st.contacts : undefined} onAdd={people ? (s) => void add(s) : undefined} places={st.places} onSave={(s) => void save(s)} />
-            : <Empty icon={group.icon}>{kind === 'events' ? 'No events found with a source page right now. Events are looked up on the web (free Gemini first, Claude if needed) and only kept with a real link.' : 'Nothing found this time. Try again later.'}</Empty>)}
-          {cur && !busy && <Credit by={cur.by} note={cur.note} />}
+          {group && cur && !busy && <LiveLists live={cur} title={group.label} contacts={people ? st.contacts : undefined} onAdd={people ? (s) => void add(s) : undefined} places={st.places} onSave={(s) => void save(s)}
+            empty={<Empty icon={group.icon}>{kind === 'events' ? 'No events found with a source page right now. Events are looked up on the web (free Gemini first, Claude if needed) and only kept with a real link.' : 'Nothing found this time. Try again later.'}</Empty>} />}
           {!kind && !busy && <Empty icon="🎉">Tap <b>Food</b>, <b>Fun</b>, <b>Events</b> or <b>Trips</b> to look for things to do near you. Nothing is looked up until you tap one.</Empty>}
         </>
       )}
