@@ -17,6 +17,8 @@ import { UpdateBanner } from '../components/AppUpdate';
 import { ApptCard } from '../components/Appointments';
 import { ScriptView } from '../components/Negotiate';
 import { ContactDetails, ContactGroup, KindChips, SearchBox, arrange, kindOptions } from '../components/Contacts';
+import { Credit, NearbyLink, SpotList, WeekendCard } from '../components/Nearby';
+import type { Spot, Weekend } from '../../supabase/functions/_shared/place.ts';
 import { APPS, AppCard, TotalCard, type AppSummary } from '../components/Apps';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
 import { LockScreen, PeopleEditor, ReadingCard, VaultDetails, VaultGroup, arrangeVault, vaultChips } from '../components/Vault';
@@ -145,6 +147,24 @@ const RECEIPTS: SpendTx[] = [
     details: { store: 'Example Hardware', date: d(-6), total: 86.12, tax: 5.62, card: null, read: 'ai', by: 'Gemini Flash (free)', items: [{ name: 'Paint roller kit', qty: 1, price: 24.5 }, { name: 'Wall paint, 1 gal', qty: 2, price: 56.0 }] } },
 ];
 
+// 📍 made-up places near a made-up zip
+const spBase = { phone: null, website: null, route: false, from: 'osm' as const, lat: 0, lon: 0 };
+const SPOTS: Spot[] = [
+  { ...spBase, name: 'Example Family Dental', kind: 'dentist', address: '410 Example Rd, Springfield', phone: '(555) 010-0144', website: 'https://www.example.com', miles: 1.2, minutes: 4, route: true },
+  { ...spBase, name: 'Sample Smiles', kind: 'dentist', address: '77 Sample Ave, Springfield', miles: 2.8, minutes: 9, route: true },
+  { ...spBase, name: 'Example Dental Care', kind: 'dentist', address: 'Example Pike, Riverton', miles: 6.4, minutes: 17 },
+];
+const HOME_EX = { zip: '00000', town: 'Springfield', state: 'XX', lat: 0, lon: 0 };
+const WEEKEND_EX: Weekend = {
+  home: HOME_EX, friday: d(0), by: ['OpenStreetMap', 'Gemini (free) with Google Search'], at: ago(2),
+  events: [{ ...spBase, name: 'Example Fall Market', kind: 'event', address: 'Town Square, Springfield', when: 'Sat 9 am – 1 pm', source: 'https://www.example.org', from: 'web', miles: 3.1, minutes: 10, route: true }],
+  near: [
+    { ...spBase, name: 'Example Nature Park', kind: 'fun', address: null, about: 'park', miles: 2.4, minutes: 7, route: true },
+    { ...spBase, name: 'Sample Bistro', kind: 'food', address: '9 Main St, Springfield', about: 'italian', miles: 1.6, minutes: 5, route: true },
+  ],
+  far: [{ ...spBase, name: 'Example Lake State Park', kind: 'trip', address: 'Lakeview, XX', miles: 58, minutes: 85, from: 'web', source: 'https://www.example.org' }],
+};
+
 const Example = ({ children, caption }: { children: ReactNode; caption: string }) => (
   <figure className="space-y-1.5">
     <div className="pointer-events-none relative select-none space-y-2 rounded-[24px] border border-dashed border-teal-600/25 bg-white/30 p-2.5 pt-7 dark:border-teal-300/20 dark:bg-white/[0.02]" aria-hidden="true">
@@ -165,7 +185,7 @@ export function Guide() {
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
         <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and the <b>🔔 Inbox</b> at the top lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
-        <P>The tabs at the bottom: <b>Home</b>, <b>Money</b> (bills, spending, returns), <b>Contacts</b>, <b>Vault</b> (your documents), <b>Me</b> and <b>Settings</b>. At the top: My apps, the 🔔 Inbox and this Guide.</P>
+        <P>The tabs at the bottom: <b>Home</b>, <b>Money</b> (bills, spending, returns), <b>Contacts</b> (with 📍 Nearby), <b>Vault</b> (your documents), <b>Me</b> and <b>Settings</b>. At the top: My apps, the 🔔 Inbox and this Guide.</P>
         <P>The <b>Me</b> tab is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, documents that expire (passport, licence…, kept in your Vault) and your credit freeze. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
           <div className="space-y-2">
@@ -198,8 +218,8 @@ export function Guide() {
       </Fold>
 
       <Fold icon="💬" title="Ask LifeTracker">
-        <P>Type a question in the bar on Home, in your own words: “How much did I spend eating out last month?”, “Which subscriptions renew this month?”, “What could I cancel?”, “When does my passport expire?”. The answer comes only from your own data, with follow-up questions to tap.</P>
-        <P>Each question is one AI read: the free AIs first, Claude only if they can’t (Settings → AI). A short summary of your bills, spending, documents and dates goes to the AI with the question, nothing else.</P>
+        <P>Type a question in the bar on Home, in your own words: “How much did I spend eating out last month?”, “Which subscriptions renew this month?”, “What could I cancel?”, “When does my passport expire?”. The answer comes only from your own data, with follow-up questions to tap. It knows your zip code too: “find me a dentist near me” answers with your contacts and the closest dentists on the free map, with miles and drive time.</P>
+        <P>Each question is one AI read: the free AIs first, Claude only if they can’t (Settings → AI). A short summary of your bills, spending, documents, dates, contacts and your zip code goes to the AI with the question, nothing else.</P>
         <Example caption="Made-up question and answer.">
           <AskChat turns={[{ q: 'How much did I spend eating out last month?', a: 'In September you spent $180.00 eating out, mostly at Example Cafe (9 times). That’s about the same as a usual month.', by: 'Gemini Flash (free)', followUps: ['And on groceries?', 'Which month was highest?'] }]} />
         </Example>
@@ -271,6 +291,23 @@ export function Guide() {
         </Example>
         <Example caption="Made-up card: call, website, map and email in one tap; where it came from.">
           <div className="card"><ContactDetails c={CONTACTS[0]} /></div>
+        </Example>
+      </Fold>
+
+      <Fold icon="📍" title="Nearby (places, things to do, this weekend)">
+        <P>Your <b>zip code</b> (Settings → Nearby; 45245 until you change it) tells LifeTracker where home is. Distances are straight-line miles from the middle of that zip; the drive time is a real road route when the free route service answers, otherwise a guess marked <b>“about”</b>.</P>
+        <P><b>Contacts → 📍 Nearby → 🔎 Find a place</b>: type what you need (“dentist”, “oil change”, “pizza”) or tap a quick word. The closest places come first, each with its address, phone and website when known, the miles and the drive time. Tap <b>＋ Contacts</b> to keep one (if it’s already there, the details are just added). The free map (OpenStreetMap) is asked first; only when it has little does the free Gemini search Google, and a place is kept only if its page really came back from that search.</P>
+        <P><b>🎉 Things to do</b>: restaurants, fun places (parks, museums, bowling…), events (looked up on the web, always with a link to where they were found) and day trips farther away. Every search is remembered for a while, so asking again costs nothing.</P>
+        <P><b>This weekend</b>: every Friday morning you get a short list of ideas close by and a bit farther, each with miles and drive time: a card on Home (Friday to Sunday), a heads-up and the morning email. Turn it off in Settings → Nearby. The <b>💬 Ask</b> bar knows your zip too: “find me a dentist” answers with your contacts and the closest ones.</P>
+        <Example caption="Made-up search for “dentist”: closest first, with miles and drive time.">
+          <SpotList title="“dentist” closest first" spots={SPOTS} contacts={[]} onAdd={() => undefined} />
+          <Credit by={['OpenStreetMap']} />
+        </Example>
+        <Example caption="Made-up “This weekend” card on Home (Friday to Sunday).">
+          <WeekendCard w={WEEKEND_EX} onAll={() => undefined} />
+        </Example>
+        <Example caption="The rest of the week, Home shows the way in to Nearby.">
+          <NearbyLink zip="45245" onGo={() => undefined} />
         </Example>
       </Fold>
 
@@ -474,6 +511,7 @@ export function Guide() {
       <Fold icon="🔐" title="Privacy">
         <P>Your data is in your own Supabase database. Each person only ever sees their own rows (Row Level Security). The bank access link and Google sign-in are encrypted, and the app itself can’t read them: only the server uses them. You can download everything or sign out in Settings.</P>
         <P>Ask LifeTracker sends a short summary of your own data with each question to the AI, only to answer it. Order emails are read only after a free check says they’re real orders.</P>
+        <P>📍 Nearby sends only your zip code’s map point and what you typed to the free map services (OpenStreetMap, the OSRM route service, zippopotam.us) and, for web searches, to the free Gemini; never your name or anything else.</P>
         <P>About me (your name, emails, phones, city) is private too; it is sent to the free Gemini only to run the searches. Mailing lists: only email headers are read. Document photos and your Vault files stay in your own private storage, opened only with links that last 2 minutes.</P>
       </Fold>
 

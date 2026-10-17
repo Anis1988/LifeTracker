@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Alert, Extracted, Finding, Item, LifeDate, Paper, Sender, Settings } from './model.ts';
-import { addCycle, daysBetween, dueDayOf, iso, money, nextDue, parseDay, perYear, today } from './money.ts';
+import { addCycle, daysBetween, dueDayOf, iso, money, nextDue, parseDay, perYear, today, todayIn } from './money.ts';
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
 import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
@@ -20,6 +20,8 @@ import { dateKind } from './model.ts';
 import { apptEmailStep } from './appointments.ts';
 import { allRows } from './rows.ts';
 import { contactStep } from './contactFind.ts';
+import { weekendFor } from './nearbyFind.ts';
+import { driveText, fridayOf, milesText, type Spot } from './place.ts';
 import type { Mail } from './google.ts';
 import type { Appointment } from './model.ts';
 
@@ -36,7 +38,7 @@ type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 /** Parts that can be run on their own (from the app's buttons). */
 // 'mail' = the hourly email look (with the appointments): bank alert emails, bill emails, order emails, receipts and
 // document attachments. Free checks first, so most hours cost nothing; the AI only within each step's per-run cap.
-export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts' | 'vault' | 'mail';
+export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts' | 'vault' | 'mail' | 'weekend';
 
 export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
@@ -60,6 +62,8 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
   // 📅 Appointments (also every hour on their own): straight into the calendar.
   let apptChanges = 0;
   if (want('appts')) await step('Appointments', async () => { const r = await apptEmailStep(db, userId, s, alerts, until, mails); apptChanges = r.changed; return r.text; });
+  // 🎉 Friday morning: this weekend's list near your zip (early in the run, so the long email reads can't crowd it out).
+  if (want('weekend')) await step('This weekend', () => weekendStep(db, userId, s, alerts, opts.force));
   if (!want('bills') && (apptChanges || (opts.only?.includes('calendar')))) await step('Calendar', () => calendarStep(db, userId, s));
   if (want('bills')) {
     await step('Bank', () => bankStep(db, userId, s, opts.full));
@@ -410,6 +414,27 @@ async function lifeStep(db: SupabaseClient, userId: string, s: Settings, alerts:
     }
   }
   if (n) return `${n} heads-up(s)`;
+}
+
+// ---------- 🎉 This weekend (Friday morning, your time zone; Saturday too if Friday's run missed it) ----------
+async function weekendStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], force?: boolean): Promise<string | void> {
+  if (!s.place.weekend && !force) return;
+  const t = todayIn(s.appts.timeZone || 'America/New_York');
+  const dow = new Date(`${t}T12:00:00Z`).getUTCDay();
+  if (!force && dow !== 5 && dow !== 6) return;
+  const { w, made } = await weekendFor(db, userId, s, fridayOf(t));
+  if (!made) return force ? 'this weekend’s list is already made' : undefined;
+  const all = [...w.events, ...w.near, ...w.far];
+  if (!all.length) return 'nothing found near your zip this time';
+  // The heads-up (on Home, and in the morning email): every idea with its miles and drive time.
+  const line = (x: Spot) => `• ${x.name}${x.when ? ` (${x.when})` : ''}: ${milesText(x.miles)}, ${driveText(x)}`;
+  const body = [
+    w.events.length && `Events:\n${w.events.map(line).join('\n')}`,
+    w.near.length && `Close by:\n${w.near.map(line).join('\n')}`,
+    w.far.length && `A bit farther:\n${w.far.map(line).join('\n')}`,
+  ].filter(Boolean).join('\n');
+  alerts.push({ user_id: userId, kind: 'nearby', key: `weekend:${w.home.zip}:${w.friday}`, item_id: null, title: `🎉 This weekend near ${w.home.town}: ${all.length} ideas`, body: body.slice(0, 3000) });
+  return `${all.length} ideas for this weekend`;
 }
 
 // ---------- 📊 My week (an email on your chosen day; the same summary as on Home) ----------
