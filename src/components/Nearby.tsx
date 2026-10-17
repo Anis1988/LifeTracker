@@ -7,6 +7,8 @@ import { fmtPhone, sameContact } from '../../supabase/functions/_shared/contacts
 import { TODO_KINDS, driveText, milesText, spotKind, spotToContact, zipOf, type NearbyResult, type Spot, type TodoKind, type Weekend } from '../../supabase/functions/_shared/place.ts';
 import { settingsHref } from './SettingsGrid';
 import type { Contact } from '../../supabase/functions/_shared/model.ts';
+import { onList, type ListPlace } from '../../supabase/functions/_shared/myList.ts';
+import { MyListView } from './MyList';
 
 /** 📍 Nearby: places near your zip (closest first, miles + drive time), things to do, and this weekend's list. */
 
@@ -21,8 +23,8 @@ export function Distance({ s }: { s: Spot }) {
   );
 }
 
-/** One place: name, where, miles + drive time; call, website, map and "Add to Contacts". */
-export function SpotRow({ s, added, onAdd }: { s: Spot; added?: boolean; onAdd?: () => void }) {
+/** One place: name, where, miles + drive time; call, website, map, "＋ My list" and "＋ Contacts". */
+export function SpotRow({ s, added, onAdd, listed, onSave }: { s: Spot; added?: boolean; onAdd?: () => void; listed?: boolean; onSave?: () => void }) {
   const k = spotKind(s.kind);
   const where = s.address || s.about || '';
   return (
@@ -42,6 +44,9 @@ export function SpotRow({ s, added, onAdd }: { s: Spot; added?: boolean; onAdd?:
         {s.website && <a href={s.website} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Website of ${s.name}: ${siteText(s.website)}`}>🌐 Site</a>}
         {s.source && s.source !== s.website && <a href={s.source} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Where ${s.name} was found`}>🔗 Source</a>}
         <a href={mapUrl(s.address ? `${s.name}, ${s.address}` : `${s.lat},${s.lon}`)} target="_blank" rel="noreferrer" className="btn !px-3 text-xs" aria-label={`Map of ${s.name}`}>🗺️ Map</a>
+        {onSave && (listed
+          ? <span className="chip min-h-[44px] border-violet-500/25 bg-violet-500/10 px-3 text-violet-800 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-200">✓ On my list</span>
+          : <button className="btn !px-3 text-xs" onClick={onSave}>＋ My list</button>)}
         {onAdd && (added
           ? <span className="chip min-h-[44px] border-teal-500/25 bg-teal-500/10 px-3 text-teal-800 dark:border-teal-300/20 dark:bg-teal-300/10 dark:text-teal-200">✓ In Contacts</span>
           : <button className="btn !px-3 text-xs" onClick={onAdd}>＋ Contacts</button>)}
@@ -50,12 +55,12 @@ export function SpotRow({ s, added, onAdd }: { s: Spot; added?: boolean; onAdd?:
   );
 }
 
-export function SpotList({ title, spots, contacts, onAdd }: { title: string; spots: Spot[]; contacts?: Contact[]; onAdd?: (s: Spot) => void }) {
+export function SpotList({ title, spots, contacts, onAdd, places, onSave }: { title: string; spots: Spot[]; contacts?: Contact[]; onAdd?: (s: Spot) => void; places?: ListPlace[]; onSave?: (s: Spot) => void }) {
   if (!spots.length) return null;
   return (
     <section className="card !px-3 !py-2">
       <p className="label px-1 pb-0.5 pt-1.5">{title} <span className="num">· {spots.length}</span></p>
-      <ul>{spots.map((s, i) => <SpotRow key={`${s.name}-${i}`} s={s} added={contacts ? inContacts(contacts, s) : undefined} onAdd={onAdd && (() => onAdd(s))} />)}</ul>
+      <ul>{spots.map((s, i) => <SpotRow key={`${s.name}-${i}`} s={s} added={contacts ? inContacts(contacts, s) : undefined} onAdd={onAdd && (() => onAdd(s))} listed={places ? !!onList(places, s) : undefined} onSave={onSave && (() => onSave(s))} />)}</ul>
     </section>
   );
 }
@@ -76,13 +81,27 @@ export function Credit({ by, note }: { by: string[]; note?: string }) {
   );
 }
 
+/** 📌 "＋ My list": saves a snapshot (a second tap on the same place does nothing new). */
+export function useSaveToList() {
+  const st = useStore();
+  return async (s: Spot) => {
+    try {
+      const r = await st.savePlace(s);
+      toast('ok', r.already ? `${s.name} is already on My list.` : `📌 ${s.name} saved to My list.`);
+    } catch (e) { toast('err', errText(e)); }
+  };
+}
+
+type Mode = 'find' | 'todo' | 'list';
 const QUICK = ['Dentist', 'Oil change', 'Pizza', 'Pharmacy', 'Urgent care', 'Vet', 'Coffee', 'Hair salon', 'Grocery'];
 
 /** The 📍 Nearby part of Contacts: 🔎 Find (a search box) and 🎉 Things to do. */
 export function NearbyView() {
   const st = useStore();
   const zip = zipOf(st.settings);
-  const [mode, setMode] = useState<'find' | 'todo'>(() => { try { return sessionStorage.getItem('lt.nearbyMode') === 'todo' ? 'todo' : 'find'; } catch { return 'find'; } });
+  const [mode, setMode] = useState<Mode>(() => { try { const m = sessionStorage.getItem('lt.nearbyMode'); return m === 'todo' || m === 'list' ? m : 'find'; } catch { return 'find'; } });
+  const save = useSaveToList();
+  const toDo = st.places.filter((p) => !p.done).length;
   const [q, setQ] = useState('');
   const [res, setRes] = useState<NearbyResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,7 +109,7 @@ export function NearbyView() {
   const [todo, setTodo] = useState<Partial<Record<TodoKind, NearbyResult>>>({});
   const [weekendOpen, setWeekendOpen] = useState(false);
 
-  const pickMode = (m: 'find' | 'todo') => { setMode(m); try { sessionStorage.setItem('lt.nearbyMode', m); } catch { /* private mode */ } if (m === 'todo' && !todo[kind]) void loadTodo(kind); };
+  const pickMode = (m: Mode) => { setMode(m); try { sessionStorage.setItem('lt.nearbyMode', m); } catch { /* private mode */ } if (m === 'todo' && !todo[kind]) void loadTodo(kind); };
   const search = async (text = q) => {
     const t = text.trim();
     if (t.length < 2) return;
@@ -121,9 +140,9 @@ export function NearbyView() {
         <span className="tile !h-9 !w-9 !rounded-xl !text-base" aria-hidden="true">📍</span>
         <span className="min-w-0 flex-1">Near <b className="num">{zip}</b>{town ? ` · ${town.town}, ${town.state}` : ''}<span className="block text-xs text-slate-500 dark:text-slate-400">Change your zip in <a className="tap underline decoration-teal-500/50 underline-offset-2" href={settingsHref('nearby')}>Settings → Nearby</a>.</span></span>
       </div>
-      <Seg label="Nearby" options={[['find', '🔎 Find a place'], ['todo', '🎉 Things to do']]} value={mode} onChange={pickMode} />
+      <Seg label="Nearby" className="[&>button]:px-1 [&>button]:text-[13px] sm:[&>button]:px-3 sm:[&>button]:text-sm" options={[['find', '🔎 Find'], ['todo', '🎉 Things to do'], ['list', `📌 My list${st.places.length ? ` · ${toDo}` : ''}`]]} value={mode} onChange={pickMode} />
 
-      {mode === 'find' ? (
+      {mode === 'list' ? <MyListView onFind={() => pickMode('find')} /> : mode === 'find' ? (
         <>
           <form onSubmit={submit} className="flex gap-2">
             <div className="min-w-0 flex-1"><SearchBox q={q} onChange={setQ} placeholder="Dentist, oil change, pizza…" label="What are you looking for" /></div>
@@ -134,7 +153,7 @@ export function NearbyView() {
           </div>
           {busy && <Loading label="Looking near you" />}
           {res && !busy && (res.spots.length
-            ? <SpotList title={`“${res.q}” closest first`} spots={res.spots} contacts={st.contacts} onAdd={(s) => void add(s)} />
+            ? <SpotList title={`“${res.q}” closest first`} spots={res.spots} contacts={st.contacts} onAdd={(s) => void add(s)} places={st.places} onSave={(s) => void save(s)} />
             : <Empty icon="🔎">Nothing found for “{res.q}” near {res.home.zip}. Try another word (“dentist”, “auto repair”) or a shop’s name.</Empty>)}
           {res && !busy && <Credit by={res.by} note={res.note} />}
           {!res && !busy && <Empty icon="📍">Type what you need: “dentist”, “oil change”, “pizza”… The closest places to your zip come first, with the miles and the drive time. Add one to your Contacts with one tap.</Empty>}
@@ -146,11 +165,11 @@ export function NearbyView() {
             <span className="min-w-0 flex-1 text-sm"><b>Weekend of {new Date(`${st.weekend.friday}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b><span className="block text-xs text-slate-500 dark:text-slate-400">{st.weekend.events.length + st.weekend.near.length + st.weekend.far.length} ideas, made on Friday</span></span>
             <span aria-hidden="true" className="text-teal-600 dark:text-teal-300">{weekendOpen ? '−' : '+'}</span>
           </button>}
-          {weekendOpen && st.weekend && <WeekendLists w={st.weekend} contacts={st.contacts} onAdd={(s) => void add(s)} />}
+          {weekendOpen && st.weekend && <WeekendLists w={st.weekend} contacts={st.contacts} onAdd={(s) => void add(s)} places={st.places} onSave={(s) => void save(s)} />}
           <Seg label="Things to do" options={TODO_KINDS.map((k) => [k.id, `${k.icon} ${k.id === 'food' ? 'Food' : k.id === 'fun' ? 'Fun' : k.id === 'events' ? 'Events' : 'Trips'}`] as [TodoKind, string])} value={kind} onChange={(k) => void loadTodo(k)} />
           {busy && <Loading label="Looking for things to do" />}
           {cur && !busy && (cur.spots.length
-            ? <SpotList title={TODO_KINDS.find((k) => k.id === kind)!.label} spots={cur.spots} contacts={kind === 'events' || kind === 'trips' ? undefined : st.contacts} onAdd={kind === 'events' || kind === 'trips' ? undefined : (s) => void add(s)} />
+            ? <SpotList title={TODO_KINDS.find((k) => k.id === kind)!.label} spots={cur.spots} contacts={kind === 'events' || kind === 'trips' ? undefined : st.contacts} onAdd={kind === 'events' || kind === 'trips' ? undefined : (s) => void add(s)} places={st.places} onSave={(s) => void save(s)} />
             : <Empty icon={TODO_KINDS.find((k) => k.id === kind)!.icon}>{kind === 'events' ? 'No events found with a source page right now. Events are looked up on the web (free Gemini first, Claude if needed) and only kept with a real link.' : 'Nothing found this time. Try again later.'}</Empty>)}
           {cur && !busy && <Credit by={cur.by} note={cur.note} />}
         </>
@@ -160,12 +179,12 @@ export function NearbyView() {
 }
 
 /** The whole weekend list: events, close by, a bit farther. */
-export function WeekendLists({ w, contacts, onAdd }: { w: Weekend; contacts?: Contact[]; onAdd?: (s: Spot) => void }) {
+export function WeekendLists({ w, contacts, onAdd, places, onSave }: { w: Weekend; contacts?: Contact[]; onAdd?: (s: Spot) => void; places?: ListPlace[]; onSave?: (s: Spot) => void }) {
   return (
     <div className="space-y-3">
-      <SpotList title="🎟️ Events this weekend" spots={w.events} />
-      <SpotList title="📍 Close by" spots={w.near} contacts={contacts} onAdd={onAdd} />
-      <SpotList title="🗺️ A bit farther (day trips)" spots={w.far} />
+      <SpotList title="🎟️ Events this weekend" spots={w.events} places={places} onSave={onSave} />
+      <SpotList title="📍 Close by" spots={w.near} contacts={contacts} onAdd={onAdd} places={places} onSave={onSave} />
+      <SpotList title="🗺️ A bit farther (day trips)" spots={w.far} places={places} onSave={onSave} />
       <Credit by={w.by} />
     </div>
   );
@@ -198,7 +217,7 @@ export function WeekendCard({ w, onAll }: { w: Weekend; onAll?: () => void }) {
 }
 
 /** Home, when there's no weekend list on screen: a way in to 📍 Nearby. */
-export function NearbyLink({ zip, onGo, onMake, making }: { zip: string; onGo: () => void; onMake?: () => void; making?: boolean }) {
+export function NearbyLink({ zip, onGo, onMake, making, toDo, onList: openList }: { zip: string; onGo: () => void; onMake?: () => void; making?: boolean; toDo?: number; onList?: () => void }) {
   return (
     <div className="card flex flex-wrap items-center gap-3">
       <button className="tap -m-1 flex min-h-[52px] min-w-0 flex-1 basis-56 items-center gap-3 rounded-[20px] p-1 text-left" onClick={onGo}>
@@ -206,6 +225,7 @@ export function NearbyLink({ zip, onGo, onMake, making }: { zip: string; onGo: (
         <span className="min-w-0 flex-1 text-sm"><b>Nearby</b><span className="block text-xs text-slate-500 dark:text-slate-400">A dentist, an oil change, pizza… or things to do near <span className="num">{zip}</span></span></span>
         <span aria-hidden="true" className="text-teal-600 dark:text-teal-300">→</span>
       </button>
+      {!!toDo && openList && <button className="btn text-xs" onClick={openList}>📌 <span className="num">{toDo}</span> to do</button>}
       {onMake && <button className="btn text-xs" disabled={making} onClick={onMake}>{making ? <span className="spinner" /> : '🎉 This weekend’s list'}</button>}
     </div>
   );

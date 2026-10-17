@@ -18,6 +18,8 @@ import { ScriptView } from '../components/Negotiate';
 import { ContactDetails, ContactGroup, KindChips, SearchBox, arrange, kindOptions } from '../components/Contacts';
 import { Credit, NearbyLink, SpotList, WeekendCard } from '../components/Nearby';
 import type { Spot, Weekend } from '../../supabase/functions/_shared/place.ts';
+import { PlaceCard } from '../components/MyList';
+import type { ListPlace } from '../../supabase/functions/_shared/myList.ts';
 import { APPS, AppCard, TotalCard, type AppSummary } from '../components/Apps';
 import { BreachList, BrokerList, CreditCard, FindingRow, PaperRow, SenderRow, WeekCard } from '../components/Me';
 import { LockScreen, PeopleEditor, ReadingCard, VaultDetails, VaultGroup, arrangeVault, vaultChips } from '../components/Vault';
@@ -153,6 +155,12 @@ const SPOTS: Spot[] = [
   { ...spBase, name: 'Example Family Dental', kind: 'dentist', address: '410 Example Rd, Springfield', phone: '(555) 010-0144', website: 'https://www.example.com', miles: 1.2, minutes: 4, route: true },
   { ...spBase, name: 'Sample Smiles', kind: 'dentist', address: '77 Sample Ave, Springfield', miles: 2.8, minutes: 9, route: true },
   { ...spBase, name: 'Example Dental Care', kind: 'dentist', address: 'Example Pike, Riverton', miles: 6.4, minutes: 17 },
+];
+// 📌 made-up places on My list
+const lpBase = { user_id: '', phone: null, website: null, lat: null, lon: null, route: true, when_text: null, about: null, source: null, note: null, planned: null, done: false, done_at: null, rating: null, created_at: ago(30), updated_at: ago(2) };
+const LIST_EX: ListPlace[] = [
+  { ...lpBase, id: 'l1', name: 'Sample Bistro', kind: 'food', address: '9 Main St, Springfield', about: 'italian', miles: 1.6, minutes: 5, planned: d(1), note: 'Try the mushroom pasta. Book a table for 4.' },
+  { ...lpBase, id: 'l2', name: 'Example Nature Park', kind: 'fun', address: null, about: 'park', miles: 2.4, minutes: 7, done: true, done_at: ago(26), rating: 5, note: 'Great trail by the creek.' },
 ];
 const HOME_EX = { zip: '00000', town: 'Springfield', state: 'XX', lat: 0, lon: 0 };
 const WEEKEND_EX: Weekend = {
@@ -323,7 +331,12 @@ export function Guide() {
           <WeekendCard w={WEEKEND_EX} onAll={() => undefined} />
         </Example>
         <Example caption="The rest of the week, Home shows the way in to Nearby.">
-          <NearbyLink zip="45245" onGo={() => undefined} />
+          <NearbyLink zip="45245" onGo={() => undefined} toDo={3} onList={() => undefined} />
+        </Example>
+        <P><b>📌 My list</b>: tap <b>＋ My list</b> on anything in Find, Things to do or the weekend list to keep it for later (it shows <b>✓ On my list</b> after that, so it’s never saved twice). Contacts → 📍 Nearby → 📌 My list shows them all with the miles and drive time from when you saved them. Search by name, street, kind or a word from your note; show <b>To do</b>, <b>✓ Done</b> or <b>All</b>; sort by closest, newest or planned day. Tap a place to change its name, note, planned day, address, phone or website, or to delete it (it asks first).</P>
+        <P>Went there? Tap <b>✓ Been there</b>: a <b>BEEN THERE ✓</b> stamp lands on the card with the day you went, and you can give it 1 to 5 stars (or skip). Changed your mind? Open it and tap <b>↩ Not done yet</b>. Home shows how many are still to do, and 💬 Ask knows the names on your list.</P>
+        <Example caption="Made-up My list: one planned for tomorrow, one already done (with its stamp and 5 stars).">
+          {LIST_EX.map((p) => <PlaceCard key={p.id} p={p} fresh={p.done} onOpen={() => undefined} onDone={() => undefined} onRate={() => undefined} />)}
         </Example>
       </Fold>
 
