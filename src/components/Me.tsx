@@ -18,7 +18,7 @@ export function WeekCard({ lines, onOpen }: { lines: WeekLine[]; onOpen?: () => 
     <section className="card space-y-2">
       <div className="flex items-center justify-between gap-2">
         <p className="label">📊 My week</p>
-        {onOpen && <button className="btn-ghost text-xs" onClick={onOpen}>Open Me →</button>}
+        {onOpen && <button className="btn-ghost text-xs" onClick={onOpen}>Open Privacy →</button>}
       </div>
       <ul className="space-y-1.5">
         {lines.map((l, i) => <li key={i} className={`flex gap-2 text-sm ${tone(l.tone)}`}><span aria-hidden="true">{l.icon}</span><span>{l.text}</span></li>)}

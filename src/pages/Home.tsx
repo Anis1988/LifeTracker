@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { ItemForm } from '../components/Items';
-import { AlertList } from '../components/Inbox';
+import { AddedRow, AlertList } from '../components/Inbox';
+import { useAddedActions } from './Inbox';
+import { useVaultOpen } from './Vault';
+import { goTo, takeParam } from '../lib/nav';
+import { HIT_LABELS, navTarget } from '../lib/search';
 import { WeekCard } from '../components/Me';
 import { ApptCard, ApptDetails } from '../components/Appointments';
 import { AskBar, AskChat, MiniRings, MonthHero, TimelineList, askError, type Turn } from '../components/Dash';
@@ -16,6 +20,21 @@ import { contactForAppt } from '../../supabase/functions/_shared/contacts.ts';
 import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import { monthly, today } from '../../supabase/functions/_shared/money.ts';
 import type { Appointment, Item } from '../../supabase/functions/_shared/model.ts';
+import type { AddedEntry } from '../lib/added';
+
+/** 🆕 What was added by itself: the newest 3 with ↶ Undo, and "See all" for the whole feed (the 🔔 Inbox). */
+export function AddedCard({ list, fresh, busy, onUndo, onOpen, onAll }: { list: AddedEntry[]; fresh: number; busy?: string; onUndo?: (e: AddedEntry) => void; onOpen?: (e: AddedEntry) => void; onAll?: () => void }) {
+  return (
+    <section className={`card !px-3 !py-2 ${fresh ? '!border-teal-400/50 shadow-[0_0_30px_-12px_#5eead4]' : ''}`}>
+      <div className="flex items-center justify-between gap-2 px-1 pt-1">
+        <p className="label">🆕 What was added{fresh ? <span className="num"> · {fresh} new</span> : null}</p>
+        <button className="btn-ghost min-h-[44px] text-xs" onClick={onAll}>See all →</button>
+      </div>
+      <ul>{list.slice(0, 3).map((e) => <AddedRow key={e.key} e={e} busy={busy === e.key} onUndo={onUndo && (() => onUndo(e))} onOpen={onOpen && (() => onOpen(e))} />)}</ul>
+      {list.length > 3 && <p className="px-1 pb-1.5 text-[11px] text-slate-500 dark:text-slate-400">+{list.length - 3} more in the last 30 days.</p>}
+    </section>
+  );
+}
 
 const ago = (iso?: string | null) => {
   if (!iso) return 'never';
@@ -60,10 +79,15 @@ export function Home({ go }: { go: (tab: string) => void }) {
     } catch (e) { toast('err', errText(e)); }
     setMaking(false);
   };
-  const toNearby = (list?: boolean) => { try { sessionStorage.setItem('lt.contacts', 'nearby'); if (list) sessionStorage.setItem('lt.nearbyMode', 'list'); } catch { /* private mode */ } go('contacts'); };
+  const toNearby = (list?: boolean) => goTo('places', list ? 'list' : 'nearby');
   const saveToList = useSaveToList();
-  // 🆕 Added by itself since the Inbox was last opened (Undo is there).
-  const fresh = useMemo(() => { const since = seenAt(); return addedFeed(st).filter((e) => Date.parse(e.at) > since); }, [st]);
+  // 🆕 What was added by itself (the 🔔 Inbox feed): the latest few here, with Undo; "See all" opens the whole feed.
+  const feed = useMemo(() => addedFeed(st), [st]);
+  const fresh = useMemo(() => { const since = seenAt(); return feed.filter((e) => Date.parse(e.at) > since); }, [feed]);
+  const added = useAddedActions();
+  const vaultOpen = useVaultOpen();
+  // "#/home?appt=<id>" (🔎 search, Inbox) opens that appointment.
+  useEffect(() => { const id = takeParam('appt', '#/home'); const a = id ? st.appts.find((x) => x.id === id) : null; if (a) setAppt(a); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const r = useMemo(() => spendReport(st.tx, s.spend.rules, t.slice(0, 7), Number(t.slice(8, 10))), [st.tx, s.spend.rules, t]);
   const moments = useMemo(() => timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases }, 30), [st.items, st.papers, st.dates, st.purchases, s.papers.on]); // appointments have their own card
   const bills = billsThisMonth(st.items, t);
@@ -72,6 +96,9 @@ export function Home({ go }: { go: (tab: string) => void }) {
 
   const ask = async (q: string) => {
     const before = chat ?? [];
+    // "Open my lease", "show Example Dental", "where is my passport?": found on this phone, no AI needed.
+    const hit = navTarget({ items: st.items, tx: st.tx, contacts: st.contacts, places: st.places, papers: st.papers, appts: st.appts, rules: s.spend.rules }, q, vaultOpen);
+    if (hit) { setChat([...before, { q, a: `Here it is: ${hit.title}${hit.sub ? ` (${hit.sub})` : ''}, in ${HIT_LABELS[hit.kind].replace(/^\S+\s/, '')}.`, by: 'this phone (no AI)', open: { label: `Open ${hit.title}`, href: hit.href } }]); return; }
     setChat([...before]);
     setThinking(true);
     try {
@@ -90,7 +117,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
     setBusy(false);
   };
   const openMoment = (m: { itemId?: string; apptId?: string; docId?: string }) => {
-    if (m.docId) { location.hash = `#/vault?doc=${m.docId}`; window.scrollTo(0, 0); return; }
+    if (m.docId) { goTo('me', 'vault', `?doc=${m.docId}`); return; }
     const a = st.appts.find((x) => x.id === m.apptId);
     if (a) { setAppt(a); return; }
     const i = st.items.find((x) => x.id === m.itemId);
@@ -116,29 +143,23 @@ export function Home({ go }: { go: (tab: string) => void }) {
             <h2 className="text-xl font-semibold">Let’s find your bills</h2>
             <p className="text-sm text-slate-600 dark:text-slate-300">Connect Gmail (bank alert emails) and LifeTracker finds your subscriptions, mortgage, insurance and spending by itself. Or add a bill by hand.</p>
             <div className="flex flex-wrap justify-center gap-2">
-              <button className="btn-primary" onClick={() => go('settings')}>Connect Google</button>
-              <button className="btn" onClick={() => go('inbox')}>Upload a bill</button>
-              <button className="btn" onClick={() => go('money')}>＋ Add by hand</button>
+              <button className="btn-primary" onClick={() => goTo('me', 'settings', '/google')}>Connect Google</button>
+              <button className="btn" onClick={() => goTo('inbox', undefined, '?add')}>Upload a bill</button>
+              <button className="btn" onClick={() => goTo('money', 'bills', '?add')}>＋ Add by hand</button>
             </div>
           </div>
         ) : (
           <>
             <MonthHero total={r.total} usual={r.usual} soFarUsual={r.soFarUsual} bills={st.items.filter((i) => i.status === 'active').reduce((a, i) => a + monthly(i), 0)} monthName={new Date().toLocaleDateString('en-US', { month: 'long' })} />
             <MiniRings rings={[
-              { label: 'Spending', sub: 'vs usual', value: r.usual ? r.total / r.usual : 0, text: r.usual ? `${Math.round((r.total / r.usual) * 100)}%` : '—', tone: r.usual && r.total > r.usual ? 'red' : 'emerald', onClick: () => { sessionStorage.setItem('lt.money', 'spending'); go('money'); } },
-              { label: 'Bills', sub: 'this month', value: bills.total ? bills.done / bills.total : 0, text: `${bills.done}/${bills.total}`, tone: 'teal', onClick: () => { sessionStorage.setItem('lt.money', 'bills'); go('money'); } },
-              { label: 'Privacy', sub: 'credit frozen', value: frozen / 3, text: `${frozen}/3`, tone: 'amber', onClick: () => go('me') },
+              { label: 'Spending', sub: 'vs usual', value: r.usual ? r.total / r.usual : 0, text: r.usual ? `${Math.round((r.total / r.usual) * 100)}%` : '—', tone: r.usual && r.total > r.usual ? 'red' : 'emerald', onClick: () => goTo('money', 'spending') },
+              { label: 'Bills', sub: 'this month', value: bills.total ? bills.done / bills.total : 0, text: `${bills.done}/${bills.total}`, tone: 'teal', onClick: () => goTo('money', 'bills') },
+              { label: 'Privacy', sub: 'credit frozen', value: frozen / 3, text: `${frozen}/3`, tone: 'amber', onClick: () => goTo('me', 'privacy') },
             ]} />
           </>
         )}
         <AskBar onAsk={(q) => void ask(q)} disabled={thinking} />
-        {fresh.length > 0 && (
-          <button className="card tap flex w-full items-center gap-3 text-left !border-teal-400/50 shadow-[0_0_30px_-12px_#5eead4]" onClick={() => go('inbox')}>
-            <span className="tile" aria-hidden="true">🆕</span>
-            <span className="min-w-0 flex-1 text-sm"><b>{fresh.length} added by itself</b>: {fresh.slice(0, 3).map((e) => e.title).join(', ')}{fresh.length > 3 ? '…' : ''}. Wrong? Undo in Inbox.</span>
-            <span aria-hidden="true" className="text-teal-600 dark:text-teal-300">→</span>
-          </button>
-        )}
+        {feed.length > 0 && <AddedCard list={feed} fresh={fresh.length} busy={added.busy} onUndo={(e) => void added.undo(e)} onOpen={added.open} onAll={() => go('inbox')} />}
         <AlertList alerts={st.alerts} onSeen={(id) => void st.seeAlert(id)} />
       </div>
       <div className="stagger space-y-4">
@@ -146,7 +167,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
         {wk ? <WeekendCard w={wk} onAll={() => setWeekendOpen(true)} />
           : <NearbyLink zip={zip} onGo={() => toNearby()} toDo={st.places.filter((p) => !p.done).length} onList={() => toNearby(true)} onMake={s.place.weekend && (dow === 5 || dow === 6 || dow === 0) ? () => void makeWeekend() : undefined} making={making} />}
         <TimelineList moments={moments} onAll={() => setAll(true)} onOpen={(m) => openMoment(m)} />
-        <WeekCard lines={lines} onOpen={() => go('me')} />
+        <WeekCard lines={lines} onOpen={() => goTo('me', 'privacy')} />
         <p className="text-center text-xs text-slate-500 dark:text-slate-400">🔄 Automatic check {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</p>
       </div>
       {all && <Sheet title="Next 60 days" onClose={() => setAll(false)}><TimelineList moments={timeline({ items: st.items, papers: s.papers.on ? st.papers : [], dates: st.dates, purchases: st.purchases, appts: st.appts }, 60)} max={200} title="Timeline" onOpen={(m) => { setAll(false); openMoment(m); }} /></Sheet>}

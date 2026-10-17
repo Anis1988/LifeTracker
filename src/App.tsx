@@ -10,31 +10,21 @@ import { Aurora, Skeleton, Toasts, errText, toast } from './components/ui';
 import { Home } from './pages/Home';
 import { MoneyPage } from './pages/Money';
 import { Inbox } from './pages/Inbox';
-import { Settings } from './pages/Settings';
 import { Guide } from './pages/Guide';
-import { Me } from './pages/Me';
-import { Contacts } from './pages/Contacts';
-import { Vault } from './pages/Vault';
-import { appsUrl } from './lib/links';
 import { pushWidget } from './lib/widget';
 import { timeline } from './lib/timeline';
+import { MePage } from './pages/Me';
+import { Places } from './pages/Contacts';
+import { SearchSheet } from './components/Search';
+import { PlusIcon, QuickAddSheet } from './components/QuickAdd';
+import { Icon, PhoneTabBar, TABS } from './components/Nav';
+import { goTo, parseHash, upgradeHash, type Tab } from './lib/nav';
 import { addedFeed, unseen } from './lib/added';
 
-// Tabs (line icons, like the rest of the Liquid Glass look). Inbox (the bell) and Guide sit in the header.
-const TABS = [
-  { id: 'home', label: 'Home', icon: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z' },
-  { id: 'money', label: 'Money', icon: 'M3 7h18v12H3zM3 11h18M7 15h3M16 7V5H5v2' },
-  { id: 'contacts', label: 'Contacts', icon: 'M7 3h11a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM12.5 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8.5 17a4 4 0 0 1 8 0M4 7.5h2M4 12h2M4 16.5h2' },
-  { id: 'vault', label: 'Vault', icon: 'M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5zM10 14h4M12 12v4' },
-  { id: 'me', label: 'Me', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0' },
-  { id: 'settings', label: 'Settings', icon: 'M4 6h9M17 6h3M15 4v4M4 12h3M11 12h9M9 10v4M4 18h11M19 18h1M17 16v4' },
-] as const;
-type Tab = (typeof TABS)[number]['id'] | 'guide' | 'inbox';
-const tabOf = (): Tab => (location.hash.startsWith('#/guide') ? 'guide' : location.hash.startsWith('#/inbox') ? 'inbox' : location.hash.startsWith('#/bills') ? 'money' : TABS.find((t) => location.hash.startsWith(`#/${t.id}`))?.id ?? 'home');
-
-const Icon = ({ d, className = 'h-[22px] w-[22px]' }: { d: string; className?: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d={d} /></svg>
-);
+const tabOf = (): Tab => parseHash().tab;
+// Old addresses (#/contacts, #/vault, #/me, #/settings/…) move to their new place before anything opens.
+const upgrade = () => { const h = upgradeHash(location.hash); if (h) history.replaceState(null, '', h); };
+upgrade();
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -125,12 +115,16 @@ function Login() {
 function Main() {
   const st = useStore();
   const [tab, setTab] = useState<Tab>(tabOf());
+  // Every move opens the page fresh (so "?doc=…" style links open their item), even within the same tab.
+  const [visit, setVisit] = useState(0);
+  const [search, setSearch] = useState(false);
+  const [adding, setAdding] = useState(false);
   useEffect(() => {
-    const f = () => setTab(tabOf());
+    const f = () => { upgrade(); setTab(tabOf()); setVisit((n) => n + 1); };
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);
-  const go = (t: string) => { location.hash = `#/${t}`; window.scrollTo(0, 0); };
+  const go = (t: string) => goTo(t as Tab);
   // 🗓️ Android "Coming up" widget: the next bills, appointments and dates, sent each time the data loads.
   useEffect(() => {
     if (st.loading) return;
@@ -155,48 +149,45 @@ function Main() {
   const badge = (t: Tab): number => (t === 'me' ? meCount : 0);
   // 🔔 New in the Inbox: things added by themselves since the Inbox was last opened on this device.
   const fresh = tab === 'inbox' ? 0 : unseen(addedFeed(st));
+  const roundBtn = 'btn relative h-11 w-11 shrink-0 !overflow-visible !p-0';
+  const lit = '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200';
   return (
     <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom,0px))] sm:pb-10">
       <Aurora />
       <header className="sticky top-0 z-30 border-b border-slate-900/5 bg-[#eaeff6]/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#060912]/70" style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }}>
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
-          <img src="./icon.svg" alt="" className="h-8 w-8" />
-          <span className="font-display text-xl font-semibold tracking-tight">LifeTracker</span>
+        <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-2.5">
+          <button onClick={() => go('home')} className="tap -ml-1 flex min-h-[44px] min-w-0 items-center gap-2.5 rounded-2xl px-1" aria-label="LifeTracker: Home">
+            <img src="./icon.svg" alt="" className="h-8 w-8" />
+            <span className="truncate font-display text-xl font-semibold tracking-tight">LifeTracker</span>
+          </button>
           <nav className="glass ml-auto hidden gap-1 rounded-2xl p-1 sm:flex" aria-label="Tabs">
             {TABS.map((t) => (
               <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} aria-label={t.label} title={t.label} className={`tap tabbtn flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-bold ${tab === t.id ? 'bg-white text-slate-900 shadow-[0_0_20px_-6px_#5eead4] dark:bg-white/[0.12] dark:text-white' : 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/[0.06]'}`}>
-                <Icon d={t.icon} className="h-[18px] w-[18px]" /><span className="hidden lg:inline">{t.label}</span>{badge(t.id) ? <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold text-slate-900">{badge(t.id)}</span> : null}
+                <Icon d={t.icon} className="h-[18px] w-[18px]" /><span className="hidden md:inline">{t.label}</span>{badge(t.id) ? <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold text-slate-900">{badge(t.id)}</span> : null}
               </button>
             ))}
           </nav>
-          <a href={appsUrl()} aria-label="My apps" title="My apps" className="btn ml-auto h-11 w-11 !p-0 text-slate-600 dark:text-slate-300 sm:ml-1">
-            <Icon d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" className="h-5 w-5" />
-          </a>
+          {/* ＋ Add anything (big screens; phones have it in the middle of the tab bar). */}
+          <button onClick={() => setAdding(true)} aria-label="Add" title="Add" aria-haspopup="dialog" className="btn-primary ml-1 hidden h-11 w-11 shrink-0 !rounded-2xl !p-0 sm:inline-flex"><PlusIcon className="h-5 w-5" /></button>
+          {/* 🔎 Search everything on this phone. */}
+          <button onClick={() => setSearch(true)} aria-label="Search everything" title="Search" aria-haspopup="dialog" className={`${roundBtn} ml-auto text-slate-600 dark:text-slate-300 sm:ml-1`}>
+            <Icon d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" className="h-5 w-5" />
+          </button>
           {/* 🔔 Inbox: what was added by itself lately (bills, receipts, documents, contacts, appointments), each with an Undo. */}
-          <button onClick={() => go('inbox')} aria-label={`Inbox${fresh ? `: ${fresh} new` : ''}`} title="Inbox" aria-current={tab === 'inbox' ? 'page' : undefined} className={`btn relative ml-1 h-11 w-11 !overflow-visible !p-0 ${tab === 'inbox' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
+          <button onClick={() => go('inbox')} aria-label={`Inbox${fresh ? `: ${fresh} new` : ''}`} title="Inbox" aria-current={tab === 'inbox' ? 'page' : undefined} className={`${roundBtn} ${tab === 'inbox' ? lit : 'text-slate-600 dark:text-slate-300'}`}>
             <Icon d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0" className="h-5 w-5" />
             {fresh ? <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-amber-400 px-1 text-center text-[10px] font-bold leading-[18px] text-slate-900 shadow-[0_0_12px_-2px_rgba(251,191,36,0.9)] ring-2 ring-white/80 dark:ring-[#0b1020]/80">{fresh}</span> : null}
           </button>
-          <button onClick={() => go('guide')} aria-label="Guide" className={`btn ml-1 h-11 w-11 !p-0 ${tab === 'guide' ? '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200' : 'text-slate-600 dark:text-slate-300'}`}>
-            <Icon d="M12 17h.01M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" className="h-5 w-5" />
-          </button>
         </div>
       </header>
-      <main key={tab} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
+      <main key={`${tab}:${visit}`} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         <AppUpdateCheck />
         {st.loading ? <Skeleton />
-          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <Me go={go} /> : tab === 'contacts' ? <Contacts /> : tab === 'vault' ? <Vault /> : tab === 'settings' ? <Settings /> : <Guide />}
+          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <MePage /> : tab === 'places' ? <Places /> : <Guide />}
       </main>
-      {/* Phones: a floating glass tab bar within thumb reach; a glass pill slides to the open tab. */}
-      <nav aria-label="Tabs" style={{ bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className="glass tabbar fixed inset-x-3 z-30 mx-auto flex max-w-md rounded-[30px] p-1.5 sm:hidden">
-        <span aria-hidden="true" className="tabpill" style={{ '--i': Math.max(0, TABS.findIndex((t) => t.id === tab)), '--n': TABS.length, opacity: tab === 'guide' || tab === 'inbox' ? 0 : 1 } as React.CSSProperties} />
-        {TABS.map((t) => (
-          <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} className={`tap tabbtn z-[1] flex h-[54px] flex-1 basis-0 flex-col items-center justify-center gap-0.5 rounded-[22px] text-[10.5px] font-bold ${tab === t.id ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-            <Icon d={t.icon} />{t.label}
-            {badge(t.id) ? <span className="absolute right-[14%] top-1 min-w-[18px] rounded-full bg-amber-400 px-1.5 text-center text-[10px] font-bold leading-[18px] text-slate-900 shadow-[0_0_12px_-2px_rgba(251,191,36,0.9)] ring-2 ring-white/70 animate-[pulse_2.4s_ease-in-out_infinite] dark:ring-[#0b1020]/80">{badge(t.id)}</span> : null}
-          </button>
-        ))}
-      </nav>
+            <PhoneTabBar tab={tab} onGo={go} onAdd={() => setAdding(true)} badge={badge} />
+      {search && <SearchSheet onClose={() => setSearch(false)} />}
+      {adding && <QuickAddSheet onClose={() => setAdding(false)} />}
       <Toasts />
     </div>
   );

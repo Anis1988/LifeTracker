@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { Empty, Seg, errText, toast } from './ui';
@@ -8,7 +8,7 @@ import { TODO_KINDS, driveText, milesText, spotKind, spotToContact, zipOf, type 
 import { settingsHref } from './SettingsGrid';
 import type { Contact } from '../../supabase/functions/_shared/model.ts';
 import { onList, type ListPlace } from '../../supabase/functions/_shared/myList.ts';
-import { MyListView } from './MyList';
+import { takeParam } from '../lib/nav';
 
 /** 📍 Nearby: places near your zip (closest first, miles + drive time), things to do, and this weekend's list. */
 
@@ -92,16 +92,15 @@ export function useSaveToList() {
   };
 }
 
-type Mode = 'find' | 'todo' | 'list';
+type Mode = 'find' | 'todo';
 const QUICK = ['Dentist', 'Oil change', 'Pizza', 'Pharmacy', 'Urgent care', 'Vet', 'Coffee', 'Hair salon', 'Grocery'];
 
-/** The 📍 Nearby part of Contacts: 🔎 Find (a search box) and 🎉 Things to do. */
+/** Places → 🔎 Nearby: 🔎 Find (a search box) and 🎉 Things to do. (📌 My list is its own view in Places.) */
 export function NearbyView() {
   const st = useStore();
   const zip = zipOf(st.settings);
-  const [mode, setMode] = useState<Mode>(() => { try { const m = sessionStorage.getItem('lt.nearbyMode'); return m === 'todo' || m === 'list' ? m : 'find'; } catch { return 'find'; } });
+  const [mode, setMode] = useState<Mode>(() => { try { return localStorage.getItem('lt.nearbyMode') === 'todo' && !/[?&]find/.test(location.hash) ? 'todo' : 'find'; } catch { return 'find'; } });
   const save = useSaveToList();
-  const toDo = st.places.filter((p) => !p.done).length;
   const [q, setQ] = useState('');
   const [res, setRes] = useState<NearbyResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,7 +108,15 @@ export function NearbyView() {
   const [todo, setTodo] = useState<Partial<Record<TodoKind, NearbyResult>>>({});
   const [weekendOpen, setWeekendOpen] = useState(false);
 
-  const pickMode = (m: Mode) => { setMode(m); try { sessionStorage.setItem('lt.nearbyMode', m); } catch { /* private mode */ } if (m === 'todo' && !todo[kind]) void loadTodo(kind); };
+  const pickMode = (m: Mode) => { setMode(m); try { localStorage.setItem('lt.nearbyMode', m); } catch { /* private mode */ } if (m === 'todo' && !todo[kind]) void loadTodo(kind); };
+  // ＋ → "A place" lands here with "?find": the search box is ready to type in.
+  const findBox = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (takeParam('find', '#/places/nearby') === null) return;
+    setTimeout(() => findBox.current?.querySelector('input')?.focus(), 80);
+  }, []);
+  // Things to do remembered from last time: load its list straight away.
+  useEffect(() => { if (mode === 'todo' && !todo[kind]) void loadTodo(kind); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const search = async (text = q) => {
     const t = text.trim();
     if (t.length < 2) return;
@@ -140,11 +147,11 @@ export function NearbyView() {
         <span className="tile !h-9 !w-9 !rounded-xl !text-base" aria-hidden="true">📍</span>
         <span className="min-w-0 flex-1">Near <b className="num">{zip}</b>{town ? ` · ${town.town}, ${town.state}` : ''}<span className="block text-xs text-slate-500 dark:text-slate-400">Change your zip in <a className="tap underline decoration-teal-500/50 underline-offset-2" href={settingsHref('nearby')}>Settings → Nearby</a>.</span></span>
       </div>
-      <Seg label="Nearby" className="[&>button]:px-1 [&>button]:text-[13px] sm:[&>button]:px-3 sm:[&>button]:text-sm" options={[['find', '🔎 Find'], ['todo', '🎉 Things to do'], ['list', `📌 My list${st.places.length ? ` · ${toDo}` : ''}`]]} value={mode} onChange={pickMode} />
+      <Seg label="Nearby" options={[['find', '🔎 Find'], ['todo', '🎉 Things to do']]} value={mode} onChange={pickMode} />
 
-      {mode === 'list' ? <MyListView onFind={() => pickMode('find')} /> : mode === 'find' ? (
+      {mode === 'find' ? (
         <>
-          <form onSubmit={submit} className="flex gap-2">
+          <form ref={findBox} onSubmit={submit} className="flex gap-2">
             <div className="min-w-0 flex-1"><SearchBox q={q} onChange={setQ} placeholder="Dentist, oil change, pizza…" label="What are you looking for" /></div>
             <button className="btn-primary" type="submit" disabled={busy || q.trim().length < 2}>Find</button>
           </form>

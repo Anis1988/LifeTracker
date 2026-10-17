@@ -121,7 +121,7 @@ export function AskBar({ onAsk, disabled }: { onAsk?: (q: string) => void; disab
   );
 }
 
-export interface Turn { q: string; a: string; by?: string; followUps?: string[]; error?: boolean }
+export interface Turn { q: string; a: string; by?: string; followUps?: string[]; error?: boolean; open?: { label: string; href: string } }
 
 /** The conversation (inside a Sheet): questions, answers, follow-up chips. */
 export function AskChat({ turns, busy, onAsk }: { turns: Turn[]; busy?: boolean; onAsk?: (q: string) => void }) {
@@ -138,6 +138,7 @@ export function AskChat({ turns, busy, onAsk }: { turns: Turn[]; busy?: boolean;
           <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-teal-300 to-violet-400 px-3.5 py-2 text-sm font-semibold text-[#04121a]">{t.q}</p>
           <div className={`rise max-w-[92%] rounded-2xl rounded-bl-md border px-3.5 py-2.5 text-sm ${t.error ? 'border-red-300 text-red-800 dark:border-red-800 dark:text-red-200' : 'border-slate-900/[0.07] bg-white/80 dark:border-white/10 dark:bg-white/[0.05]'}`}>
             <p className="whitespace-pre-line">{t.a}</p>
+            {t.open && <a href={t.open.href} className="btn-primary mt-2 w-full sm:w-auto">{t.open.label} →</a>}
             {t.by && <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Answered by {t.by}</p>}
           </div>
           {i === turns.length - 1 && !!t.followUps?.length && !busy && (

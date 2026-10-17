@@ -7,6 +7,7 @@ import { LockScreen, NewPin, VaultDetails, VaultForm, VaultGroup, arrangeVault, 
 import { isOpen, hashPin, lockVault, onLockChange, pinOk, touchVault, unlockVault, waitLeft, wrongPin } from '../lib/vault';
 import { biometric, canBiometric } from '../lib/biometric';
 import { settingsHref } from '../components/SettingsGrid';
+import { takeParam } from '../lib/nav';
 import type { Paper } from '../../supabase/functions/_shared/model.ts';
 
 const ago = (iso?: string | null) => {
@@ -99,12 +100,11 @@ function VaultList() {
   const gmail = !!st.status?.google.gmail;
   const lock = s.vault.lock;
 
-  // "#/vault?doc=<id>" (from Home or Me) opens that document; "#/vault?add" opens the scanner.
+  // "#/me/vault?doc=<id>" (Home, the 🔎 search) opens that document; "?add" (＋) opens the scanner.
   useEffect(() => {
-    const id = location.hash.match(/[?&]doc=([\w-]+)/)?.[1];
+    const id = takeParam('doc', '#/me/vault');
     if (id) setOpenId(id);
-    if (/[?&]add\b/.test(location.hash)) setEdit({});
-    if (id || /[?&]add\b/.test(location.hash)) history.replaceState(null, '', '#/vault');
+    if (takeParam('add', '#/me/vault') !== null) setEdit({});
   }, []);
   useEffect(() => { if (!chips.folders.some((o) => o.id === folder)) setFolder('all'); if (!chips.people.some((o) => o.id === who)) setWho('all'); }, [chips, folder, who]);
   // Using the Vault keeps it open; the minutes count from the last tap.

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { Bills } from './Bills';
@@ -10,14 +10,13 @@ import { SearchBox } from '../components/Contacts';
 import { AddReceipt, ReceiptCard, ReceiptSheet, ReceiptViewer, SpendRow, lastChecked, useThumbs } from '../components/Receipts';
 import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
+import { takeParam, useView } from '../lib/nav';
 
-type View = 'bills' | 'spending' | 'returns';
 const monthName = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 /** 💳 Money: your bills, what you spend, and what you can still return. */
 export function MoneyPage() {
-  const [view, setView] = useState<View>(() => (sessionStorage.getItem('lt.money') as View | null) ?? 'bills');
-  const pick = (v: View) => { setView(v); try { sessionStorage.setItem('lt.money', v); } catch { /* private mode */ } };
+  const [view, pick] = useView('money');
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <Seg label="Money" options={[['bills', 'Bills'], ['spending', 'Spending'], ['returns', 'Returns']]} value={view} onChange={pick} />
@@ -50,6 +49,8 @@ function Spending() {
   const viewing = byId(view);
   const onView = (x: SpendTx) => () => { if (x.receipt_path?.startsWith('gmail:')) window.open(`https://mail.google.com/mail/u/0/#all/${x.receipt_path.slice(6)}`, '_blank'); else setView(x.id ?? null); };
   const gmail = !!st.status?.google.gmail;
+  // "#/money/spending?tx=<id>" (from the 🔎 search) opens that purchase.
+  useEffect(() => { const id = takeParam('tx', '#/money/spending'); if (id) setOpen({ id }); }, []);
   const card = (x: SpendTx) => <ReceiptCard key={x.id} t={x} url={x.receipt_path ? urls[x.receipt_path] : undefined} rules={s.spend.rules} onOpen={() => x.id && setOpen({ id: x.id })} onView={onView(x)} />;
   return (
     <div className="stagger space-y-3">

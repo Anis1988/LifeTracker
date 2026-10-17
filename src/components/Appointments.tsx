@@ -74,7 +74,7 @@ export function ApptDetails({ a, onRemove, contact }: { a: Appointment; onRemove
       </div>
       {contact && (
         <div className="panel flex items-center gap-2 !py-2">
-          <a href={`#/contacts?c=${contact.id}`} className="tap flex min-h-[44px] min-w-0 flex-1 items-center gap-2 rounded-2xl text-sm">
+          <a href={`#/places/contacts?c=${contact.id}`} className="tap flex min-h-[44px] min-w-0 flex-1 items-center gap-2 rounded-2xl text-sm">
             <span aria-hidden="true">{contactKind(contact.kind).icon}</span>
             <span className="min-w-0"><span className="block truncate font-semibold">{contact.name}</span><span className="block truncate text-xs text-slate-500 dark:text-slate-400">{contact.phones[0] ? fmtPhone(contact.phones[0]) : 'Open in Contacts'}</span></span>
           </a>
