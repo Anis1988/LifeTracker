@@ -148,7 +148,8 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
   const at = await refresh(await open(c.secret));
   const seen = new Set((c.meta.seenAlerts as string[] | undefined) ?? []);
   // First time: as far back as your alerts go (400 days), spread over several runs so Gmail's per-minute limit isn't hit; then the last week.
-  const done = !!c.meta.alertsDone;
+  // A new kind of alert (ALERT_QUERY changed, e.g. PayPal added) looks back again once; emails already read are skipped.
+  const done = !!c.meta.alertsDone && c.meta.alertsQuery === ALERT_QUERY;
   const all = (await findAlertEmails(at, done ? 7 : s.bank.lookbackDays, ALERT_QUERY, done ? 200 : 2000)).filter((id) => !seen.has(id));
   const ids = all.slice(0, PER_RUN);
   const rows: BankRow[] = [];
@@ -172,7 +173,7 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
   await storeRows(db, userId, toAdd, s.spend.rules);
   const left = all.filter((id) => !seen.has(id)).length;
   await saveConnection(db, userId, 'google', null, {
-    seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(), alertsDone: done || left === 0,
+    seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(), alertsDone: done || left === 0, alertsQuery: ALERT_QUERY,
     alertsRead: ((c.meta.alertsRead as number) ?? 0) + rows.length, alertBanks: [...new Set([...((c.meta.alertBanks as string[]) ?? []), ...banks])],
   });
   if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${merged ? ` (${merged} matched a receipt already in Spending)` : ''}${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}${left ? `; ${left} older ones next time` : ''}${stopped ? `. ${stopped}` : ''}`;

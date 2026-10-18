@@ -16,11 +16,12 @@ const BANKS: { re: RegExp; name: string }[] = [
   { re: /americanexpress\.com|aexp/i, name: 'Amex' },
   { re: /discover\.com/i, name: 'Discover' },
   { re: /usbank\.com/i, name: 'U.S. Bank' },
+  { re: /paypal\.com|\bpaypal\b/i, name: 'PayPal' },
 ];
 export const bankOf = (from: string) => BANKS.find((b) => b.re.test(from))?.name ?? null;
 
 /** Gmail search for purchase alerts from these banks (and alert-looking emails from any bank). */
-export const ALERT_QUERY = '(from:(bankofamerica.com OR capitalone.com OR sofi.com OR sofi.org OR chase.com OR wellsfargo.com OR citi.com OR americanexpress.com OR discover.com OR usbank.com) (transaction OR purchase OR charge OR charged OR spent OR alert)) OR subject:("transaction alert" OR "purchase alert" OR "you made a purchase" OR "new transaction")';
+export const ALERT_QUERY = '(from:(bankofamerica.com OR capitalone.com OR sofi.com OR sofi.org OR chase.com OR wellsfargo.com OR citi.com OR americanexpress.com OR discover.com OR usbank.com) (transaction OR purchase OR charge OR charged OR spent OR alert)) OR (from:paypal.com "you paid") OR subject:("transaction alert" OR "purchase alert" OR "you made a purchase" OR "new transaction")';
 
 // Money coming IN, payments TO the card, or security notices: not purchases.
 const NOT_PURCHASE = /\b(refund|credit(ed)? to your|deposit|direct deposit|payment (received|posted|scheduled)|thank you for your payment|transfer (received|from)|password|sign[- ]?in|verification code|security alert|new device|statement is (ready|available)|balance (is|alert)|low balance)\b/i;
@@ -49,7 +50,10 @@ export function parseBankAlert(m: AlertMail): AlertTx | null {
   if (NOT_PURCHASE.test(m.subject) || (NOT_PURCHASE.test(all) && !/(purchase|transaction|charged|spent)/i.test(m.subject))) return null;
 
   // Amount: labelled first ("Amount: $15.49"), then common sentences.
-  const amt = all.match(/amount\s*[:\-]?\s*\$\s?([\d,]+\.\d{2})/i)
+  // PayPal: "You paid $19.99 USD to Netflix.com".
+  const pp = all.match(/you (?:paid|sent) \$\s?([\d,]+\.\d{2})(?: USD)? to ([^\n]{2,60}?)(?:\s*(?:\n|merchant\b|$))/i);
+  const amt = (pp ? [pp[0], pp[1]] as unknown as RegExpMatchArray : null)
+    ?? all.match(/amount\s*[:\-]?\s*\$\s?([\d,]+\.\d{2})/i)
     ?? all.match(/in the amount of \$\s?([\d,]+\.\d{2})/i)
     ?? all.match(/(?:purchase|transaction|charge|payment) (?:of|for) \$\s?([\d,]+\.\d{2})/i)
     ?? all.match(/(?:spent|charged|used your [\w\s]{0,30}?card for) \$\s?([\d,]+\.\d{2})/i)
@@ -59,14 +63,14 @@ export function parseBankAlert(m: AlertMail): AlertTx | null {
   if (!(amount > 0) || amount > 100000) return null;
 
   // Merchant: labelled ("Where: NETFLIX.COM", "Merchant: …"), then "at NETFLIX.COM, a pending…", "at NETFLIX on …".
-  const mer = all.match(/(?:where|merchant(?: name)?|description|at merchant)\s*:\s*([^\n]{2,60})/i)
+  const mer = (pp ? [pp[0], pp[2]] as unknown as RegExpMatchArray : null) ?? all.match(/(?:where|merchant(?: name)?|description|at merchant)\s*:\s*([^\n]{2,60})/i)
     ?? all.match(/\bat ([A-Z0-9][^\n,]{1,50}?)(?:,| on | for | was | using | with your|\.\s|\n)/)
     ?? all.match(/\bwith ([A-Z0-9][^\n,]{1,50}?)(?:,| on | for | was |\.\s|\n)/);
   const merchant = mer ? clean(mer[1]) : '';
   if (!merchant || merchant.length < 2 || /^(your|the|a|an)\b/i.test(merchant)) return null;
 
   // Date: labelled, then "on March 5, 2026", else the day the email arrived.
-  const dt = all.match(/(?:date|transaction date|posted)\s*:\s*([^\n]{6,30})/i) ?? all.match(/\bon ((?:[A-Za-z]{3,9}\.? \d{1,2},? \d{4})|(?:\d{1,2}\/\d{1,2}\/\d{2,4}))/);
+  const dt = all.match(/(?:date|transaction date|posted)\s*:\s*([^\n]{6,30})/i) ?? all.match(/transaction date\s+([A-Za-z]{3,9}\.? \d{1,2},? \d{4})/i) ?? all.match(/\bon ((?:[A-Za-z]{3,9}\.? \d{1,2},? \d{4})|(?:\d{1,2}\/\d{1,2}\/\d{2,4}))/);
   const posted = dt ? toDay(dt[1], m.date) : m.date;
 
   const last4 = all.match(/(?:ending in|ending|account ending|card ending|ending with|x{2,}|\*{2,})\s*:?\s*(\d{4})\b/i)?.[1];
