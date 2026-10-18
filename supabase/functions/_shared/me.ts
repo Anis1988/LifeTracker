@@ -3,8 +3,9 @@ import type { Alert, Finding, Settings } from './model.ts';
 import { iso, today } from './money.ts';
 import { zipOf } from './place.ts';
 import { BREACH_QUERY, BROKERS, brokerOf, hostOf, parseBreach } from './people.ts';
-import { has, isRateLimit, readEmail, refresh, searchIds } from './google.ts';
-import { connection, env, open, saveConnection } from './server.ts';
+import { isRateLimit, readEmail, searchIds } from './google.ts';
+import { connection, env, saveConnection } from './server.ts';
+import { boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 
 /**
  * 🕵️ "Me online": where your name shows up. The free Gemini searches Google for the details in Settings → About me,
@@ -166,27 +167,25 @@ export async function onlineStep(db: SupabaseClient, userId: string, s: Settings
 }
 
 /** 🔓 Breach alert emails (free sign-up at haveibeenpwned.com/NotifyMe or monitor.mozilla.org): no AI. */
-export async function breachStep(db: SupabaseClient, userId: string, alerts: NewAlert[]): Promise<string | void> {
-  const c = await connection(db, userId, 'google');
-  if (!c || !has(c.meta.scope as string, 'gmail')) return;
-  const meta = (await connection(db, userId, 'me'))?.meta ?? {};
+export async function breachStep(db: SupabaseClient, userId: string, alerts: NewAlert[], box: Box): Promise<string | void> {
+  const meta = await stateOf(db, userId, box, 'me');
   const seen = new Set((meta.seenBreach as string[] | undefined) ?? []);
-  const at = await refresh(await open(c.secret));
+  const at = await tokenOf(box);
   const ids = (await searchIds(at, `${BREACH_QUERY} newer_than:${meta.breachScanned ? 14 : 730}d`, 60)).filter((id) => !seen.has(id));
   let found = 0;
   for (const id of ids) {
     let m;
-    try { m = await readEmail(at, id); } catch (e) { if (isRateLimit(e)) break; throw e; }
+    try { m = await readEmail(at, id, boxTag(box)); } catch (e) { if (isRateLimit(e)) break; throw e; }
     seen.add(id);
     const b = parseBreach(m);
     if (!b) continue;
     const { data } = await db.from('findings').upsert({ user_id: userId, kind: 'breach', key: b.name.slice(0, 120), title: b.title, url: null, site: hostOf(`https://${m.from.match(/@([\w.-]+)/)?.[1] ?? ''}`) || null, snippet: m.text.slice(0, 300), verdict: null, why: null, status: 'new', found_at: m.date }, { onConflict: 'user_id,kind,key', ignoreDuplicates: true }).select('id');
     if (data?.length) {
       found++;
-      alerts.push({ user_id: userId, kind: 'breach', key: b.name.slice(0, 120), item_id: null, title: `🔓 Your email was in the “${b.name}” data breach`, body: 'Change that site’s password (and anywhere you used the same one), and turn on two-step sign-in.' });
+      alerts.push({ user_id: userId, kind: 'breach', key: b.name.slice(0, 120), item_id: null, title: `🔓 Your email${box.main ? '' : ` (${box.email})`} was in the “${b.name}” data breach`, body: 'Change that site’s password (and anywhere you used the same one), and turn on two-step sign-in.' });
     }
   }
-  await saveConnection(db, userId, 'me', null, { seenBreach: [...seen].slice(-500), breachScanned: iso(new Date()) });
+  await saveState(db, userId, box, 'me', { seenBreach: [...seen].slice(-500), breachScanned: iso(new Date()) });
   if (found) return `${found} new data breach(es)`;
 }
 

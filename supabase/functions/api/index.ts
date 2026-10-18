@@ -1,5 +1,5 @@
 import { z } from 'npm:zod@4.1.12';
-import { admin, connection, cors, env, HttpError, json, open, saveConnection, settingsOf, sign, userOf, withCors } from '../_shared/server.ts';
+import { admin, connection, cors, env, HttpError, json, saveConnection, settingsOf, sign, userOf, withCors } from '../_shared/server.ts';
 import { claimSetupToken } from '../_shared/simplefin.ts';
 import { authUrl, has, type Want } from '../_shared/google.ts';
 import { readWithAi } from '../_shared/ai.ts';
@@ -7,8 +7,8 @@ import { applyExtracted, storeRows, syncUser } from '../_shared/sync.ts';
 import { backfillLog, logMoney, shopOf } from '../_shared/moneyLog.ts';
 import { SPEND_CATS, categorize, shopKey, spendCat } from '../_shared/spend.ts';
 import { merchantKey } from '../_shared/recurring.ts';
-import { refresh } from '../_shared/google.ts';
-import { blockOne, unsubscribeOne } from '../_shared/unsub.ts';
+import { blockOne, sendBox, unsubscribeOne } from '../_shared/unsub.ts';
+import { EXTRA, allBoxes, mailBoxes, revoke, tokenOf } from '../_shared/mailbox.ts';
 import { ask } from '../_shared/ask.ts';
 import { summary } from '../_shared/summary.ts';
 import { homeOf, nearbySearch, nearbyStep, thingsToDo, weekendFor } from '../_shared/nearbyFind.ts';
@@ -27,8 +27,10 @@ import type { Item, Sender } from '../_shared/model.ts';
 const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status') }),
   z.object({ action: z.literal('bank-connect'), setupToken: z.string().min(20).max(2000) }),
-  z.object({ action: z.literal('disconnect'), kind: z.enum(['simplefin', 'google']) }),
-  z.object({ action: z.literal('google-start'), want: z.array(z.enum(['calendar', 'gmail', 'mailbox'])).min(1).max(3), back: z.string().url().max(300) }),
+  z.object({ action: z.literal('disconnect'), kind: z.union([z.enum(['simplefin', 'google']), z.string().regex(/^google:\d{1,3}$/)]) }),
+  // extra: "＋ Add another Google account" ('new') or more permission for one already added ('google:<n>'): Gmail only.
+  z.object({ action: z.literal('google-start'), want: z.array(z.enum(['calendar', 'gmail', 'mailbox'])).min(1).max(3), back: z.string().url().max(300), extra: z.union([z.literal('new'), z.string().regex(/^google:\d{1,3}$/)]).optional() }),
+  z.object({ action: z.literal('google-extra'), kind: z.string().regex(/^google:\d{1,3}$/), on: z.boolean() }),
   z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail', 'weekend']) }),
   z.object({ action: z.literal('phone-key') }),
   z.object({ action: z.literal('ask'), question: z.string().min(2).max(500), history: z.array(z.object({ q: z.string().max(500), a: z.string().max(2000) })).max(6).optional() }),
@@ -57,11 +59,13 @@ async function handle(req: Request): Promise<Response> {
     const db = admin();
     switch (body.action) {
       case 'status': {
-        const [bank, google, status, me, mail, phone, contacts, vault, receipts] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), connection(db, user.id, 'me'), connection(db, user.id, 'mail'), connection(db, user.id, 'phone'), connection(db, user.id, 'contacts'), connection(db, user.id, 'vault'), connection(db, user.id, 'receipts')]);
+        const [bank, google, status, me, mail, phone, contacts, vault, receipts, boxes] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), connection(db, user.id, 'me'), connection(db, user.id, 'mail'), connection(db, user.id, 'phone'), connection(db, user.id, 'contacts'), connection(db, user.id, 'vault'), connection(db, user.id, 'receipts'), allBoxes(db, user.id)]);
         const { data: usage } = await db.from('ai_usage').select('provider, n').eq('user_id', user.id).eq('day', new Date().toISOString().slice(0, 10));
         return json({
           bank: bank ? { connected: true, lastSync: bank.meta.lastSync ?? null, accounts: bank.meta.accounts ?? [], errors: bank.meta.errors ?? [] } : { connected: false },
-          google: google ? { connected: true, email: google.meta.email ?? null, calendar: has(google.meta.scope as string, 'calendar'), gmail: has(google.meta.scope as string, 'gmail'), lastGmail: google.meta.gmailScanned ?? null, alertsScanned: google.meta.alertsScanned ?? null, alertsRead: google.meta.alertsRead ?? 0, alertBanks: google.meta.alertBanks ?? [], mailbox: has(google.meta.scope as string, 'mailbox') } : { connected: false },
+          google: google ? { connected: true, email: google.meta.email ?? null, calendar: has(google.meta.scope as string, 'calendar'), gmail: has(google.meta.scope as string, 'gmail'), lastGmail: google.meta.gmailScanned ?? null, alertsScanned: google.meta.alertsScanned ?? null, alertsRead: google.meta.alertsRead ?? 0, alertBanks: google.meta.alertBanks ?? [], mailbox: has(google.meta.scope as string, 'mailbox'), lastScan: google.meta.lastScan ?? null } : { connected: false },
+          // ✉️ Extra Gmail accounts (no secrets: only what Settings shows).
+          googleExtras: boxes.filter((b) => !b.main).map((b) => ({ kind: b.kind, email: b.email, on: b.on, gmail: has(b.scope, 'gmail'), mailbox: has(b.scope, 'mailbox'), lastScan: b.meta.lastScan ?? null, lastError: b.meta.lastError ?? null, connectedAt: b.meta.connectedAt ?? null })),
           me: { lastOnline: me?.meta.lastOnline ?? null, lastErrors: me?.meta.lastErrors ?? [], weekSent: me?.meta.weekSent ?? null, breachScanned: me?.meta.breachScanned ?? null },
           mail: { lastSweep: mail?.meta.lastSweep ?? null, sweepDone: !!mail?.meta.sweepDone, headsRead: mail?.meta.headsRead ?? 0, apptsScanned: mail?.meta.apptsScanned ?? null, contactsScanned: contacts?.meta.scanned ?? null, vaultScanned: vault?.meta.scanned ?? null, receiptsScanned: receipts?.meta.scanned ?? null, mailChecked: receipts?.meta.mailChecked ?? null },
           phone: { since: phone?.meta.since ?? null, lastText: phone?.meta.lastText ?? null },
@@ -82,11 +86,28 @@ async function handle(req: Request): Promise<Response> {
         return json({ ok: true, log });
       }
       case 'disconnect': {
+        // An extra Gmail account: Google is also told to forget LifeTracker's access (its own grant, not the main one).
+        const extra = body.kind.startsWith(EXTRA) ? await connection(db, user.id, body.kind) : null;
         await db.from('connections').delete().eq('user_id', user.id).eq('kind', body.kind);
+        if (extra?.secret) await revoke(extra.secret);
+        return json({ ok: true });
+      }
+      case 'google-extra': {
+        const cur = await connection(db, user.id, body.kind);
+        if (!cur) throw new HttpError('That Google account isn’t connected any more.', 404);
+        await saveConnection(db, user.id, body.kind, null, { on: body.on });
         return json({ ok: true });
       }
       case 'google-start': {
         if (!env('GOOGLE_CLIENT_ID')) throw new HttpError('Google isn’t set up yet: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (see the Guide → Setting it up).', 503);
+        if (body.extra) {
+          // ＋ Another Google account: Gmail only (read-only), + the mailbox permission only if asked for that account.
+          const cur = body.extra === 'new' ? null : await connection(db, user.id, body.extra);
+          if (body.extra !== 'new' && !cur) throw new HttpError('That Google account isn’t connected any more.', 404);
+          const want = [...new Set(['gmail', ...body.want.filter((w) => w !== 'calendar'), ...(has(cur?.meta.scope as string, 'mailbox') ? ['mailbox'] : [])])] as Want[];
+          const payload = btoa(JSON.stringify({ u: user.id, b: body.back, t: Date.now(), x: body.extra }));
+          return json({ url: authUrl(want, `${payload}.${await sign(payload)}`, { pick: true }) });
+        }
         const cur = await connection(db, user.id, 'google');
         // Keep what was already allowed, add what was asked.
         const want = [...new Set([...body.want, ...(['calendar', 'gmail', 'mailbox'] as Want[]).filter((w) => has(cur?.meta.scope as string, w))])] as Want[];
@@ -130,12 +151,13 @@ async function handle(req: Request): Promise<Response> {
       case 'block': {
         const { data: sender } = await db.from('senders').select('*').eq('id', body.id).eq('user_id', user.id).maybeSingle();
         if (!sender) throw new HttpError('Not found.', 404);
-        const g = await connection(db, user.id, 'google');
-        const mailbox = has(g?.meta.scope as string, 'mailbox');
-        const at = g && (mailbox || body.action === 'unsubscribe') ? await refresh(await open(g.secret)) : undefined;
+        // ✉️ Every mailbox watched: the unsubscribe email goes from one that may send; blocking tidies each one that allows it.
+        const boxes = await mailBoxes(db, user.id);
+        const { at, mailbox } = await sendBox(boxes);
         if (body.action === 'block') {
-          if (!mailbox || !at) throw new HttpError('Blocking needs “Manage mailing lists” (Settings → Mailing lists → Allow).', 400);
-          const moved = await blockOne(db, user.id, sender as Sender, at);
+          const ats = await Promise.all(boxes.filter((b) => has(b.scope, 'mailbox')).map(tokenOf));
+          if (!ats.length) throw new HttpError('Blocking needs “Manage mailing lists” (Settings → Mailing lists → Allow).', 400);
+          const moved = await blockOne(db, user.id, sender as Sender, ats);
           return json({ status: 'blocked', moved });
         }
         return json(await unsubscribeOne(db, user.id, sender as Sender, { at, mailbox }));

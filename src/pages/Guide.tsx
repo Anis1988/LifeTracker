@@ -14,6 +14,7 @@ import { spendReport } from '../../supabase/functions/_shared/spend.ts';
 import { AddedList, AddedRow, AlertList, DocRow } from '../components/Inbox';
 import type { AddedEntry } from '../lib/added';
 import { AlertBanks } from '../components/Bank';
+import { GoogleAccounts, type GoogleExtra } from '../components/GoogleAccounts';
 import { AboutMe } from '../components/AboutMe';
 import { UpdateBanner } from '../components/AppUpdate';
 import { ApptCard } from '../components/Appointments';
@@ -200,6 +201,12 @@ const WEEKEND_EX: Weekend = {
   ],
   far: [{ ...spBase, name: 'Example Lake State Park', kind: 'trip', address: 'Lakeview, XX', miles: 58, minutes: 85, from: 'web', source: 'https://www.example.org' }],
 };
+
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+const GMAIL_EXTRAS: GoogleExtra[] = [
+  { kind: 'google:2', email: 'jordan.work@example.com', on: true, gmail: true, mailbox: false, lastScan: hoursAgo(0.4), lastError: null, connectedAt: null },
+  { kind: 'google:3', email: 'old.shopping@example.com', on: false, gmail: true, mailbox: false, lastScan: hoursAgo(30), lastError: null, connectedAt: null },
+];
 
 const Example = ({ children, caption }: { children: ReactNode; caption: string }) => (
   <figure className="space-y-1.5">
@@ -616,6 +623,11 @@ export function Guide() {
       <Fold icon="✉️" title="Gmail receipts and forwarding">
         <P>Tick <b>Also read Gmail receipts</b>: every hour it looks for receipt, invoice, renewal and “free trial” emails (read-only). A free check first skips ads and shipping notices; only emails that look like bills are read by the AI, and a bill goes <b>straight into your bills</b> (or updates the one you have).</P>
         <P>To add a bill from any email, <b>forward it to yourself with “+lifetracker”</b> (for example you+lifetracker@gmail.com, shown in Settings): it is picked up the next morning.</P>
+        <P><b>More than one email address?</b> Settings → Google → <b>＋ Add another Google account</b>. Google asks which account; pick the other one and allow reading Gmail. That mailbox is then read just like your main one, every hour: bank alerts, PayPal receipts, Auto Pay notices, bills, receipts, orders, appointments, documents, contacts, data breaches and mailing lists. Its appointments go into your main LifeTracker calendar. Anything found there says where it came from, like “From email (work@…)”, and a bank alert that reaches both mailboxes is counted once.</P>
+        <P>Each extra account has its own <b>switch</b> (off = not read, nothing deleted), its last look, and <b>Disconnect</b> (it asks first; what was already found stays). The same address can’t be added twice. Managing mailing lists there (archive and label) is a separate “yes” for that account.</P>
+        <Example caption="Made-up example of Settings → Google with two extra accounts (one switched off).">
+          <GoogleAccounts main={{ email: 'jordan@example.com', gmail: true, calendar: true, lastScan: hoursAgo(0.3) }} extras={GMAIL_EXTRAS} canAdd />
+        </Example>
       </Fold>
 
       <Fold icon="📄" title="Documents (bills, policies, statements)">
@@ -661,7 +673,7 @@ export function Guide() {
           <li><b>Sign-in code (optional)</b>: Supabase only lets you edit its emails once you use your own email sender (Authentication → Emails → SMTP settings, e.g. Resend). Then, in the <b>Magic Link</b> email, add <code>Or type this code: {'{{ .Token }}'}</code> to sign in with a 6-digit code too.</li>
           <li><b>Sign-in</b>: Supabase → Authentication → URL configuration: Site URL = the website address. For “Continue with Google”, turn on the Google provider with the same Google client.</li>
           <li><b>Server secrets</b> (Supabase → Edge Functions → Secrets): <code>LT_SECRET_KEY</code> (long random text), <code>CRON_SECRET</code>, <code>SITE_URL</code>, <code>LT_ALLOWED_EMAILS</code> (your email: only you can use the automatic parts), <code>GEMINI_API_KEY</code> (free), optional <code>GROQ_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code>, <code>RESEND_API_KEY</code>.</li>
-          <li><b>Google Cloud</b>: enable the Calendar and Gmail APIs, make an OAuth “Web” client with the redirect <code>https://&lt;project&gt;.supabase.co/functions/v1/google-callback</code>, add yourself as a test user, then publish the app (otherwise Google signs you out every 7 days).</li>
+          <li><b>Google Cloud</b>: enable the Calendar and Gmail APIs, make an OAuth “Web” client with the redirect <code>https://&lt;project&gt;.supabase.co/functions/v1/google-callback</code>, add yourself as a test user (and every extra Gmail address you add in Settings → Google, while the app is still in Testing), then publish the app (otherwise Google signs you out every 7 days).</li>
           <li><b>Morning run</b>: Supabase → Vault: add <code>lt_project_url</code> and <code>lt_cron_secret</code> (same as CRON_SECRET).</li>
           <li><b>Mailing lists (optional)</b>: Google Cloud → Google Auth Platform → Data Access → add the scope <code>gmail.modify</code>, then Settings → Mailing lists → Allow “Manage mailing lists”.</li>
           <li><b>Android app</b>: Supabase → Authentication → URL configuration → Redirect URLs: add <code>https://anis1988.github.io/LifeTracker/**</code> (so sign-in links reach the page that opens the app). Then install it (see “Android app”).</li>

@@ -19,10 +19,11 @@ export const SCOPES = {
 export type Want = keyof typeof SCOPES;
 export const callbackUrl = () => `${env('SUPABASE_URL')}/functions/v1/google-callback`;
 
-export function authUrl(want: Want[], state: string): string {
+/** `pick`: an extra Gmail account: Google always asks which account (no hint), and only what was asked for this time. */
+export function authUrl(want: Want[], state: string, opts: { pick?: boolean } = {}): string {
   const q = new URLSearchParams({
-    client_id: env('GOOGLE_CLIENT_ID'), redirect_uri: callbackUrl(), response_type: 'code', access_type: 'offline', prompt: 'consent',
-    include_granted_scopes: 'true', scope: ['openid', 'email', ...want.map((w) => SCOPES[w])].join(' '), state,
+    client_id: env('GOOGLE_CLIENT_ID'), redirect_uri: callbackUrl(), response_type: 'code', access_type: 'offline', prompt: opts.pick ? 'select_account consent' : 'consent',
+    include_granted_scopes: opts.pick ? 'false' : 'true', scope: ['openid', 'email', ...want.map((w) => SCOPES[w])].join(' '), state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
 }
@@ -194,7 +195,7 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
 
 // ---------- ✉️ Gmail (read-only) ----------
 const GM = 'https://gmail.googleapis.com/gmail/v1/users/me';
-export interface Mail { id: string; from: string; subject: string; date: string; text: string; at: number; listUnsub?: string; attachments?: Attachment[] } // date = UTC day; at = when it arrived (ms); listUnsub = a mailing list
+export interface Mail { id: string; from: string; subject: string; date: string; text: string; at: number; listUnsub?: string; attachments?: Attachment[]; box?: string } // date = UTC day; at = when it arrived (ms); listUnsub = a mailing list; box = the extra mailbox it came from (none = the main one)
 /** 📎 A file attached to an email (only its name, type and size: the file itself is fetched with getAttachment). */
 export interface Attachment { filename: string; mime: string; size: number; attachmentId: string; inline: boolean }
 
@@ -233,12 +234,12 @@ function textOf(p: Part): { plain: string; html: string } {
 const stripHtml = (h: string) => h.replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#36;|&dollar;/g, '$').replace(/&[a-z]+;/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
 
-export async function readEmail(at: string, id: string): Promise<Mail> {
+export async function readEmail(at: string, id: string, box?: string): Promise<Mail> {
   await pace();
   const m = await g<{ id: string; payload: Part; internalDate: string }>(at, `${GM}/messages/${id}?format=full`);
   const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
   const t = textOf(m.payload);
-  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload) };
+  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload), ...(box ? { box } : {}) };
 }
 
 /** 📎 One attachment's bytes (read-only). */

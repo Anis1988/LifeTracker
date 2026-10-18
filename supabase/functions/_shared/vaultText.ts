@@ -82,9 +82,10 @@ export function classifyAttachment(a: AttachmentInfo): Route {
 }
 
 /** The note on a document found in an email (owner's request: "put it in the note"). */
-export function fromEmailNote(m: { subject: string; from: string; date: string }): string {
+export function fromEmailNote(m: { subject: string; from: string; date: string; box?: string }): string {
   const who = m.from.replace(/<[^>]*>/g, '').replace(/"/g, '').trim() || m.from;
-  return `From email: ${m.subject.trim() || '(no subject)'} — ${who}, ${m.date}`.slice(0, 300);
+  // An extra Google account says which mailbox: "From email (work@…): …".
+  return `From email${m.box ? ` (${m.box})` : ''}: ${m.subject.trim() || '(no subject)'} — ${who}, ${m.date}`.slice(0, 300);
 }
 
 /** The key of an attachment saved from an email: the same email + file is never saved twice (unique per user). */

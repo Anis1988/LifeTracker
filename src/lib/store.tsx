@@ -10,11 +10,13 @@ import { changedFields, contactKey, ownerMerge, sameContact, unionEmails, unionP
 import { flushTexts } from './texts';
 import type { Spot, Weekend } from '../../supabase/functions/_shared/place.ts';
 import { onList, spotToPlace, type ListPlace } from '../../supabase/functions/_shared/myList.ts';
+import type { GoogleExtra } from '../components/GoogleAccounts';
 
 /** What the server reports (bank, Google, AI use today, last automatic run, which keys are set). */
 export interface Status {
   bank: { connected: boolean; lastSync?: string | null; accounts?: { name: string; balance: number; currency: string }[]; errors?: string[] };
-  google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean };
+  google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean; lastScan?: string | null };
+  googleExtras?: GoogleExtra[]; // ✉️ extra Gmail accounts watched too
   me?: { lastOnline: string | null; lastErrors: string[]; weekSent: string | null; breachScanned: string | null };
   mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null; vaultScanned?: string | null; receiptsScanned?: string | null; mailChecked?: string | null };
   phone?: { since: string | null; lastText: string | null };

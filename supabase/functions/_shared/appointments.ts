@@ -2,9 +2,9 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@4.1.12';
 import { APPT_KINDS, type Alert, type Appointment, type Settings } from './model.ts';
 import { todayIn } from './money.ts';
-import { has, isRateLimit, readEmail, refresh, searchIds, type Mail } from './google.ts';
+import { isRateLimit, readEmail, searchIds, type Mail } from './google.ts';
+import { boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 import { askAi } from './ai.ts';
-import { connection, open, saveConnection } from './server.ts';
 import { APPT_QUERY, looksLikeAppointment, sameAppt, whenText } from './apptText.ts';
 
 /**
@@ -106,13 +106,12 @@ export async function readAppt(db: SupabaseClient, userId: string, s: Settings, 
 }
 
 /** ✉️ The Gmail part: new appointment emails since the last look (first time: the last 30 days). */
-export async function apptEmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number, mails: Mail[] = []): Promise<{ text?: string; changed: number }> {
+export async function apptEmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number, mails: Mail[], box: Box): Promise<{ text?: string; changed: number }> {
   if (!s.appts.on) return { changed: 0 };
-  const c = await connection(db, userId, 'google');
-  if (!c || !has(c.meta.scope as string, 'gmail')) return { changed: 0 };
-  const meta = (await connection(db, userId, 'mail'))?.meta ?? {};
+  const meta = await stateOf(db, userId, box, 'mail');
   const seen = new Set((meta.seenAppts as string[] | undefined) ?? []);
-  const at = await refresh(await open(c.secret));
+  const at = await tokenOf(box);
+  const tag = boxTag(box);
   // Look back to the last run that read everything (first time: 30 days), so a run stopped by limits loses nothing.
   const since = typeof meta.apptsDone === 'string' ? Math.ceil((Date.now() - Date.parse(meta.apptsDone)) / 86400_000) + 1 : 30;
   const ids = (await searchIds(at, `newer_than:${Math.min(30, Math.max(2, since))}d ${APPT_QUERY}`, 60)).filter((id) => !seen.has(id));
@@ -122,7 +121,7 @@ export async function apptEmailStep(db: SupabaseClient, userId: string, s: Setti
     if (Date.now() > until) { stopped = 'out of time: the rest next hour'; break; }
     if (read >= max) { stopped = 'the rest next hour'; break; }
     let m: Mail;
-    try { m = await readEmail(at, id); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
+    try { m = await readEmail(at, id, tag); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
     if (!looksLikeAppointment(`${m.subject}\n${m.text.slice(0, 4000)}`)) { seen.add(id); skipped++; continue; }
     mails.push(m); // 📇 also looked at for contacts (no second read)
     let x: Read;
@@ -133,12 +132,12 @@ export async function apptEmailStep(db: SupabaseClient, userId: string, s: Setti
     }
     read++;
     seen.add(id);
-    const from = m.from.replace(/<[^>]*>/g, '').replace(/"/g, '').trim() || m.from;
+    const from = `${m.from.replace(/<[^>]*>/g, '').replace(/"/g, '').trim() || m.from}${tag ? ` (to ${tag})` : ''}`;
     const r = await applyAppt(db, userId, s, x, 'email', `mail:${id}`, from, alerts);
     if (r.result !== 'same' && r.result !== 'skipped') changed++;
   }
   const done = !stopped && ids.every((id) => seen.has(id));
   const now = new Date().toISOString();
-  await saveConnection(db, userId, 'mail', null, { seenAppts: [...seen].slice(-3000), apptsScanned: now, ...(done ? { apptsDone: now } : {}) });
+  await saveState(db, userId, box, 'mail', { seenAppts: [...seen].slice(-3000), apptsScanned: now, ...(done ? { apptsDone: now } : {}) });
   return { changed, text: ids.length ? `${read} appointment email(s) read${skipped ? `, ${skipped} skipped for free` : ''}${stopped ? ` (${stopped})` : ''}` : undefined };
 }

@@ -13,7 +13,7 @@ export function matchTile(t: SettingsTile, q: string): boolean {
 /** Each section's icon, name and the words of the settings inside it: the grid and the 🔎 search at the top use them. */
 export const SETTINGS_INDEX = {
   about: { id: 'about', icon: '👤', title: 'About me', words: 'name names city places emails phones usernames look for me online search google gemini how often' },
-  google: { id: 'google', icon: '📅', title: 'Google', words: 'google calendar gmail connect disconnect bills renewals trials remind days before receipt emails forward plus' },
+  google: { id: 'google', icon: '📅', title: 'Google', words: 'google calendar gmail connect disconnect another account second email mailbox bills renewals trials remind days before receipt emails forward plus' },
   appts: { id: 'appts', icon: '🗓️', title: 'Appointments', words: 'appointments doctor dentist calendar remind reminders time zone texts sms android phone emails' },
   spending: { id: 'spending', icon: '💸', title: 'Spending & returns', words: 'spending budgets budget warn receipts emails order emails returns warranties shops category reset last checked' },
   bank: { id: 'bank', icon: '🏦', title: 'Bank & cards', words: 'bank cards alerts alert emails purchases simplefin csv read now disconnect' },

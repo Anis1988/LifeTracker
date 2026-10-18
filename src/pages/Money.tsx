@@ -5,7 +5,7 @@ import { Bills } from './Bills';
 import { PurchaseForm, PurchaseRow, SpendingView } from '../components/Spending';
 import { Empty, Seg, Sheet, errText, toast } from '../components/ui';
 import { SPEND_CATS, categorize, spendCat, spendReport, type SpendTx } from '../../supabase/functions/_shared/spend.ts';
-import { matchSpend } from '../../supabase/functions/_shared/receiptText.ts';
+import { matchSpend, receiptLink } from '../../supabase/functions/_shared/receiptText.ts';
 import { KindChips, SearchBox } from '../components/Contacts';
 import { AddReceipt, ReceiptSheet, ReceiptViewer, SpendLine, lastChecked, useThumbs } from '../components/Receipts';
 import { MoneyLog } from '../components/MoneyLog';
@@ -70,7 +70,7 @@ function Spending() {
   const byId = (id: string | null | undefined) => st.tx.find((x) => x.id === id);
   const sel = byId(open?.id);
   const viewing = byId(view);
-  const onView = (x: SpendTx) => () => { if (x.receipt_path?.startsWith('gmail:')) window.open(`https://mail.google.com/mail/u/0/#all/${x.receipt_path.slice(6)}`, '_blank'); else setView(x.id ?? null); };
+  const onView = (x: SpendTx) => () => { if (x.receipt_path?.startsWith('gmail:')) window.open(receiptLink(x.receipt_path) ?? '', '_blank'); else setView(x.id ?? null); };
   const gmail = !!st.status?.google.gmail;
   // "#/money/spending?tx=<id>" (from the 🔎 search or the 📜 Log) opens that purchase.
   useEffect(() => { const id = takeParam('tx', '#/money/spending'); if (id) setOpen({ id }); }, []);
