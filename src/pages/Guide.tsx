@@ -3,7 +3,7 @@ import { Empty, Fold, Seg, Toggle } from '../components/ui';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
 import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
 import { PurchaseRow, SpendingView } from '../components/Spending';
-import { ReceiptCard, ReceiptDetailsView } from '../components/Receipts';
+import { MismatchPanel, ReceiptCard, ReceiptDetailsView, SpendRow } from '../components/Receipts';
 import { matchSpend } from '../../supabase/functions/_shared/receiptText.ts';
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { DateRow } from '../components/Dates';
@@ -155,6 +155,12 @@ const RECEIPTS: SpendTx[] = [
     details: { store: 'Example Hardware', date: d(-6), total: 86.12, tax: 5.62, card: null, read: 'ai', by: 'Gemini Flash (free)', items: [{ name: 'Paint roller kit', qty: 1, price: 24.5 }, { name: 'Wall paint, 1 gal', qty: 2, price: 56.0 }] } },
 ];
 
+// 📎 a made-up bank alert purchase, then the same purchase with a receipt added to it
+const ALERT_TX: SpendTx = { id: 'a1', posted: d(-3), amount: -25.0, description: 'SQ *SAMPLE DINER', merchant: 'sample diner', source: 'alert', account: 'Example Bank card', receipt_path: null, note: null, details: null };
+const ALERT_WITH: SpendTx = { ...ALERT_TX, receipt_path: 'example-3.jpg',
+  details: { store: 'Sample Diner', date: d(-3), total: 21.0, tax: 1.5, card: '4821', read: 'ai', by: 'Gemini Flash (free)', mismatch: null, items: [{ name: 'Grilled cheese', qty: 1, price: 8.5 }, { name: 'Tomato soup', qty: 1, price: 5.0 }, { name: 'Iced tea', qty: 2, price: 6.0 }, { name: 'Tip', qty: null, price: 4.0 }] } };
+const ALERT_ODD: SpendTx = { ...ALERT_WITH, details: { ...ALERT_WITH.details!, total: 31.4, items: [], mismatch: { receipt: 31.4, bank: 25, kept: false } } };
+
 // 📍 made-up places near a made-up zip
 const spBase = { phone: null, website: null, route: false, from: 'osm' as const, lat: 0, lon: 0 };
 const SPOTS: Spot[] = [
@@ -304,6 +310,19 @@ export function Guide() {
         <P><b>Tap the small picture</b> for full screen (tap again to zoom in) with <b>⬇ Download</b>, ↗ Share and 🗑 Delete. <b>Tap the shop</b> for its sheet: where it came from (“From email: subject — sender, date”), the category (change it like any shop), ✎ Edit details, ✨ Read again (one AI read, at once) and 🗑 Delete (the receipt only, or the purchase too; it asks first).</P>
         <Example caption="Made-up receipt sheet: what was read from it.">
           <div className="card"><ReceiptDetailsView t={RECEIPTS[0]} rules={{}} example actions={{ edit: () => undefined, del: () => undefined }} /></div>
+        </Example>
+        <P><b>📎 Add a receipt to a purchase from your bank.</b> Under the receipts, <b>🏦 Other purchases</b> lists the month’s purchases from your bank alert emails (or a CSV). Tap one: you see the shop, the date, the amount, the category (pick another if it’s wrong) and your note. <b>✎ Edit</b> changes the shop name, date, amount or note; <b>🗑 Delete</b> asks first. Tap <b>📎 Add receipt</b> and take a photo (or pick a photo or PDF): it’s made smaller on your phone, kept with <b>that purchase</b>, and read once (the free AIs first; the same file is never paid for twice).</P>
+        <P>When the receipt’s total is the bank’s amount (to the cent, or with a tip line written on it), its items are <b>broken down right on that purchase</b>: it becomes a full receipt card with the picture on the right. Still one purchase, still the bank’s amount: <b>nothing is counted twice</b>. If the totals differ, the picture stays and you choose: <b>Use its items anyway</b> or <b>Remove picture</b>. Later you can <b>🔁 Replace receipt</b> or <b>✕ Remove receipt</b> (the purchase goes back to a plain line). The same receipt already on another purchase? It tells you instead of adding it twice.</P>
+        <Example caption="Made-up $25.00 bank alert: tap it, 📎 Add receipt, and its items are broken down on the same purchase.">
+          <div className="space-y-3">
+            <div className="card !py-1"><ul><SpendRow t={ALERT_TX} rules={RULES} /></ul></div>
+            <div className="card space-y-3">
+              <ReceiptDetailsView t={ALERT_TX} rules={{}} actions={{ attach: <span className="btn-primary col-span-2 whitespace-nowrap">📎 Add receipt</span>, line: () => undefined, del: () => undefined }} />
+            </div>
+            <ul><ReceiptCard t={ALERT_WITH} rules={RULES} example /></ul>
+            <p className="text-center text-xs text-slate-500 dark:text-slate-400">When the totals don’t match:</p>
+            <MismatchPanel t={ALERT_ODD} />
+          </div>
         </Example>
         <P><b>Never counted twice</b>: the same purchase is often in your bank alert emails too. When the amount is the same (to the cent), the dates are within 3 days and the shop names match (“Example Cafe” = “SQ *EXAMPLE CAFE 1234”), the receipt is <b>attached to that purchase</b> instead of adding a second one, whichever comes first. The same receipt email or file is never added twice.</P>
         <P><b>🔎 Search</b> finds any purchase as you type: a shop, something on a receipt (“latte”), an amount (“23.45”), a month (“March”), a category or words from the email it came from. It all happens on your phone.</P>

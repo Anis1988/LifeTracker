@@ -14,7 +14,7 @@ import { fridayOf } from '../_shared/place.ts';
 import { todayIn } from '../_shared/money.ts';
 import { negotiate } from '../_shared/negotiate.ts';
 import { mimeOf, readVault } from '../_shared/vault.ts';
-import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow } from '../_shared/receipts.ts';
+import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow, type ReceiptOp } from '../_shared/receipts.ts';
 import type { Item, Sender } from '../_shared/model.ts';
 
 /**
@@ -39,7 +39,7 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('nearby'), op: z.enum(['home', 'search', 'todo', 'weekend']), zip: z.string().regex(/^\d{5}$/).optional(), q: z.string().max(80).optional(), kind: z.enum(['food', 'fun', 'events', 'trips']).optional(), step: z.enum(['map', 'routes', 'web']).optional() }),
   z.object({ action: z.literal('negotiate'), id: z.string().uuid(), okSwitch: z.boolean(), fresh: z.boolean().optional() }),
   z.object({ action: z.literal('receipt-add'), path: z.string().min(10).max(300) }),
-  z.object({ action: z.literal('receipt'), op: z.enum(['edit', 'reread', 'delete']), id: z.string().uuid(), entry: z.boolean().optional(), details: z.object({ store: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), total: z.number().min(0).max(1e6), tax: z.number().min(0).max(1e6).nullable(), card: z.string().regex(/^\d{4}$/).nullable(), items: z.array(z.object({ name: z.string().max(60), qty: z.number().min(0).max(1e4).nullable(), price: z.number().min(-1e6).max(1e6).nullable() })).max(40) }).optional() }),
+  z.object({ action: z.literal('receipt'), op: z.enum(['edit', 'reread', 'delete', 'attach', 'detach', 'keep', 'line']), id: z.string().uuid(), entry: z.boolean().optional(), path: z.string().min(10).max(300).optional(), line: z.object({ description: z.string().trim().min(1).max(200), posted: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number().min(0.01).max(1e6), note: z.string().max(300).nullable() }).optional(), details: z.object({ store: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), total: z.number().min(0).max(1e6), tax: z.number().min(0).max(1e6).nullable(), card: z.string().regex(/^\d{4}$/).nullable(), items: z.array(z.object({ name: z.string().max(60), qty: z.number().min(0).max(1e4).nullable(), price: z.number().min(-1e6).max(1e6).nullable() })).max(40) }).optional() }),
   z.object({ action: z.literal('import-csv'), rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), description: z.string().max(200), account: z.string().max(80).optional() })).min(1).max(5000) }),
 ]);
 
@@ -184,8 +184,10 @@ async function handle(req: Request): Promise<Response> {
         return json({ ...r, text: savedText(r.status, r.business, r.amount) });
       }
       case 'receipt': {
-        if (body.op === 'edit' && !body.details) throw new HttpError('Invalid request.', 400);
-        const op = body.op === 'edit' ? { op: 'edit' as const, id: body.id, details: body.details! } : body.op === 'reread' ? { op: 'reread' as const, id: body.id } : { op: 'delete' as const, id: body.id, entry: !!body.entry };
+        if ((body.op === 'edit' && !body.details) || (body.op === 'attach' && !body.path) || (body.op === 'line' && !body.line)) throw new HttpError('Invalid request.', 400);
+        const op: ReceiptOp = body.op === 'edit' ? { op: 'edit', id: body.id, details: body.details! } : body.op === 'reread' ? { op: 'reread', id: body.id }
+          : body.op === 'attach' ? { op: 'attach', id: body.id, path: body.path! } : body.op === 'detach' ? { op: 'detach', id: body.id } : body.op === 'keep' ? { op: 'keep', id: body.id }
+          : body.op === 'line' ? { op: 'line', id: body.id, line: body.line! } : { op: 'delete', id: body.id, entry: !!body.entry };
         return json(await receiptAction(db, user.id, await settingsOf(db, user.id), op));
       }
       case 'import-csv': {

@@ -88,6 +88,8 @@ export function ReceiptCard({ t, url, rules, onOpen, onView, example, startOpen 
   const shown = all ? items : items.slice(0, SHOW);
   const total = d?.total || Math.abs(Number(t.amount));
   const fromMail = !!t.note?.startsWith('From email') || !!t.receipt_path?.startsWith('gmail:');
+  const mm = d?.mismatch;
+  const ask = !!mm && !mm.kept; // 📎 a receipt on a bank purchase with another total: its items wait for "use them anyway"
   const tag = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-semibold leading-4';
   const row = 'flex items-baseline justify-between gap-3';
   return (
@@ -99,13 +101,20 @@ export function ReceiptCard({ t, url, rules, onOpen, onView, example, startOpen 
             <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{shortDate(d?.date || t.posted)} · <span aria-hidden="true">{cat.icon}</span> {cat.label}</span>
           </button>
           <div className="mt-1.5 flex flex-wrap gap-1">
-            <span className={`${tag} border-violet-400/30 bg-violet-500/10 text-violet-800 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-100`}>{fromMail ? '✉️ From email' : t.source === 'receipt' || t.note?.startsWith('Added by hand') ? '📷 Scanned' : '🧾 Receipt'}</span>
-            {t.source && t.source !== 'receipt' && <span className={`${tag} border-teal-500/30 bg-teal-500/10 text-teal-800 dark:border-teal-300/20 dark:bg-teal-300/10 dark:text-teal-100`}>🏦 Matched to your bank</span>}
+            <span className={`${tag} border-violet-400/30 bg-violet-500/10 text-violet-800 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-100`}>{fromMail ? '✉️ From email' : t.source === 'receipt' || t.note?.startsWith('Added by hand') ? '📷 Scanned' : '📎 Receipt added'}</span>
+            {t.source && t.source !== 'receipt' && !mm && <span className={`${tag} border-teal-500/30 bg-teal-500/10 text-teal-800 dark:border-teal-300/20 dark:bg-teal-300/10 dark:text-teal-100`}>🏦 Matched to your bank</span>}
+            {mm && <span className={`${tag} border-amber-500/40 bg-amber-500/10 text-amber-900 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-100`}>⚠️ Totals differ</span>}
           </div>
         </div>
         <ReceiptThumb t={t} url={url} onView={onView} size="card" example={example} />
       </div>
-      {items.length > 0 && (
+      {ask && (
+        <button className="tap mt-2.5 block w-full rounded-2xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-left text-[13px] text-amber-900 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-100" onClick={onOpen}>
+          <span className="font-semibold">Receipt total <span className="num">{money(mm.receipt)}</span> ≠ bank <span className="num">{money(mm.bank)}</span></span>
+          <span className="block text-xs">Tap to use its items anyway, or remove the picture.</span>
+        </button>
+      )}
+      {items.length > 0 && !ask && (
         <ul className="mt-2.5 border-t border-dashed border-slate-900/15 pt-1.5 dark:border-white/15" aria-label="What you bought">
           {shown.map((i, k) => {
             const u = unit(i);
@@ -121,7 +130,7 @@ export function ReceiptCard({ t, url, rules, onOpen, onView, example, startOpen 
           })}
         </ul>
       )}
-      {items.length > SHOW && (
+      {items.length > SHOW && !ask && (
         <button className="tap mt-0.5 min-h-[36px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={() => setAll(!all)} aria-expanded={all}>
           {all ? 'Show less' : `+${items.length - SHOW} more`}
         </button>
@@ -129,8 +138,9 @@ export function ReceiptCard({ t, url, rules, onOpen, onView, example, startOpen 
       <div className={`${items.length ? 'mt-1.5 border-t border-slate-900/[0.08] pt-1.5 dark:border-white/[0.08]' : 'mt-2.5 border-t border-dashed border-slate-900/15 pt-2 dark:border-white/15'} space-y-0.5`}>
         {d?.tax != null && <div className={`${row} text-[13px] text-slate-500 dark:text-slate-400`}><span>Tax</span><span className="num">{money(d.tax)}</span></div>}
         <div className={`${row} text-[15px] font-semibold`}><span>Total</span><span className="num">{money(total)}</span></div>
+        {mm && <div className={`${row} text-xs text-slate-500 dark:text-slate-400`}><span>Bank charged</span><span className="num">{money(mm.bank)}</span></div>}
         {d?.card && <div className={`${row} text-xs text-slate-500 dark:text-slate-400`}><span>Card</span><span className="num">•••• {d.card}</span></div>}
-        {!items.length && <p className="pt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{fromMail ? 'No lines written on this receipt email.' : 'No lines could be read: tap the shop to add them.'}</p>}
+        {!items.length && !ask && <p className="pt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{!d ? 'Not read yet: tap the shop, then ✨ Re-read.' : fromMail ? 'No lines written on this receipt email.' : 'No lines could be read: tap the shop to add them.'}</p>}
       </div>
     </li>
   );
@@ -144,7 +154,7 @@ export function SpendRow({ t, url, rules, onOpen, onView, example }: { t: SpendT
   return (
     <li className="flex items-center gap-3 border-t border-slate-900/[0.06] py-2 first:border-0 dark:border-white/[0.06]">
       <ReceiptThumb t={t} url={url} onView={onView} example={example} />
-      <button className="tap -my-1 flex min-h-[52px] min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left" onClick={onOpen}>
+      <button className="tap -my-1 flex min-h-[52px] min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left" onClick={onOpen} aria-label={`${d?.store || t.description || 'Purchase'}, ${money(-Number(t.amount))}: details, edit, add a receipt`}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">{d?.store || t.description || 'Purchase'}</span>
           <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{shortDate(t.posted)} · {cat.icon} {cat.label}{t.receipt_path || example ? ' · 📎 receipt' : ''}</span>
@@ -163,7 +173,7 @@ const Fact = ({ label, children }: { label: string; children: React.ReactNode })
 /** The receipt sheet's contents: picture, details read from it, the lines bought, where it came from, the buttons. */
 export function ReceiptDetailsView({ t, url, rules, onMove, onView, actions, example }: {
   t: SpendTx; url?: string; rules: Record<string, string>; onMove?: (cat: string) => void; onView?: () => void; example?: boolean;
-  actions?: { download?: () => void; share?: () => void; edit?: () => void; reread?: () => void; del?: () => void; busy?: string };
+  actions?: { download?: () => void; share?: () => void; edit?: () => void; line?: () => void; reread?: () => void; del?: () => void; detach?: () => void; attach?: React.ReactNode; busy?: string };
 }) {
   const d = t.details;
   const cat = categorize(t, rules);
@@ -176,9 +186,10 @@ export function ReceiptDetailsView({ t, url, rules, onMove, onView, actions, exa
         {(t.receipt_path || example) && <ReceiptThumb t={t} url={url} onView={onView} big example={example} />}
         <div className="min-w-0 flex-1 space-y-1">
           <p className="label">{shortDate(d?.date || t.posted)}</p>
-          <p className="truncate text-lg font-semibold">{d?.store || t.description}</p>
+          <p className="truncate text-lg font-semibold">{t.source === 'receipt' ? d?.store || t.description : t.description || d?.store}</p>
           <Money n={-Number(t.amount)} className="block text-[32px] font-semibold leading-tight tracking-tight" />
           {(t.receipt_path || example) && <p className="text-[11px] text-slate-500 dark:text-slate-400">{link ? 'Tap the picture to open the email.' : 'Tap the picture for full screen.'}</p>}
+          {!t.receipt_path && !example && <p className="text-[11px] text-slate-500 dark:text-slate-400">No receipt yet: 📎 add one and its items are broken down here.</p>}
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -222,9 +233,12 @@ export function ReceiptDetailsView({ t, url, rules, onMove, onView, actions, exa
         </p>
       )}
       {actions && (
-        <div className="flex flex-wrap gap-2">
-          {actions.edit && <button className="btn flex-1" disabled={!!b} onClick={actions.edit}>✎ Edit</button>}
-          {actions.reread && isFile(t.receipt_path) && <button className="btn flex-1" disabled={!!b} onClick={actions.reread}>{b === 'reread' ? <><span className="spinner" /> Reading…</> : '✨ Re-read'}</button>}
+        <div className="grid grid-cols-2 gap-2">
+          {actions.attach}
+          {actions.line && <button className="btn" disabled={!!b} onClick={actions.line}>✎ Edit</button>}
+          {actions.edit && <button className="btn" disabled={!!b} onClick={actions.edit}>{actions.line ? '✎ Receipt details' : '✎ Edit'}</button>}
+          {actions.reread && isFile(t.receipt_path) && <button className="btn" disabled={!!b} onClick={actions.reread}>{b === 'reread' ? <><span className="spinner" /> Reading…</> : '✨ Re-read'}</button>}
+          {actions.detach && <button className="btn" disabled={!!b} onClick={actions.detach}>{b === 'detach' ? <span className="spinner" /> : '✕ Remove receipt'}</button>}
           {actions.del && <button className="btn text-red-700 dark:text-red-300" disabled={!!b} onClick={actions.del}>🗑 Delete</button>}
         </div>
       )}
@@ -321,15 +335,95 @@ export function ReceiptViewer({ t, url, onClose, onDelete }: { t: SpendTx; url?:
   );
 }
 
-/** The sheet of one purchase with its receipt, wired to the server (edit, read again, delete). */
-export function ReceiptSheet({ t, url, rules, onMove, onClose, onChanged, startDelete }: {
-  t: SpendTx; url?: string; rules: Record<string, string>; onMove: (cat: string) => void; onClose: () => void; onChanged: () => Promise<void>; startDelete?: boolean;
+/** ✎ The purchase itself (any line, from the bank or not): shop, date, amount, note. */
+export function LineEdit({ t, onSave, onCancel }: { t: SpendTx; onSave: (l: { description: string; posted: string; amount: number; note: string | null }) => Promise<void>; onCancel: () => void }) {
+  const [x, setX] = useState({ description: t.description ?? '', posted: t.posted, amount: String(Math.abs(Number(t.amount))), note: t.note ?? '' });
+  const [busy, setBusy] = useState(false);
+  const n = Number(x.amount);
+  const ok = !!x.description.trim() && /^\d{4}-\d{2}-\d{2}$/.test(x.posted) && Number.isFinite(n) && n > 0;
+  const save = async () => { setBusy(true); try { await onSave({ description: x.description.trim(), posted: x.posted, amount: Math.round(n * 100) / 100, note: x.note.trim() || null }); } catch (e) { toast('err', errText(e)); } setBusy(false); };
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-semibold">Shop<input className="input mt-1 w-full" value={x.description} onChange={(e) => setX({ ...x, description: e.target.value })} /></label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block text-sm font-semibold">Date<input className="input mt-1 w-full" type="date" value={x.posted} onChange={(e) => setX({ ...x, posted: e.target.value })} /></label>
+        <label className="block text-sm font-semibold">Amount $<input className="input mt-1 w-full" type="number" inputMode="decimal" min={0} value={x.amount} onChange={(e) => setX({ ...x, amount: e.target.value })} /></label>
+      </div>
+      <label className="block text-sm font-semibold">Note<textarea className="input mt-1 min-h-[72px] w-full" maxLength={300} value={x.note} onChange={(e) => setX({ ...x, note: e.target.value })} placeholder="e.g. Lunch with Sam" /></label>
+      <p className="text-[11px] text-slate-500 dark:text-slate-400">The category stays with the shop: change it on the purchase.</p>
+      <div className="flex gap-2">
+        <button className="btn-primary flex-1" disabled={busy || !ok} onClick={() => void save()}>{busy ? <span className="spinner" /> : 'Save'}</button>
+        <button className="btn" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/** A photo or PDF, shrunk on this device and put in this person's own folder. */
+async function uploadReceipt(f: File, folder: string): Promise<string> {
+  if (f.size > 40 * 1024 * 1024) throw new Error('This file is too big (40 MB at most).');
+  const page = await shrink(f);
+  if (page.file.size > 15 * 1024 * 1024) throw new Error('This file is bigger than 15 MB.');
+  const path = `${folder}/${crypto.randomUUID()}-${safeName(page.name)}`;
+  const up = await supabase.storage.from('docs').upload(path, page.file, { contentType: page.mime });
+  if (up.error) throw new Error(up.error.message);
+  if (page.url) URL.revokeObjectURL(page.url);
+  return path;
+}
+
+/** 📎 Add (or replace) the receipt of one purchase: camera, photo or PDF → read once → kept on THIS line (never a second one). */
+export function AttachReceipt({ t, userId, label, onBusy, onDone, className = '' }: { t: SpendTx; userId: string; label: string; onBusy: (on: boolean) => void; onDone: (r: { status: string; text: string }) => Promise<void>; className?: string }) {
+  const [busy, setBusy] = useState(false);
+  const add = async (f: File | undefined) => {
+    if (!f || !t.id) return;
+    setBusy(true); onBusy(true);
+    let path = '';
+    try {
+      path = await uploadReceipt(f, `${userId}/receipts`);
+      const r = await api<{ status: string; text: string }>('receipt', { op: 'attach', id: t.id, path });
+      path = ''; // kept (or removed by the server when it was already there)
+      await onDone(r);
+    } catch (e) {
+      if (path) void supabase.storage.from('docs').remove([path]).then(() => undefined, () => undefined);
+      toast('err', errText(e));
+    }
+    setBusy(false); onBusy(false);
+  };
+  return (
+    <label className={`${t.receipt_path ? 'btn' : 'btn-primary col-span-2'} cursor-pointer whitespace-nowrap focus-within:shadow-[0_0_0_4px_rgba(94,234,212,0.25)] ${busy ? 'pointer-events-none opacity-70' : ''} ${className}`}>
+      {busy ? <><span className="spinner" /> Reading…</> : label}
+      <input type="file" accept="image/*,application/pdf" className="sr-only" disabled={busy} onChange={(e) => { void add(e.target.files?.[0]); e.target.value = ''; }} />
+    </label>
+  );
+}
+
+/** ⚠️ The receipt's total isn't the bank's: use its items anyway, or remove the picture. Also in the Guide. */
+export function MismatchPanel({ t, onKeep, onRemove, busy }: { t: SpendTx; onKeep?: () => void; onRemove?: () => void; busy?: string }) {
+  const mm = t.details?.mismatch;
+  if (!mm || mm.kept) return null;
+  return (
+    <div className="panel space-y-2 !border-amber-400/60 dark:!border-amber-300/30" role="status">
+      <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">⚠️ Receipt total <span className="num">{money(mm.receipt)}</span> ≠ bank <span className="num">{money(mm.bank)}</span></p>
+      <p className="text-xs text-slate-600 dark:text-slate-300">{mm.receipt ? 'Maybe a tip, a different purchase, or a total read wrong.' : 'No total could be read on it.'} Spending keeps the bank’s {money(mm.bank)} either way: nothing is counted twice.</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button className="btn-primary flex-1" disabled={!!busy} onClick={onKeep}>{busy === 'keep' ? <span className="spinner" /> : 'Use its items anyway'}</button>
+        <button className="btn flex-1" disabled={!!busy} onClick={onRemove}>{busy === 'detach' ? <span className="spinner" /> : 'Remove picture'}</button>
+      </div>
+    </div>
+  );
+}
+
+/** The sheet of one purchase (from the bank or a receipt), wired to the server: edit, 📎 add / replace / remove the receipt, read again, delete. */
+export function ReceiptSheet({ t, url, rules, userId, onMove, onClose, onChanged, startDelete }: {
+  t: SpendTx; url?: string; rules: Record<string, string>; userId: string; onMove: (cat: string) => void; onClose: () => void; onChanged: () => Promise<void>; startDelete?: boolean;
 }) {
-  const [mode, setMode] = useState<'view' | 'edit' | 'delete'>(startDelete ? 'delete' : 'view');
+  const [mode, setMode] = useState<'view' | 'edit' | 'line' | 'delete'>(startDelete ? 'delete' : 'view');
   const [busy, setBusy] = useState('');
+  const [reading, setReading] = useState(false);
   const [view, setView] = useState(false);
   const run = async (k: string, f: () => Promise<void>) => { setBusy(k); try { await f(); } catch (e) { if ((e as Error)?.name !== 'AbortError') toast('err', errText(e)); } setBusy(''); };
-  const title = t.details?.store || t.description || 'Purchase';
+  const title = (t.source === 'receipt' ? t.details?.store || t.description : t.description || t.details?.store) || 'Purchase';
+  const bank = t.source !== 'receipt';
   const onView = () => { const l = t.receipt_path && receiptLink(t.receipt_path); if (l) window.open(l, '_blank'); else setView(true); };
   const del = (entry: boolean) => void run('del', async () => {
     if (!t.id) return;
@@ -339,26 +433,46 @@ export function ReceiptSheet({ t, url, rules, onMove, onClose, onChanged, startD
     await onChanged();
     onClose();
   });
+  const detach = () => void run('detach', async () => { await api('receipt', { op: 'detach', id: t.id }); toast('ok', 'Receipt removed: the purchase stays as your bank sent it.'); await onChanged(); });
+  const keep = () => void run('keep', async () => { await api('receipt', { op: 'keep', id: t.id }); toast('ok', 'Its items are kept. Spending still counts the bank’s amount.'); await onChanged(); });
+  const attach = t.id ? (
+    <AttachReceipt t={t} userId={userId} label={t.receipt_path ? '🔁 Replace receipt' : '📎 Add receipt'} onBusy={setReading}
+      onDone={async (r) => { toast(r.status === 'matched' || r.status === 'same' ? 'ok' : 'info', r.text); await onChanged(); }} />
+  ) : undefined;
   return (
-    <Sheet title={mode === 'edit' ? 'Edit the receipt' : title} onClose={onClose}>
+    <Sheet title={mode === 'edit' ? 'Edit the receipt' : mode === 'line' ? 'Edit the purchase' : title} onClose={onClose}>
       {mode === 'edit' ? (
         <ReceiptEdit t={t} onCancel={() => setMode('view')} onSave={async (details) => { await api('receipt', { op: 'edit', id: t.id, details }); toast('ok', 'Saved.'); await onChanged(); setMode('view'); onClose(); }} />
+      ) : mode === 'line' ? (
+        <LineEdit t={t} onCancel={() => setMode('view')} onSave={async (line) => { await api('receipt', { op: 'line', id: t.id, line }); toast('ok', 'Saved.'); await onChanged(); setMode('view'); }} />
       ) : (
         <>
-          <ReceiptDetailsView t={t} url={url} rules={rules} onMove={onMove} onView={onView} actions={{
-            busy,
-            download: () => void run('dl', () => downloadFile(t.receipt_path!, `${safeName(`receipt-${title}-${t.posted}`)}.${fileKind(t.receipt_path!) === 'pdf' ? 'pdf' : 'jpg'}`)),
-            share: () => void run('share', async () => { await shareFiles([t.receipt_path!], `Receipt: ${title}`); }),
-            edit: t.receipt_path ? () => setMode('edit') : undefined,
-            reread: () => void run('reread', async () => { const r = await api<{ by: string }>('receipt', { op: 'reread', id: t.id }); toast('ok', `Read again by ${r.by}.`); await onChanged(); onClose(); }),
-            del: () => setMode('delete'),
-          }} />
+          {reading && (
+            <div className="panel mb-3 flex items-center gap-3" role="status" aria-live="polite">
+              <div className="skel h-20 w-16 shrink-0 !rounded-xl" />
+              <div className="flex-1 space-y-2"><p className="text-sm font-semibold">Reading the receipt…</p><div className="skel h-3 w-3/4" /><div className="skel h-3 w-1/2" /></div>
+            </div>
+          )}
+          <MismatchPanel t={t} busy={busy} onKeep={keep} onRemove={detach} />
+          <div className={t.details?.mismatch && !t.details.mismatch.kept ? 'mt-3' : ''}>
+            <ReceiptDetailsView t={t} url={url} rules={rules} onMove={onMove} onView={onView} actions={{
+              busy: busy || (reading ? 'attach' : ''),
+              download: () => void run('dl', () => downloadFile(t.receipt_path!, `${safeName(`receipt-${title}-${t.posted}`)}.${fileKind(t.receipt_path!) === 'pdf' ? 'pdf' : 'jpg'}`)),
+              share: () => void run('share', async () => { await shareFiles([t.receipt_path!], `Receipt: ${title}`); }),
+              attach,
+              line: bank ? () => setMode('line') : undefined,
+              edit: t.receipt_path ? () => setMode('edit') : undefined,
+              reread: () => void run('reread', async () => { const r = await api<{ by: string }>('receipt', { op: 'reread', id: t.id }); toast('ok', `Read again by ${r.by}.`); await onChanged(); }),
+              detach: bank && t.receipt_path ? detach : undefined,
+              del: () => setMode('delete'),
+            }} />
+          </div>
           {mode === 'delete' && (
             <div className="panel mt-3 space-y-2 !border-red-300 dark:!border-red-800">
               {t.receipt_path ? (
                 <>
                   <p className="text-sm font-semibold">Delete this receipt?</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-300">Also delete the {money(-Number(t.amount))} purchase from Spending?{t.source !== 'receipt' ? ' It came from your bank too.' : ''}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">Also delete the {money(-Number(t.amount))} purchase from Spending?{bank ? ' It came from your bank too.' : ''}</p>
                   <button className="btn w-full" disabled={!!busy} onClick={() => del(false)}>Delete the receipt only</button>
                   <button className="btn w-full text-red-700 dark:text-red-300" disabled={!!busy} onClick={() => del(true)}>Delete the receipt and the purchase</button>
                 </>
@@ -387,13 +501,7 @@ export function AddReceipt({ userId, onAdded, className = '' }: { userId: string
     setBusy(true);
     let path = '';
     try {
-      if (f.size > 40 * 1024 * 1024) throw new Error('This file is too big (40 MB at most).');
-      const page = await shrink(f);
-      if (page.file.size > 15 * 1024 * 1024) throw new Error('This file is bigger than 15 MB.');
-      path = `${userId}/money/${crypto.randomUUID()}-${safeName(page.name)}`;
-      const up = await supabase.storage.from('docs').upload(path, page.file, { contentType: page.mime });
-      if (up.error) throw new Error(up.error.message);
-      if (page.url) URL.revokeObjectURL(page.url);
+      path = await uploadReceipt(f, `${userId}/money`);
       const r = await api<{ status: string; text: string; id?: string }>('receipt-add', { path });
       toast('ok', r.text);
       await onAdded(r.status === 'known' ? undefined : r.id);
