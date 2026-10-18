@@ -221,7 +221,7 @@ export function CreditCard({ c, onChange }: { c: Settings['credit']; onChange?: 
         {BUREAUS.map((b) => (
           <li key={b.id} className="panel flex flex-wrap items-center gap-2 text-sm">
             <span className="min-w-0 flex-1"><b>{b.name}</b> · <a className="underline" href={b.freeze} target="_blank" rel="noopener noreferrer">freeze page</a></span>
-            <select className="input py-0 text-sm" value={c[b.id]} onChange={(e) => onChange?.({ ...c, [b.id]: e.target.value })} aria-label={`${b.name} freeze`}>
+            <select className="input min-h-[40px] w-auto max-w-[11rem] py-1.5 text-sm font-semibold" value={c[b.id]} onChange={(e) => onChange?.({ ...c, [b.id]: e.target.value })} aria-label={`${b.name} freeze`}>
               <option value="unknown">Not sure</option>
               <option value="not">Not frozen</option>
               <option value="frozen">🔒 Frozen</option>

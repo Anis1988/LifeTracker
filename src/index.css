@@ -15,9 +15,12 @@
   --shimmer: rgba(255, 255, 255, .75); --hair: rgba(15, 23, 42, .07);
   --spring: cubic-bezier(.34, 1.56, .64, 1); --soft: cubic-bezier(.2, .8, .2, 1); --sheet: cubic-bezier(.32, .72, 0, 1);
   --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
+  /* Phone pickers (select lists, date pickers) follow light/dark, so their text stays readable. */
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --gl: rgba(255, 255, 255, .085); --gl2: rgba(255, 255, 255, .025); --bd: rgba(255, 255, 255, .1); --hi: rgba(255, 255, 255, .16); --lo: rgba(0, 0, 0, .3);
     --sheen: rgba(255, 255, 255, .06); --rim1: rgba(255, 255, 255, .28); --rim2: rgba(94, 234, 212, .3);
     --tile1: rgba(255, 255, 255, .12); --tile2: rgba(255, 255, 255, .03);
@@ -61,6 +64,9 @@
   /* Native-feeling pickers: our own chevron, no grey browser box. */
   select.input { -webkit-appearance: none; appearance: none; padding-right: 2.25rem; background-repeat: no-repeat; background-position: right .8rem center; background-size: 14px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
+  /* The open list: solid, high-contrast rows (glass text colours would vanish on the system's own list background). */
+  select.input option { color: #0f172a; background: #ffffff; }
+  @media (prefers-color-scheme: dark) { select.input option { color: #f1f5f9; background: #0f172a; } }
   .btn { @apply tap inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border px-4 text-sm font-bold text-slate-800 disabled:opacity-50 dark:text-slate-100; background: linear-gradient(160deg, var(--gl), var(--gl2)); border-color: var(--bd); box-shadow: inset 0 1px 0 var(--hi), 0 6px 14px -10px rgba(0, 0, 0, .35); }
   .btn-primary { @apply tap inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border-0 px-4 text-sm font-extrabold disabled:opacity-50; color: var(--ink); background: linear-gradient(135deg, var(--a), var(--a2)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 10px 26px -12px var(--a); }
   .btn-primary:not(:disabled):active { box-shadow: 0 0 0 6px rgba(167, 139, 250, .22), 0 0 32px var(--a); }
