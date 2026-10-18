@@ -170,7 +170,7 @@ export function Settings() {
   </>);
 
   const spendingBody = (<>
-    <p className="text-sm text-slate-600 dark:text-slate-300">Budgets are set in Money → Spending (tap a category). Purchases come from your bank alert emails and your receipts, sorted with free rules.</p>
+    <p className="text-sm text-slate-600 dark:text-slate-300">Budgets are set in Money → Spending (🎯 Budgets). Purchases come from your bank alert emails and your receipts, sorted with free rules.</p>
     <div className="panel text-sm">
       <p className="font-semibold">📧 Email finding: every hour, by itself</p>
       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{status?.google.gmail ? <>Receipts, bank alerts, bills, orders and documents in your Gmail. Last checked: <span className="num font-semibold text-slate-700 dark:text-slate-200">{lastChecked(status.mail?.mailChecked ?? status.mail?.receiptsScanned)}</span>.</> : 'Needs Gmail: Google → “Also read Gmail receipts”.'}</p>

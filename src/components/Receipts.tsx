@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SPEND_CATS, categorize, spendCat, type SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { receiptLink, type ReceiptDetails, type ReceiptItem } from '../../supabase/functions/_shared/receiptText.ts';
@@ -8,10 +8,9 @@ import { api, supabase } from '../lib/supabase';
 import { Money, Sheet, errText, shortDate, toast } from './ui';
 
 /**
- * 🧾 Receipts in Money → Spending: each one written out in full (`ReceiptCard`: shop, date, category, every line bought,
- * tax, total, card) with the receipt's picture small on the right (tap = full screen with Download / Share / Delete),
- * the sheet (Re-read / Edit / Delete), and "📷 Add a receipt" (read and saved at once). Also drawn in the Guide with
- * made-up data (no working buttons there).
+ * 🧾 Money → Spending: ONE list of the month's purchases (`SpendLine`: shop, category chip, amount, source, a small
+ * receipt picture with its items in place), the purchase sheet (edit, category, 📎 receipt, delete), the full-screen
+ * viewer, and the 📷 Take photo / 🖼️ Choose photo / PDF buttons. Also drawn in the Guide with made-up data.
  */
 export const hasReceipt = (t: SpendTx) => !!t.receipt_path;
 const isFile = (p: string | null | undefined): p is string => !!p && !p.startsWith('gmail:');
@@ -72,96 +71,63 @@ export function ReceiptThumb({ t, url, onView, big, size = big ? 'big' : 'row', 
 }
 
 const unit = (i: ReceiptItem) => (i.price != null && i.qty != null && i.qty > 1 ? Math.round((i.price / i.qty) * 100) / 100 : null);
-const SHOW = 8;
+/** Where a line came from, as a small icon: 📧 bank alert email, 📄 bank CSV, 🏦 bank link, 🧾 only a receipt. */
+export const SOURCE_ICON: Record<string, [string, string]> = { alert: ['📧', 'From a bank alert email'], csv: ['📄', 'From a bank CSV'], bank: ['🏦', 'From your bank link'], receipt: ['🧾', 'From a receipt only'] };
+
+/** The category chip of a row: the SAME category its amount is counted in (categorize + your shop rules). */
+export function CatChip({ id }: { id: string }) {
+  const c = spendCat(id);
+  return <span className="inline-flex max-w-[11rem] items-center gap-1 truncate rounded-full border border-slate-900/10 bg-slate-900/[0.04] px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-700 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-200"><span aria-hidden="true">{c.icon}</span>{c.label}</span>;
+}
 
 /**
- * 🧾 A receipt, written out in full in the Spending list (owner's request): shop, date, category, every line bought
- * (name, qty × price, line total; the first 8, then "+N more" opens the rest in place), tax, total and card, with the
- * receipt's picture small on the right (tap = full screen with Download). The same card for a scanned receipt and a
- * receipt from an email. Tap the shop for the sheet (edit, re-read, delete). Also in the Guide with made-up data.
+ * 💸 One purchase in the ONE Spending list (bank alert, CSV, bank link or receipt): shop, its category chip, amount,
+ * where it came from, a small 🧾 picture when it has a receipt. Tap = the purchase sheet (edit, category, receipt,
+ * delete). A receipt's items open in place (▾). Also in the Guide with made-up data (no working buttons there).
  */
-export function ReceiptCard({ t, url, rules, onOpen, onView, example, startOpen }: { t: SpendTx; url?: string; rules: Record<string, string>; onOpen?: () => void; onView?: () => void; example?: boolean; startOpen?: boolean }) {
-  const [all, setAll] = useState(!!startOpen);
+export function SpendLine({ t, url, rules, onOpen, onView, example, startOpen }: { t: SpendTx; url?: string; rules: Record<string, string>; onOpen?: () => void; onView?: () => void; example?: boolean; startOpen?: boolean }) {
+  const [open, setOpen] = useState(!!startOpen);
   const d = t.details;
-  const cat = spendCat(categorize(t, rules));
   const items = d?.items ?? [];
-  const shown = all ? items : items.slice(0, SHOW);
-  const total = d?.total || Math.abs(Number(t.amount));
-  const fromMail = !!t.note?.startsWith('From email') || !!t.receipt_path?.startsWith('gmail:');
-  const mm = d?.mismatch;
-  const ask = !!mm && !mm.kept; // 📎 a receipt on a bank purchase with another total: its items wait for "use them anyway"
-  const tag = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-semibold leading-4';
-  const row = 'flex items-baseline justify-between gap-3';
+  const mm = d?.mismatch && !d.mismatch.kept;
+  const [icon, from] = SOURCE_ICON[t.source ?? 'bank'] ?? SOURCE_ICON.bank;
+  const shop = (t.source === 'receipt' ? d?.store || t.description : t.description || d?.store) || 'Purchase';
+  const has = !!t.receipt_path || (example && !!d);
   return (
-    <li className="card relative !rounded-[24px] !p-3.5">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <button className="tap -m-1 block w-[calc(100%+0.5rem)] rounded-xl p-1 text-left" onClick={onOpen} aria-label={`${d?.store || t.description || 'Receipt'}: details, edit or delete`}>
-            <span className="block break-words text-[15px] font-semibold leading-snug">{d?.store || t.description || 'Receipt'}</span>
-            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{shortDate(d?.date || t.posted)} · <span aria-hidden="true">{cat.icon}</span> {cat.label}</span>
-          </button>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            <span className={`${tag} border-violet-400/30 bg-violet-500/10 text-violet-800 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-100`}>{fromMail ? '✉️ From email' : t.source === 'receipt' || t.note?.startsWith('Added by hand') ? '📷 Scanned' : '📎 Receipt added'}</span>
-            {t.source && t.source !== 'receipt' && !mm && <span className={`${tag} border-teal-500/30 bg-teal-500/10 text-teal-800 dark:border-teal-300/20 dark:bg-teal-300/10 dark:text-teal-100`}>🏦 Matched to your bank</span>}
-            {mm && <span className={`${tag} border-amber-500/40 bg-amber-500/10 text-amber-900 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-100`}>⚠️ Totals differ</span>}
-          </div>
-        </div>
-        <ReceiptThumb t={t} url={url} onView={onView} size="card" example={example} />
-      </div>
-      {ask && (
-        <button className="tap mt-2.5 block w-full rounded-2xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-left text-[13px] text-amber-900 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-100" onClick={onOpen}>
-          <span className="font-semibold">Receipt total <span className="num">{money(mm.receipt)}</span> ≠ bank <span className="num">{money(mm.bank)}</span></span>
-          <span className="block text-xs">Tap to use its items anyway, or remove the picture.</span>
+    <li className="border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]">
+      <div className="flex items-center gap-2.5 py-1.5">
+        {has ? <ReceiptThumb t={t} url={url} onView={onView} example={example} /> : <span className="tile !h-11 !w-11 shrink-0 text-lg" title={from} aria-hidden="true">{icon}</span>}
+        <button className="tap flex min-h-[52px] min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left" tabIndex={example ? -1 : undefined} onClick={onOpen} aria-label={`${shop}, ${money(-Number(t.amount))}, ${spendCat(categorize(t, rules)).label}: details, edit, receipt`}>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">{shop}</span>
+            <span className="mt-0.5 flex flex-wrap items-center gap-1">
+              <CatChip id={categorize(t, rules)} />
+              {has ? <span className="text-[11px] text-slate-500 dark:text-slate-400" title={from}><span aria-hidden="true">{icon} · 🧾{items.length ? ` ${items.length}` : ''}</span><span className="sr-only">{from}, has a receipt{items.length ? ` with ${items.length} items` : ''}</span></span> : <span className="sr-only">{from}</span>}
+              {mm && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 text-[10.5px] font-semibold leading-4 text-amber-900 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-100">⚠️ totals differ</span>}
+            </span>
+          </span>
+          <Money n={-Number(t.amount)} className="shrink-0 text-sm font-semibold" />
         </button>
-      )}
-      {items.length > 0 && !ask && (
-        <ul className="mt-2.5 border-t border-dashed border-slate-900/15 pt-1.5 dark:border-white/15" aria-label="What you bought">
-          {shown.map((i, k) => {
+        {items.length > 0 && !mm && (
+          <button className="tap btn-ghost h-11 w-11 shrink-0 !rounded-full !p-0" tabIndex={example ? -1 : undefined} onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} the ${items.length} items`}>
+            <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+        )}
+      </div>
+      {open && items.length > 0 && !mm && (
+        <ul className="mb-2 ml-[54px] rounded-2xl border border-dashed border-slate-900/15 px-3 py-1.5 dark:border-white/15" aria-label={`What you bought at ${shop}`}>
+          {items.map((i, k) => {
             const u = unit(i);
             return (
-              <li key={k} className={`${row} py-[3px] text-[13px] leading-snug`}>
-                <span className="min-w-0 flex-1 break-words">
-                  {i.name}
-                  {(i.qty != null && i.qty !== 1) || u != null ? <span className="num block text-[11px] text-slate-500 dark:text-slate-400">{i.qty ?? 1} × {u != null ? money(u) : i.price != null ? money(i.price) : ''}</span> : null}
-                </span>
-                <span className="num shrink-0 text-right text-slate-800 dark:text-slate-100">{i.price != null ? money(i.price) : '—'}</span>
+              <li key={k} className="flex items-baseline justify-between gap-3 py-[3px] text-[13px] leading-snug">
+                <span className="min-w-0 flex-1 break-words">{i.name}{(i.qty != null && i.qty !== 1) || u != null ? <span className="num block text-[11px] text-slate-500 dark:text-slate-400">{i.qty ?? 1} × {u != null ? money(u) : i.price != null ? money(i.price) : ''}</span> : null}</span>
+                <span className="num shrink-0 text-right">{i.price != null ? money(i.price) : '—'}</span>
               </li>
             );
           })}
+          {d?.tax != null && <li className="flex justify-between gap-3 border-t border-slate-900/[0.08] pt-1 text-xs text-slate-500 dark:border-white/[0.08] dark:text-slate-400"><span>Tax</span><span className="num">{money(d.tax)}</span></li>}
         </ul>
       )}
-      {items.length > SHOW && !ask && (
-        <button className="tap mt-0.5 min-h-[36px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={() => setAll(!all)} aria-expanded={all}>
-          {all ? 'Show less' : `+${items.length - SHOW} more`}
-        </button>
-      )}
-      <div className={`${items.length ? 'mt-1.5 border-t border-slate-900/[0.08] pt-1.5 dark:border-white/[0.08]' : 'mt-2.5 border-t border-dashed border-slate-900/15 pt-2 dark:border-white/15'} space-y-0.5`}>
-        {d?.tax != null && <div className={`${row} text-[13px] text-slate-500 dark:text-slate-400`}><span>Tax</span><span className="num">{money(d.tax)}</span></div>}
-        <div className={`${row} text-[15px] font-semibold`}><span>Total</span><span className="num">{money(total)}</span></div>
-        {mm && <div className={`${row} text-xs text-slate-500 dark:text-slate-400`}><span>Bank charged</span><span className="num">{money(mm.bank)}</span></div>}
-        {d?.card && <div className={`${row} text-xs text-slate-500 dark:text-slate-400`}><span>Card</span><span className="num">•••• {d.card}</span></div>}
-        {!items.length && !ask && <p className="pt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{!d ? 'Not read yet: tap the shop, then ✨ Re-read.' : fromMail ? 'No lines written on this receipt email.' : 'No lines could be read: tap the shop to add them.'}</p>}
-      </div>
-    </li>
-  );
-}
-
-/** One purchase in a list (receipt picture on the side when there is one). */
-export function SpendRow({ t, url, rules, onOpen, onView, example }: { t: SpendTx; url?: string; rules: Record<string, string>; onOpen?: () => void; onView?: () => void; example?: boolean }) {
-  const cat = spendCat(categorize(t, rules));
-  const d = t.details;
-  const what = d?.items?.length ? d.items.slice(0, 2).map((i) => i.name).join(', ') + (d.items.length > 2 ? ` +${d.items.length - 2}` : '') : '';
-  return (
-    <li className="flex items-center gap-3 border-t border-slate-900/[0.06] py-2 first:border-0 dark:border-white/[0.06]">
-      <ReceiptThumb t={t} url={url} onView={onView} example={example} />
-      <button className="tap -my-1 flex min-h-[52px] min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left" onClick={onOpen} aria-label={`${d?.store || t.description || 'Purchase'}, ${money(-Number(t.amount))}: details, edit, add a receipt`}>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold">{d?.store || t.description || 'Purchase'}</span>
-          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{shortDate(t.posted)} · {cat.icon} {cat.label}{t.receipt_path || example ? ' · 📎 receipt' : ''}</span>
-          {what && <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{what}</span>}
-        </span>
-        <Money n={-Number(t.amount)} className="shrink-0 text-sm font-semibold" />
-      </button>
     </li>
   );
 }
@@ -371,8 +337,25 @@ async function uploadReceipt(f: File, folder: string): Promise<string> {
   return path;
 }
 
-/** 📎 Add (or replace) the receipt of one purchase: camera, photo or PDF → read once → kept on THIS line (never a second one). */
-export function AttachReceipt({ t, userId, label, onBusy, onDone, className = '' }: { t: SpendTx; userId: string; label: string; onBusy: (on: boolean) => void; onDone: (r: { status: string; text: string }) => Promise<void>; className?: string }) {
+/**
+ * Two ways to give a receipt (owner's request): 📷 Take photo opens the camera straight away (capture="environment" on
+ * phones; a computer just asks for a file), 🖼️ Choose photo / PDF opens the gallery or files. Both go the same way after.
+ */
+export function PhotoPick({ busy, onFile, take = '📷 Take photo', choose = '🖼️ Choose photo / PDF', primary = true, className = '', example }: { busy: boolean; onFile: (f: File | undefined) => void; take?: string; choose?: string; primary?: boolean; className?: string; example?: boolean }) {
+  const lbl = `cursor-pointer !px-3 text-center leading-tight focus-within:shadow-[0_0_0_4px_rgba(94,234,212,0.25)] ${busy ? 'pointer-events-none opacity-70' : ''}`;
+  const pick = (e: React.ChangeEvent<HTMLInputElement>) => { onFile(e.target.files?.[0]); e.target.value = ''; };
+  if (busy) return <div className={`btn-primary pointer-events-none opacity-80 ${className}`} role="status"><span className="spinner" /> Reading…</div>;
+  if (example) return <div className={`grid grid-cols-2 gap-2 ${className}`} aria-hidden="true"><span className={`${primary ? 'btn-primary' : 'btn'} ${lbl}`}>{take}</span><span className={`btn ${lbl}`}>{choose}</span></div>;
+  return (
+    <div className={`grid grid-cols-2 gap-2 ${className}`}>
+      <label className={`${primary ? 'btn-primary' : 'btn'} ${lbl}`}>{take}<input type="file" accept="image/*" capture="environment" className="sr-only" onChange={pick} /></label>
+      <label className={`btn ${lbl}`}>{choose}<input type="file" accept="image/*,application/pdf" className="sr-only" onChange={pick} /></label>
+    </div>
+  );
+}
+
+/** 📎 Add (or replace) the receipt of one purchase: 📷 camera, or 🖼️ a photo / PDF → read once → kept on THIS line (never a second one). */
+export function AttachReceipt({ t, userId, onBusy, onDone, className = '' }: { t: SpendTx; userId: string; onBusy: (on: boolean) => void; onDone: (r: { status: string; text: string }) => Promise<void>; className?: string }) {
   const [busy, setBusy] = useState(false);
   const add = async (f: File | undefined) => {
     if (!f || !t.id) return;
@@ -389,11 +372,12 @@ export function AttachReceipt({ t, userId, label, onBusy, onDone, className = ''
     }
     setBusy(false); onBusy(false);
   };
+  const again = !!t.receipt_path;
   return (
-    <label className={`${t.receipt_path ? 'btn' : 'btn-primary col-span-2'} cursor-pointer whitespace-nowrap focus-within:shadow-[0_0_0_4px_rgba(94,234,212,0.25)] ${busy ? 'pointer-events-none opacity-70' : ''} ${className}`}>
-      {busy ? <><span className="spinner" /> Reading…</> : label}
-      <input type="file" accept="image/*,application/pdf" className="sr-only" disabled={busy} onChange={(e) => { void add(e.target.files?.[0]); e.target.value = ''; }} />
-    </label>
+    <div className={`col-span-2 space-y-1 ${className}`}>
+      <p className="label px-1">{again ? '🔁 Replace the receipt' : '📎 Add its receipt'}</p>
+      <PhotoPick busy={busy} onFile={(f) => void add(f)} primary={!again} />
+    </div>
   );
 }
 
@@ -427,8 +411,7 @@ export function ReceiptSheet({ t, url, rules, userId, onMove, onClose, onChanged
   const onView = () => { const l = t.receipt_path && receiptLink(t.receipt_path); if (l) window.open(l, '_blank'); else setView(true); };
   const del = (entry: boolean) => void run('del', async () => {
     if (!t.id) return;
-    if (t.receipt_path) await api('receipt', { op: 'delete', id: t.id, entry });
-    else await supabase.from('transactions').delete().eq('id', t.id).then(({ error }) => { if (error) throw new Error(error.message); });
+    await api('receipt', { op: 'delete', id: t.id, entry }); // through the server, so 📜 Log notes it
     toast('ok', entry ? 'Deleted from Spending.' : 'Receipt deleted; the purchase stays in Spending.');
     await onChanged();
     onClose();
@@ -436,7 +419,7 @@ export function ReceiptSheet({ t, url, rules, userId, onMove, onClose, onChanged
   const detach = () => void run('detach', async () => { await api('receipt', { op: 'detach', id: t.id }); toast('ok', 'Receipt removed: the purchase stays as your bank sent it.'); await onChanged(); });
   const keep = () => void run('keep', async () => { await api('receipt', { op: 'keep', id: t.id }); toast('ok', 'Its items are kept. Spending still counts the bank’s amount.'); await onChanged(); });
   const attach = t.id ? (
-    <AttachReceipt t={t} userId={userId} label={t.receipt_path ? '🔁 Replace receipt' : '📎 Add receipt'} onBusy={setReading}
+    <AttachReceipt t={t} userId={userId} onBusy={setReading}
       onDone={async (r) => { toast(r.status === 'matched' || r.status === 'same' ? 'ok' : 'info', r.text); await onChanged(); }} />
   ) : undefined;
   return (
@@ -492,10 +475,9 @@ export function ReceiptSheet({ t, url, rules, userId, onMove, onClose, onChanged
   );
 }
 
-/** 📷 Add a receipt: a photo (camera or gallery) or a PDF → read and saved at once → Spending (attached to the bank purchase when it's there), written out in full. */
+/** 🧾 Add a receipt: 📷 take a photo, or 🖼️ choose a photo / PDF → read and saved at once → Spending (attached to the bank purchase when it's there). */
 export function AddReceipt({ userId, onAdded, className = '' }: { userId: string; onAdded: (id?: string) => Promise<void> | void; className?: string }) {
   const [busy, setBusy] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
   const add = async (f: File | undefined) => {
     if (!f) return;
     setBusy(true);
@@ -511,12 +493,7 @@ export function AddReceipt({ userId, onAdded, className = '' }: { userId: string
     }
     setBusy(false);
   };
-  return (
-    <label className={`btn-primary cursor-pointer focus-within:shadow-[0_0_0_4px_rgba(94,234,212,0.25)] ${busy ? 'pointer-events-none opacity-70' : ''} ${className}`}>
-      {busy ? <><span className="spinner" /> Reading…</> : '📷 Add a receipt'}
-      <input ref={input} type="file" accept="image/*,application/pdf" className="sr-only" disabled={busy} onChange={(e) => { void add(e.target.files?.[0]); e.target.value = ''; }} />
-    </label>
-  );
+  return <PhotoPick busy={busy} onFile={(f) => void add(f)} className={className} />;
 }
 
 /** "Last checked: 2:40 PM" for the hourly email look. */

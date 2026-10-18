@@ -3,7 +3,9 @@ import { admin, connection, cors, env, HttpError, json, open, saveConnection, se
 import { claimSetupToken } from '../_shared/simplefin.ts';
 import { authUrl, has, type Want } from '../_shared/google.ts';
 import { readWithAi } from '../_shared/ai.ts';
-import { applyExtracted, syncUser } from '../_shared/sync.ts';
+import { applyExtracted, storeRows, syncUser } from '../_shared/sync.ts';
+import { backfillLog, logMoney, shopOf } from '../_shared/moneyLog.ts';
+import { SPEND_CATS, categorize, shopKey, spendCat } from '../_shared/spend.ts';
 import { merchantKey } from '../_shared/recurring.ts';
 import { refresh } from '../_shared/google.ts';
 import { blockOne, unsubscribeOne } from '../_shared/unsub.ts';
@@ -40,6 +42,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('negotiate'), id: z.string().uuid(), okSwitch: z.boolean(), fresh: z.boolean().optional() }),
   z.object({ action: z.literal('receipt-add'), path: z.string().min(10).max(300) }),
   z.object({ action: z.literal('receipt'), op: z.enum(['edit', 'reread', 'delete', 'attach', 'detach', 'keep', 'line']), id: z.string().uuid(), entry: z.boolean().optional(), path: z.string().min(10).max(300).optional(), line: z.object({ description: z.string().trim().min(1).max(200), posted: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number().min(0.01).max(1e6), note: z.string().max(300).nullable() }).optional(), details: z.object({ store: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), total: z.number().min(0).max(1e6), tax: z.number().min(0).max(1e6).nullable(), card: z.string().regex(/^\d{4}$/).nullable(), items: z.array(z.object({ name: z.string().max(60), qty: z.number().min(0).max(1e4).nullable(), price: z.number().min(-1e6).max(1e6).nullable() })).max(40) }).optional() }),
+  z.object({ action: z.literal('spend-cat'), id: z.string().uuid(), cat: z.enum(SPEND_CATS.map((c) => c.id) as [string, ...string[]]) }),
+  z.object({ action: z.literal('money-log'), op: z.enum(['backfill', 'bill-undo']), month: z.string().regex(/^\d{4}-\d{2}$/).optional(), id: z.string().uuid().optional() }),
   z.object({ action: z.literal('import-csv'), rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), description: z.string().max(200), account: z.string().max(80).optional() })).min(1).max(5000) }),
 ]);
 
@@ -190,6 +194,37 @@ async function handle(req: Request): Promise<Response> {
           : body.op === 'line' ? { op: 'line', id: body.id, line: body.line! } : { op: 'delete', id: body.id, entry: !!body.entry };
         return json(await receiptAction(db, user.id, await settingsOf(db, user.id), op));
       }
+      case 'spend-cat': {
+        // 🏷️ Move a purchase's shop to another category: saved as the shop's rule (Settings.spend.rules), so the row,
+        // the category totals and the budgets all use it from now on (the same shopKey + categorize everywhere).
+        const { data: t } = await db.from('transactions').select('id, amount, description, merchant, item_id, source, details').eq('id', body.id).eq('user_id', user.id).maybeSingle();
+        if (!t) throw new HttpError('Not found.', 404);
+        const { data: row } = await db.from('settings').select('data').eq('user_id', user.id).maybeSingle();
+        const data = (row?.data ?? {}) as Record<string, unknown> & { spend?: { rules?: Record<string, string> } };
+        const before = categorize(t, (await settingsOf(db, user.id)).spend.rules);
+        const key = shopKey(t);
+        const spend = { ...(data.spend ?? {}), rules: { ...(data.spend?.rules ?? {}), [key]: body.cat } };
+        const { error } = await db.from('settings').upsert({ user_id: user.id, data: { ...data, spend } });
+        if (error) throw new Error(error.message);
+        if (before !== body.cat) await logMoney(db, user.id, [{ kind: 'change', ref: t.id, data: { tx: t.id, from: before, to: body.cat, key }, text: `${shopOf(t)} · category ${spendCat(before).label} → ${spendCat(body.cat).label} (rule saved: this shop from now on)` }]);
+        return json({ ok: true, key, rules: spend.rules });
+      }
+      case 'money-log': {
+        if (body.op === 'backfill') {
+          // 📜 First open of the Log: "added" lines for this month's purchases already there (once; no AI).
+          const c = await connection(db, user.id, 'moneylog');
+          const month = body.month ?? new Date().toISOString().slice(0, 7);
+          if (c?.meta.backfilled === month) return json({ added: 0 });
+          const added = await backfillLog(db, user.id, month);
+          await saveConnection(db, user.id, 'moneylog', null, { backfilled: month });
+          return json({ added });
+        }
+        // ↶ A bill added by itself was undone in the app (Inbox): one Log line from the remembered row.
+        const { data: sg } = await db.from('suggestions').select('id, name, amount, status').eq('id', body.id ?? '').eq('user_id', user.id).maybeSingle();
+        if (!sg || sg.status !== 'ignored') return json({ ok: false });
+        await logMoney(db, user.id, [{ kind: 'bill', ref: null, key: `undo:${sg.id}`, data: { suggestion: sg.id }, text: `bill ${sg.name}${sg.amount ? ` $${Number(sg.amount).toFixed(2)}` : ''} undone (won’t be added again)` }]);
+        return json({ ok: true });
+      }
       case 'import-csv': {
         // A bank CSV read on the device: stored like bank transactions, then the recurring ones are found.
         // 🧾 A purchase already in Spending from its receipt is merged into that line (counted once).
@@ -198,10 +233,7 @@ async function handle(req: Request): Promise<Response> {
           posted: r.date, amount: r.amount, description: r.description, merchant: merchantKey(r.description), source: 'csv' as const,
         }));
         const { rows } = await mergeBankRows(db, user.id, all);
-        for (let i = 0; i < rows.length; i += 500) {
-          const { error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
-          if (error) throw new Error(error.message);
-        }
+        await storeRows(db, user.id, rows, (await settingsOf(db, user.id)).spend.rules);
         const log = await syncUser(db, user.id, user.email);
         return json({ ok: true, imported: all.length, log });
       }

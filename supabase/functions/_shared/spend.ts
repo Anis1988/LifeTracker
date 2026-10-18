@@ -39,12 +39,20 @@ const RULES: [RegExp, string][] = [
   [/\b(amazon|amzn|target|best buy|apple store|ebay|etsy|tj ?maxx|marshalls|ross|kohl'?s|macy'?s|nordstrom|old navy|gap|nike|shein|temu|dollar tree|dollar general|five below)\b/i, 'shopping'],
 ];
 
+/**
+ * The shop key a category rule is saved under (Settings.spend.rules): the shop's `merchant` key, else its name in
+ * small letters. The ONE key used to save a move and to read it back (the list rows, the totals, budgets, Ask).
+ */
+export const shopKey = (tx: { description: string | null; merchant: string | null }) => tx.merchant || (tx.description ?? 'other').toLowerCase().replace(/\s+/g, ' ').trim();
+
 /** The spending category of one purchase: your own rule for that shop first, then a bill it matches, then the shop name. */
 export function categorize(tx: { description: string | null; merchant: string | null; item_id?: string | null }, rules: Record<string, string> = {}): string {
-  const key = tx.merchant ?? '';
-  if (key && rules[key]) return rules[key];
+  const key = shopKey(tx);
+  // Rules saved before the shop key (by the plain name, when a line had no merchant key) still count.
+  const own = rules[key] ?? (tx.description ? rules[tx.description.toLowerCase()] : undefined);
+  if (own && SPEND_CATS.some((c) => c.id === own)) return own;
   if (tx.item_id) return 'bills';
-  const text = `${tx.description ?? ''} ${key}`;
+  const text = `${tx.description ?? ''} ${tx.merchant ?? ''}`;
   return RULES.find(([re]) => re.test(text))?.[1] ?? 'other';
 }
 
@@ -85,7 +93,7 @@ export function spendReport(tx: SpendTx[], rules: Record<string, string> = {}, m
   })).filter((c) => c.amount > 0 || (c.usual ?? 0) > 0).sort((a, b) => b.amount - a.amount);
   const shops = new Map<string, { key: string; name: string; amount: number; cat: string; count: number }>();
   for (const t of cur) {
-    const key = t.merchant || (t.description ?? 'other').toLowerCase();
+    const key = shopKey(t);
     const s = shops.get(key) ?? { key, name: (t.description ?? key).replace(/\s+/g, ' ').trim().slice(0, 40), amount: 0, cat: cat.get(t)!, count: 0 };
     s.amount = r2(s.amount - Number(t.amount));
     s.count++;
