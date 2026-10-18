@@ -76,3 +76,41 @@ export function parseBankAlert(m: AlertMail): AlertTx | null {
   const last4 = all.match(/(?:ending in|ending|account ending|card ending|ending with|x{2,}|\*{2,})\s*:?\s*(\d{4})\b/i)?.[1];
   return { bank, amount, merchant: merchant.slice(0, 80), posted, account: `${bank}${last4 ? ` …${last4}` : ''}` };
 }
+
+/** 🔁 "Your Auto Pay payment will be processed soon" notices (GEICO and most billers): the bill, read for free (no AI). */
+export interface AutopayNotice { company: string; amount: number; due: string; last4: string; category: 'insurance' | 'utility' | 'phone' | 'internet' | 'loan' | 'credit-card' | 'other' }
+export const AUTOPAY_QUERY = '("auto pay" OR autopay OR "automatic payment") ("will be processed" OR "is scheduled" OR "upcoming payment" OR "will be withdrawn" OR "will be charged" OR "will be deducted")';
+const KNOWN: [RegExp, string, AutopayNotice['category']][] = [
+  [/geico/i, 'GEICO', 'insurance'], [/progressive/i, 'Progressive', 'insurance'], [/state ?farm/i, 'State Farm', 'insurance'], [/allstate/i, 'Allstate', 'insurance'],
+  [/duke-?energy/i, 'Duke Energy', 'utility'], [/verizon/i, 'Verizon', 'phone'], [/t-?mobile/i, 'T-Mobile', 'phone'], [/at&?t\b|att\.com/i, 'AT&T', 'phone'],
+  [/spectrum|charter\.com/i, 'Spectrum', 'internet'], [/xfinity|comcast/i, 'Xfinity', 'internet'],
+];
+export function parseAutopay(m: AlertMail): AutopayNotice | null {
+  const all = `${m.subject}\n${m.text}`.replace(/\*/g, ' ').replace(/\s+/g, ' ');
+  if (!/auto ?pay|automatic payment/i.test(all) || !/(will be (processed|withdrawn|charged|deducted)|is scheduled|upcoming payment)/i.test(all)) return null;
+  if (/we (received|got) your|payment (was )?(received|posted|successful)|thank you for your payment/i.test(m.subject)) return null; // already paid: not the notice
+  const amt = all.match(/(?:amount due|payment amount|amount to be (?:paid|withdrawn|charged)|amount)\s*:?\s*\$\s?([\d,]+\.\d{2})/i) ?? all.match(/\$\s?([\d,]+\.\d{2})\s*(?:will be|is scheduled)/i);
+  if (!amt) return null;
+  const amount = money(amt[1]);
+  if (!(amount > 0) || amount > 100000) return null;
+  const host = (m.from.match(/@([\w.-]+)/)?.[1] ?? '').toLowerCase();
+  const known = KNOWN.find(([re]) => re.test(host) || re.test(m.subject));
+  const label = host.split('.').slice(-2, -1)[0] ?? '';
+  const company = known?.[1] ?? (label ? label[0].toUpperCase() + label.slice(1) : '');
+  if (!company) return null;
+  const category = known?.[2] ?? (/insurance|policy/i.test(all) ? 'insurance' : 'other');
+  // "Payment Date 10/22" / "processed on 10/22" (no year: the next one after the email).
+  const d = all.match(/(?:payment date|processed on|scheduled for|withdrawn on|charged on|on)\s*:?\s*((?:[A-Za-z]{3,9}\.? \d{1,2},? \d{4})|(?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))/i);
+  let due = m.date;
+  if (d) {
+    const md = d[1].match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (md) {
+      let y = Number(m.date.slice(0, 4));
+      const guess = `${y}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+      if (guess < m.date && (Date.parse(m.date) - Date.parse(guess)) > 30 * 86400_000) y++;
+      due = `${y}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+    } else due = toDay(d[1], m.date);
+  }
+  const last4 = all.match(/(?:ending in|ending|account ending in)\s*:?\s*(\d{4})\b/i)?.[1] ?? '';
+  return { company, amount, due, last4, category };
+}
