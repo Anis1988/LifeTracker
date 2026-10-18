@@ -104,6 +104,17 @@ function Main() {
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);
+  // 🔎 "/" or Ctrl/Cmd+K opens the search from anywhere (not while typing in a box).
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+      if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setSearch(true); }
+      else if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('[role="dialog"]')) { e.preventDefault(); setSearch(true); }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
   const go = (t: string) => goTo(t as Tab);
   // Me: worrying pages, people-search listings and breaches still to handle.
   const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
@@ -131,8 +142,8 @@ function Main() {
           {/* ＋ Add anything (big screens; phones have it in the middle of the tab bar). */}
           <button onClick={() => setAdding(true)} aria-label="Add" title="Add" aria-haspopup="dialog" className="btn-primary ml-1 hidden h-11 w-11 shrink-0 !rounded-2xl !p-0 sm:inline-flex"><PlusIcon className="h-5 w-5" /></button>
           {/* 🔎 Search everything on this phone. */}
-          <button onClick={() => setSearch(true)} aria-label="Search everything" title="Search" aria-haspopup="dialog" className={`${roundBtn} ml-auto text-slate-600 dark:text-slate-300 sm:ml-1`}>
-            <Icon d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" className="h-5 w-5" />
+          <button onClick={() => setSearch(true)} aria-label="Search everything" title="Search (/ or Ctrl K)" aria-haspopup="dialog" className={`${roundBtn} ml-auto text-teal-700 shadow-[0_0_18px_-8px_#5eead4] dark:text-teal-200 sm:ml-1`}>
+            <Icon d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" className="h-[22px] w-[22px]" />
           </button>
           {/* 🔔 Inbox: what was added by itself lately (bills, receipts, documents, contacts, appointments), each with an Undo. */}
           <button onClick={() => go('inbox')} aria-label={`Inbox${fresh ? `: ${fresh} new` : ''}`} title="Inbox" aria-current={tab === 'inbox' ? 'page' : undefined} className={`${roundBtn} ${tab === 'inbox' ? lit : 'text-slate-600 dark:text-slate-300'}`}>

@@ -80,6 +80,9 @@ export function useView<T extends ViewTab>(tab: T): [ViewOf<T>, (v: ViewOf<T>) =
   return [view, pick];
 }
 
+/** A Guide topic's name in the address: "Your bills" → "your-bills" (#/guide?t=your-bills opens it). */
+export const slug = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
 /** "?doc=<id>"-style value in the address, then the address is cleaned (so a refresh doesn't open it again). */
 export function takeParam(name: string, keep?: string): string | null {
   const m = location.hash.match(new RegExp(`[?&]${name}(?:=([\\w-]+))?(?=&|$)`));
