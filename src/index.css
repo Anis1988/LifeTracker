@@ -136,6 +136,15 @@
   .chippill { position: absolute; top: 4px; bottom: 4px; left: 0; border-radius: 9999px; pointer-events: none; background: linear-gradient(135deg, var(--a), var(--a2));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 0 18px -6px var(--a); transition: transform .5s cubic-bezier(.34, 1.4, .64, 1); }
 
+  /* 🔎 Search: a big field with a glowing ring, matched words lit with the accent (dark text on a soft teal→violet wash), the row picked with ↑/↓. */
+  .qfield { @apply h-14 !rounded-[22px] text-[18px] font-semibold; }
+  .qfield:focus { box-shadow: 0 0 0 4px rgba(45, 212, 191, .2), 0 0 34px -6px rgba(45, 212, 191, .8), 0 0 60px -18px var(--a2); }
+  mark.hl { @apply rounded-[5px] px-[1px] font-extrabold text-slate-950 dark:text-white; background: linear-gradient(transparent 55%, rgba(45, 212, 191, .42) 55%, rgba(167, 139, 250, .42)); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  @media (prefers-color-scheme: dark) { mark.hl { background: linear-gradient(transparent 50%, rgba(45, 212, 191, .34) 50%, rgba(167, 139, 250, .34)); text-shadow: 0 0 12px rgba(94, 234, 212, .55); } }
+  .qrow[data-active] { background: rgba(45, 212, 191, .1); box-shadow: inset 0 0 0 1.5px rgba(45, 212, 191, .55), 0 0 22px -10px var(--a); }
+  .qrow:hover { background: rgba(15, 23, 42, .035); }
+  @media (prefers-color-scheme: dark) { .qrow:hover { background: rgba(255, 255, 255, .04); } }
+
   /* Panels: slide up from the bottom on phones, pop in on big screens. */
   .sheet { animation: sheetup .55s var(--sheet) both; }
   @media (min-width: 640px) { .sheet { animation: pop .45s cubic-bezier(.34, 1.3, .64, 1) both; } }

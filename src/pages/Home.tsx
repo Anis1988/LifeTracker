@@ -5,7 +5,7 @@ import { AddedRow, AlertList } from '../components/Inbox';
 import { useAddedActions } from './Inbox';
 import { useVaultOpen } from './Vault';
 import { goTo, takeParam } from '../lib/nav';
-import { HIT_LABELS, navTarget } from '../lib/search';
+import { HIT_LABELS, dataOf, navTarget } from '../lib/search';
 import { WeekCard } from '../components/Me';
 import { ApptCard, ApptDetails } from '../components/Appointments';
 import { AskBar, AskChat, MiniRings, MonthHero, TimelineList, askError, type Turn } from '../components/Dash';
@@ -97,7 +97,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
   const ask = async (q: string) => {
     const before = chat ?? [];
     // "Open my lease", "show Example Dental", "where is my passport?": found on this phone, no AI needed.
-    const hit = navTarget({ items: st.items, tx: st.tx, contacts: st.contacts, places: st.places, papers: st.papers, appts: st.appts, rules: s.spend.rules }, q, vaultOpen);
+    const hit = navTarget(dataOf(st), q, vaultOpen);
     if (hit) { setChat([...before, { q, a: `Here it is: ${hit.title}${hit.sub ? ` (${hit.sub})` : ''}, in ${HIT_LABELS[hit.kind].replace(/^\S+\s/, '')}.`, by: 'this phone (no AI)', open: { label: `Open ${hit.title}`, href: hit.href } }]); return; }
     setChat([...before]);
     setThinking(true);

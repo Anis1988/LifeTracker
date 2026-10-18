@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
-import { Empty, Fold, Seg, Toggle, shortDate } from '../components/ui';
+import { useState } from 'react';
+import { Empty, Fold, FoldTarget, Seg, Toggle, shortDate } from '../components/ui';
+import { takeParam } from '../lib/nav';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
 import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
 import { PurchaseRow, SpendingView } from '../components/Spending';
@@ -210,8 +212,23 @@ const Example = ({ children, caption }: { children: ReactNode; caption: string }
 );
 const P = ({ children }: { children: ReactNode }) => <p className="text-[15px] leading-relaxed text-slate-700 dark:text-slate-300">{children}</p>;
 
-export function Guide() {
+/** Made-up search for "example 25": the matched words lit, a receipt line found by an item on it, and the locked-Vault row. */
+function SearchExample() {
+  const all = searchAll({ items: EX, tx: RECEIPTS, contacts: CONTACTS, places: LIST_EX, papers: [], appts: APPTS, rules: RULES }, 'example', { vaultOpen: false, max: 2 });
+  const groups = all.slice(0, 4);
   return (
+    <div className="space-y-3">
+      <div className="input qfield flex w-full items-center gap-3 !pl-4 text-slate-900 dark:text-slate-50"><span aria-hidden="true">🔎</span>example</div>
+      <SearchResults q="example" example active={0} groups={groups} />
+    </div>
+  );
+}
+
+export function Guide() {
+  // "#/guide?t=<topic>" (from 🔎 search) opens that topic and scrolls to it.
+  const [topic] = useState(() => takeParam('t', '#/guide'));
+  return (
+    <FoldTarget.Provider value={topic || null}>
     <div className="stagger mx-auto max-w-2xl space-y-3">
       <h1 className="text-[28px] font-semibold leading-tight">Guide</h1>
       <p className="text-sm text-slate-500 dark:text-slate-400">How LifeTracker works, in plain words. Tap a topic.</p>
@@ -252,9 +269,11 @@ export function Guide() {
           </table>
         </div>
         <P>Old links still work: “Settings → Nearby” and the like open the right square in Me → Settings.</P>
-        <P><b>🔎 Search</b> (the magnifier at the top, on every page) looks through everything already on your phone as you type: bills, purchases and receipts, contacts, My list, your Vault documents (only while the Vault is open), appointments and the Settings squares. Results come grouped; tap one and it opens right where it lives. No AI and nothing sent anywhere.</P>
-        <Example caption="Made-up search for “example”.">
-          <SearchResults q="example" example groups={searchAll({ items: EX, tx: RECEIPTS, contacts: CONTACTS, places: LIST_EX, papers: [], appts: APPTS, rules: RULES }, 'example', { vaultOpen: false, max: 2 }).slice(0, 3)} />
+        <P><b>🔎 Search</b> (the magnifier at the top, on every page) finds a word anywhere in the app as you type: bills, purchases and the lines on their receipts, returns, the money log, what was added, contacts, Nearby’s weekend list, My list, your Vault documents (only while the Vault is open: a locked Vault shows one 🔒 line instead), appointments, Privacy (your name online, people-search sites, breaches, mailing lists, important dates, credit freezes), Settings and this Guide.</P>
+        <P>Capitals and accents don’t matter (“cafe” finds “Café”). Type several words and only things with all of them show up. Numbers find amounts (“25” finds $25.00 and $25.49) and phone numbers by their digits. Best matches come first (in the name, then at the start of a word), then the newest. The words you typed are lit up, with a short line showing where they were found. Results come grouped by section with how many; tap a section chip at the top to see only that one. Tap a result and it opens right where it lives.</P>
+        <P>Before you type: your recent searches (on this phone only) and a chip for each section, to look through just that one. On a computer, press <b>/</b> or <b>Ctrl K</b> anywhere to open it, ↑ ↓ to move and Enter to open. No AI and nothing sent anywhere.</P>
+        <Example caption="Made-up search for “example”: the words found are lit up; the Vault is locked, so its documents aren’t searched.">
+          <SearchExample />
         </Example>
         <P><b>＋ Add</b>: a receipt (photo or PDF, read at once), a bill, a bill as a photo or PDF, a document to the Vault, a place (opens Nearby’s search) or a contact. Each opens the usual way of adding it.</P>
         <Example caption="Made-up ＋ panel (the receipt button sits above these).">
@@ -648,5 +667,6 @@ export function Guide() {
         </ol>
       </Fold>
     </div>
+    </FoldTarget.Provider>
   );
 }

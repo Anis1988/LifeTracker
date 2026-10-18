@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { slug } from '../lib/nav';
 import { createPortal } from 'react-dom';
 import { money } from '../../supabase/functions/_shared/money.ts';
 
@@ -77,10 +78,15 @@ export function Seg<T extends string>({ options, value, onChange, label, classNa
 }
 
 /** A section that opens and closes (closed by default, like the owner's other apps). */
+/** The Fold to open and scroll to (the Guide's "#/guide?t=<topic>", from 🔎 search): its title as a slug. */
+export const FoldTarget = createContext<string | null>(null);
 export function Fold({ title, subtitle, icon, open: start = false, children }: { title: string; subtitle?: string; icon?: string; open?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(start);
+  const target = useContext(FoldTarget) === slug(title);
+  const [open, setOpen] = useState(start || target);
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => { if (target) setTimeout(() => box.current?.scrollIntoView({ block: 'start' }), 120); }, [target]);
   return (
-    <section className="card !p-0">
+    <section ref={box} className="card scroll-mt-20 !p-0">
       <button className="tap flex min-h-[64px] w-full items-center gap-3 rounded-[26px] px-4 py-3 text-left" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {icon && <span className="tile" aria-hidden="true">{icon}</span>}
         <span className="min-w-0 flex-1">
@@ -96,7 +102,7 @@ export function Fold({ title, subtitle, icon, open: start = false, children }: {
 
 let openSheets = 0;
 /** A panel that slides up from the bottom on phones (centred on big screens). */
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({ title, onClose, children, head, wide }: { title: string; onClose: () => void; children: ReactNode; head?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Escape / the Android back button closes only the top panel (a PIN sheet opened from a Settings sheet, say).
@@ -113,13 +119,14 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   // Drawn on the page itself (a portal): inside a glass card, "fixed" would be trapped in that card.
   return createPortal(
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 backdrop-blur-md animate-[fade_.3s_ease-out] sm:items-center sm:p-4" onClick={onClose}>
-      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className="sheet max-h-[92dvh] w-full overflow-y-auto overscroll-contain rounded-t-[32px] border border-b-0 border-white/70 bg-[#f4f7fb]/95 px-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1020]/95 dark:shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.12)] sm:max-w-lg sm:rounded-[32px] sm:border-b sm:pb-6" onClick={(e) => e.stopPropagation()}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className={`sheet ${wide ? 'h-[96dvh] max-h-[96dvh] sm:h-auto sm:max-h-[86dvh] sm:max-w-2xl' : 'max-h-[92dvh] sm:max-w-lg'} w-full overflow-y-auto overscroll-contain rounded-t-[32px] border border-b-0 border-white/70 bg-[#f4f7fb]/95 px-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1020]/95 dark:shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.12)] sm:rounded-[32px] sm:border-b sm:pb-6`} onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 -mx-4 mb-2 bg-gradient-to-b from-[#f4f7fb] from-70% to-[#f4f7fb]/0 px-4 pb-3 pt-2.5 dark:from-[#0b1020] dark:to-[#0b1020]/0">
           <div className="mx-auto mb-2.5 h-1.5 w-10 rounded-full bg-slate-900/15 dark:bg-white/20 sm:hidden" aria-hidden="true" />
           <div className="flex items-center justify-between gap-3">
             <h2 className="min-w-0 truncate text-[21px] font-semibold">{title}</h2>
             <button className="btn h-11 w-11 shrink-0 !rounded-full !p-0" aria-label="Close" onClick={onClose}><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
           </div>
+          {head}
         </div>
         {children}
       </div>
