@@ -540,6 +540,7 @@ export function Guide() {
       <Fold icon="🏦" title="Your bank (free, by email)">
         <P>LifeTracker reads your bank the free way: your banks <b>email you each purchase</b>, and every hour LifeTracker finds those alert emails in your Gmail and reads the amount, the shop and the date. No bank password, no bank login, nothing paid, and no AI (free patterns). It only reads: nothing can be paid or moved.</P>
         <P>Once per bank: in its app, turn on <b>purchase / transaction alerts by email</b> for every card, for any amount ($0.01). Settings → Bank & cards shows the steps for Bank of America, SoFi and Capital One. Gmail must be connected (Settings → Google).</P>
+        <P><b>PayPal</b> works too, with nothing to turn on: its “You paid $19.99 USD to Netflix.com” receipts are read the same way, so a monthly PayPal charge (like Netflix) shows up in Spending and, after two months in a row, as a bill.</P>
         <P>Deposits, payments to your card and statements are skipped. The purchases go into the same bill finder: the same company charging about the same amount every month (or year) is <b>added to your bills by itself</b> (Undo in the 🔔 Inbox), and price rises are flagged. The first time it also looks back over your old alert emails (300 at a time, so a big inbox takes a few mornings or taps on Read now: Gmail only allows so many reads a minute).</P>
         <Example caption="Made-up example of Settings → Bank & cards.">
           <AlertBanks gmail read={128} banks={['Bank of America', 'Capital One']} />
