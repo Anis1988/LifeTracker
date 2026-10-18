@@ -87,7 +87,26 @@ export function totalOf(text: string): number | null {
 
 /** What was read on a receipt (kept with its spending line, `transactions.details`). */
 export interface ReceiptItem { name: string; qty: number | null; price: number | null }
-export interface ReceiptDetails { store: string; date: string; total: number; tax: number | null; card: string | null; items: ReceiptItem[]; read: 'free' | 'ai' | 'hand'; by?: string | null }
+export interface ReceiptDetails { store: string; date: string; total: number; tax: number | null; card: string | null; items: ReceiptItem[]; read: 'free' | 'ai' | 'hand'; by?: string | null;
+  /** A receipt added to a bank purchase whose total isn't the bank's amount: kept = "use its items anyway" was picked. */
+  mismatch?: { receipt: number; bank: number; kept: boolean } | null }
+
+const TIP = /\b(tip|gratuity)\b/i;
+/**
+ * 📎 Does a receipt fit its bank purchase? Its total = the bank's amount (±$0.01), or the total plus a tip line written
+ * on it (a tip added after the receipt was printed) = the amount.
+ */
+export function receiptFits(d: Pick<ReceiptDetails, 'total' | 'items'>, amount: number): boolean {
+  const a = Math.abs(Number(amount));
+  const near = (x: number) => Math.abs(x - a) <= 0.011;
+  if (d.total > 0 && near(d.total)) return true;
+  const tip = (d.items ?? []).filter((i) => TIP.test(i.name)).reduce((s, i) => s + (i.price ?? 0), 0);
+  return tip > 0 && d.total > 0 && near(Math.round((d.total + tip) * 100) / 100);
+}
+/** The receipt's details as kept on a bank line: `mismatch` set when its total isn't the bank's (asked once, then kept). */
+export function fitTo(d: ReceiptDetails, amount: number, kept = false): ReceiptDetails {
+  return { ...d, mismatch: receiptFits(d, amount) ? null : { receipt: d.total, bank: Math.abs(Number(amount)), kept } };
+}
 
 const AMT = /(?:\$|usd)\s?(-?\d{1,3}(?:,\d{3})*(?:\.\d{2})|-?\d+(?:\.\d{2}))|(-?\d{1,3}(?:,\d{3})*\.\d{2})\s?(?:usd)?\s*$/i;
 const amtIn = (s: string) => { const m = s.match(AMT); const v = m ? Number((m[1] ?? m[2]).replace(/,/g, '')) : NaN; return Number.isFinite(v) && Math.abs(v) < 100000 ? v : null; };

@@ -41,6 +41,9 @@ function Spending() {
   // 🔎 Search (on this phone): shop, items on the receipt, amount, date, category, notes, the email it came from.
   const found = useMemo(() => (q.trim() ? st.tx.filter((x) => Number(x.amount) < 0 && matchSpend(x, q, spendCat(categorize(x, s.spend.rules)).label)).slice(0, 80) : []), [q, st.tx, s.spend.rules]);
   const receipts = useMemo(() => st.tx.filter((x) => x.receipt_path && x.posted.slice(0, 7) === month), [st.tx, month]);
+  // 🏦 The month's other purchases (bank alerts, CSV, bank link): tap one to edit it or 📎 add its receipt.
+  const others = useMemo(() => st.tx.filter((x) => !x.receipt_path && x.id && Number(x.amount) < 0 && x.posted.slice(0, 7) === month), [st.tx, month]);
+  const [allOthers, setAllOthers] = useState(false);
   const foundReceipts = found.filter((x) => x.receipt_path), foundOther = found.filter((x) => !x.receipt_path);
   const shown = q.trim() ? foundReceipts : receipts;
   const urls = useThumbs(shown);
@@ -82,10 +85,17 @@ function Spending() {
           <div className="flex items-baseline justify-between gap-2 px-1 pt-1"><p className="label">🧾 Receipts <span className="num">· {receipts.length}</span></p><span className="text-[11px] text-slate-500 dark:text-slate-400">Tap a picture for full screen</span></div>
           {receipts.length ? <ul className="space-y-3">{receipts.map((x) => card(x))}</ul>
             : <p className="card text-sm text-slate-500 dark:text-slate-400">No receipts this month yet. Receipts in your emails come here by themselves, or tap 📷 Add a receipt.</p>}
+          {others.length > 0 && (
+            <section className="card space-y-1" aria-label="Other purchases">
+              <div className="flex items-baseline justify-between gap-2"><p className="label">🏦 Other purchases <span className="num">· {others.length}</span></p><span className="text-[11px] text-slate-500 dark:text-slate-400">Tap one to edit or 📎 add its receipt</span></div>
+              <ul>{(allOthers ? others : others.slice(0, 12)).map((x) => <SpendRow key={x.id} t={x} rules={s.spend.rules} onOpen={() => setOpen({ id: x.id! })} />)}</ul>
+              {others.length > 12 && <button className="tap min-h-[44px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={() => setAllOthers(!allOthers)} aria-expanded={allOthers}>{allOthers ? 'Show less' : `Show all ${others.length}`}</button>}
+            </section>
+          )}
         </>
       )}
       <p className="text-xs text-slate-500 dark:text-slate-400">{gmail ? `📧 Your Gmail is checked every hour for receipts and bank alerts (free checks first). Last checked: ${lastChecked(st.status?.mail?.mailChecked ?? st.status?.mail?.receiptsScanned)}.` : 'Connect Gmail (Settings → Google) and receipts in your emails come here by themselves.'} A receipt that matches a bank purchase is attached to it, so nothing is counted twice.</p>
-      {sel && <ReceiptSheet key={sel.id} t={sel} url={sel.receipt_path ? urls[sel.receipt_path] : undefined} rules={s.spend.rules} startDelete={open?.del} onMove={(cat) => move(sel.merchant || (sel.description ?? 'other').toLowerCase(), cat)} onClose={() => setOpen(null)} onChanged={st.reload} />}
+      {sel && <ReceiptSheet key={sel.id} t={sel} url={sel.receipt_path ? urls[sel.receipt_path] : undefined} rules={s.spend.rules} userId={st.session.user.id} startDelete={open?.del} onMove={(cat) => move(sel.merchant || (sel.description ?? 'other').toLowerCase(), cat)} onClose={() => setOpen(null)} onChanged={st.reload} />}
       {viewing?.receipt_path && <ReceiptViewer t={viewing} url={urls[viewing.receipt_path]} onClose={() => setView(null)} onDelete={() => { setView(null); setOpen({ id: viewing.id!, del: true }); }} />}
     </div>
   );
