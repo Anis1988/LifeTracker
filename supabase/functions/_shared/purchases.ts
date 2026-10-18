@@ -2,9 +2,9 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@4.1.12';
 import type { Alert, Settings } from './model.ts';
 import { addCycle, daysBetween, iso, money, today } from './money.ts';
-import { has, isRateLimit, readEmail, refresh, searchIds, type Mail } from './google.ts';
+import { isRateLimit, readEmail, searchIds, type Mail } from './google.ts';
+import { boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 import { askAi } from './ai.ts';
-import { connection, open, saveConnection } from './server.ts';
 import { returnDaysFor } from './spend.ts';
 
 /**
@@ -41,20 +41,19 @@ export function looksLikeOrder(m: Mail): boolean {
 const addDays = (d: string, n: number) => iso(new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400_000));
 const addMonths = (d: string, n: number) => addCycle(d, 'monthly', n);
 
-export async function purchaseStep(db: SupabaseClient, userId: string, s: Settings, until: number, mails: Mail[] = []): Promise<string | void> {
+export async function purchaseStep(db: SupabaseClient, userId: string, s: Settings, until: number, box: Box, mails: Mail[] = []): Promise<string | void> {
   if (!s.purchases.on) return;
-  const c = await connection(db, userId, 'google');
-  if (!c || !has(c.meta.scope as string, 'gmail')) return;
-  const meta = (await connection(db, userId, 'mail'))?.meta ?? {};
+  const meta = await stateOf(db, userId, box, 'mail');
   const seen = new Set((meta.seenOrders as string[] | undefined) ?? []);
-  const at = await refresh(await open(c.secret));
+  const at = await tokenOf(box);
+  const tag = boxTag(box);
   const ids = (await searchIds(at, `newer_than:${meta.ordersScanned ? 4 : 60}d ${ORDER_QUERY}`, 60)).filter((id) => !seen.has(id));
   let read = 0, found = 0, skipped = 0, stopped = '';
   for (const id of ids) {
     if (Date.now() > until) { stopped = 'out of time: the rest next run'; break; }
     if (read >= s.purchases.maxPerRun) { stopped = 'the rest next run'; break; }
     let m: Mail;
-    try { m = await readEmail(at, id); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
+    try { m = await readEmail(at, id, tag); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
     if (!looksLikeOrder(m)) { seen.add(id); skipped++; continue; }
     mails.push(m); // 📇 also looked at for contacts (no second read)
     let x: z.infer<typeof PurchaseSchema>;
@@ -74,10 +73,10 @@ export async function purchaseStep(db: SupabaseClient, userId: string, s: Settin
     const days = x.returnDays ?? returnDaysFor(`${x.store} ${m.from}`);
     const returnBy = /^\d{4}-\d{2}-\d{2}$/.test(x.returnBy) ? x.returnBy : days ? addDays(bought, days) : null;
     const warranty = x.warrantyMonths ? addMonths(bought, x.warrantyMonths) : null;
-    const { error } = await db.from('purchases').upsert({ user_id: userId, key: `mail:${id}`, store: x.store.trim().slice(0, 120), item: x.item.slice(0, 200) || null, amount: x.amount, bought, return_by: returnBy, warranty_ends: warranty, notes: !/^\d{4}/.test(x.returnBy) && !x.returnDays && days ? `Return window: the store's usual ${days} days (check its policy).` : null }, { onConflict: 'user_id,key', ignoreDuplicates: true });
+    const { error } = await db.from('purchases').upsert({ user_id: userId, key: `mail:${id}`, store: x.store.trim().slice(0, 120), item: x.item.slice(0, 200) || null, amount: x.amount, bought, return_by: returnBy, warranty_ends: warranty, notes: [tag && `From email (${tag})`, !/^\d{4}/.test(x.returnBy) && !x.returnDays && days ? `Return window: the store's usual ${days} days (check its policy).` : ''].filter(Boolean).join('. ') || null }, { onConflict: 'user_id,key', ignoreDuplicates: true });
     if (!error) found++;
   }
-  await saveConnection(db, userId, 'mail', null, { seenOrders: [...seen].slice(-3000), ordersScanned: iso(new Date()) });
+  await saveState(db, userId, box, 'mail', { seenOrders: [...seen].slice(-3000), ordersScanned: iso(new Date()) });
   if (ids.length) return `${found} purchase(s) found in ${read} order email(s)${skipped ? `, ${skipped} skipped for free` : ''}${stopped ? ` (${stopped})` : ''}`;
 }
 

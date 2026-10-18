@@ -1,7 +1,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Sender, Settings } from './model.ts';
-import { archive, ensureLabel, has, isRateLimit, readHead, refresh, searchIds, sendMail, type MailHead } from './google.ts';
-import { connection, open, saveConnection } from './server.ts';
+import { archive, ensureLabel, has, isRateLimit, readHead, searchIds, sendMail, type MailHead } from './google.ts';
+import { saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 
 /**
  * 📭 Mailing lists. Only email HEADERS are read (who sent it, the subject, opened or not, and the official
@@ -46,14 +46,12 @@ export function safeUrl(u: string): boolean {
 type Agg = { address: string; name: string; sample: string; sampleDate: string; emails: number; unread: number; first: string; last: string; opened: string | null; unsub: Sender['unsub']; spam: boolean };
 
 /** Reads new email headers (first time: the last few months, 300 a run), and counts them per sender. */
-export async function sweepStep(db: SupabaseClient, userId: string, s: Settings, until: number): Promise<string | void> {
+export async function sweepStep(db: SupabaseClient, userId: string, s: Settings, until: number, box: Box): Promise<string | void> {
   if (!s.unsub.on) return;
-  const c = await connection(db, userId, 'google');
-  if (!c || !has(c.meta.scope as string, 'gmail')) return;
-  const meta = (await connection(db, userId, 'mail'))?.meta ?? {};
+  const meta = await stateOf(db, userId, box, 'mail');
   const done = !!meta.sweepDone;
   const seen = new Set((meta.seenSweep as string[] | undefined) ?? []);
-  const at = await refresh(await open(c.secret));
+  const at = await tokenOf(box);
   const days = done ? 3 : Math.max(90, s.unsub.days + 30);
   const q = `newer_than:${days}d -in:sent -in:chats -in:drafts (category:promotions OR category:social OR category:updates OR category:forums OR unsubscribe)`;
   const all = (await searchIds(at, q, done ? 400 : 3000)).filter((id) => !seen.has(id));
@@ -102,7 +100,7 @@ export async function sweepStep(db: SupabaseClient, userId: string, s: Settings,
     if (error) throw new Error(error.message);
   }
   const left = all.length - Math.min(all.length, 300);
-  await saveConnection(db, userId, 'mail', null, { seenSweep: [...seen].slice(-6000), lastSweep: new Date().toISOString(), sweepDone: done || (left <= 0 && !stopped), headsRead: ((meta.headsRead as number) ?? 0) + read });
+  await saveState(db, userId, box, 'mail', { seenSweep: [...seen].slice(-6000), lastSweep: new Date().toISOString(), sweepDone: done || (left <= 0 && !stopped), headsRead: ((meta.headsRead as number) ?? 0) + read });
   if (read) return `${read} email header(s) read, ${agg.size} mailing list(s)${!done && left > 0 ? `; ${left} older emails next time` : ''}${stopped ? ` (${stopped})` : ''}`;
 }
 
@@ -141,14 +139,21 @@ export async function unsubscribeOne(db: SupabaseClient, userId: string, sender:
   return { status: sender.status, error: 'No unsubscribe option from this sender. Block it instead.' };
 }
 
-/** Automatic mode + tidy: unsubscribe from senders you haven't opened in `days` days; keep their emails out of the inbox. */
-export async function unsubStep(db: SupabaseClient, userId: string, s: Settings, until: number): Promise<string | void> {
-  if (!s.unsub.on) return;
-  const c = await connection(db, userId, 'google');
-  if (!c || !has(c.meta.scope as string, 'gmail')) return;
-  const mailbox = has(c.meta.scope as string, 'mailbox');
+/**
+ * The token to send an "unsubscribe" email with: the main mailbox when it may, else the first one that may (the
+ * mailing lists of all your mailboxes are one list).
+ */
+export async function sendBox(boxes: Box[]): Promise<{ at?: string; mailbox: boolean }> {
+  const b = boxes.find((x) => has(x.scope, 'mailbox'));
+  return b ? { at: await tokenOf(b), mailbox: true } : { mailbox: false };
+}
+
+/** Automatic mode + tidy: unsubscribe from senders you haven't opened in `days` days; keep their emails out of the inbox (in every mailbox that allows it). */
+export async function unsubStep(db: SupabaseClient, userId: string, s: Settings, until: number, boxes: Box[]): Promise<string | void> {
+  if (!s.unsub.on || !boxes.length) return;
+  const { at, mailbox } = await sendBox(boxes);
+  const tidyBoxes = boxes.filter((b) => has(b.scope, 'mailbox'));
   if (!s.unsub.auto && !(s.unsub.tidy && mailbox)) return;
-  const at = await refresh(await open(c.secret));
   const out: string[] = [];
   if (s.unsub.auto) {
     const cutoff = new Date(Date.now() - s.unsub.days * 86400_000).toISOString().slice(0, 10);
@@ -157,8 +162,12 @@ export async function unsubStep(db: SupabaseClient, userId: string, s: Settings,
     let n = 0;
     for (const x of due) {
       if (Date.now() > until) break;
-      // Opened one lately (seen in Gmail, even if the app hadn't noticed)? Keep that list.
-      const read = await searchIds(at, `from:"${x.address}" -is:unread newer_than:${s.unsub.days}d`, 1).catch(() => [] as string[]);
+      // Opened one lately (seen in any of your mailboxes, even if the app hadn't noticed)? Keep that list.
+      let read: string[] = [];
+      for (const b of boxes) {
+        read = await searchIds(await tokenOf(b), `from:"${x.address}" -is:unread newer_than:${s.unsub.days}d`, 1).catch(() => [] as string[]);
+        if (read.length) break;
+      }
       if (read.length) { await db.from('senders').update({ last_opened: new Date().toISOString().slice(0, 10) }).eq('id', x.id); continue; }
       const r = await unsubscribeOne(db, userId, x, { at, mailbox, auto: true }).catch((e) => ({ status: 'failed' as const, error: String(e) }));
       if (r.status === 'unsubscribed') n++;
@@ -171,25 +180,32 @@ export async function unsubStep(db: SupabaseClient, userId: string, s: Settings,
     const { data } = await db.from('senders').select('id, address, status, done_at').eq('user_id', userId).in('status', ['unsubscribed', 'blocked']).limit(200);
     const list = ((data ?? []) as Pick<Sender, 'id' | 'address' | 'status' | 'done_at'>[]).filter((x) => x.status === 'blocked' || (x.done_at && x.done_at < twoDays));
     let moved = 0;
-    const labels: Record<string, string> = {};
-    for (const x of list.slice(0, 40)) {
-      if (Date.now() > until) break;
-      const ids = await searchIds(at, `from:"${x.address}" in:inbox`, 200).catch(() => []);
-      if (!ids.length) continue;
-      const name = x.status === 'blocked' ? 'LifeTracker/Blocked' : 'LifeTracker/Unsubscribed';
-      labels[name] ??= await ensureLabel(at, name);
-      await archive(at, ids, labels[name]);
-      moved += ids.length;
+    for (const b of tidyBoxes) {
+      const bt = await tokenOf(b);
+      const labels: Record<string, string> = {};
+      for (const x of list.slice(0, 40)) {
+        if (Date.now() > until) break;
+        const ids = await searchIds(bt, `from:"${x.address}" in:inbox`, 200).catch(() => []);
+        if (!ids.length) continue;
+        const name = x.status === 'blocked' ? 'LifeTracker/Blocked' : 'LifeTracker/Unsubscribed';
+        labels[name] ??= await ensureLabel(bt, name);
+        await archive(bt, ids, labels[name]);
+        moved += ids.length;
+      }
     }
     if (moved) out.push(`${moved} email(s) from unsubscribed or blocked senders moved out of the inbox (label LifeTracker/…)`);
   }
   if (out.length) return out.join('; ');
 }
 
-/** Block: their emails go out of the inbox (labelled), now and every morning. Nothing is deleted. */
-export async function blockOne(db: SupabaseClient, userId: string, sender: Sender, at: string): Promise<number> {
-  const ids = await searchIds(at, `from:"${sender.address}" in:inbox`, 500);
-  if (ids.length) await archive(at, ids, await ensureLabel(at, 'LifeTracker/Blocked'));
+/** Block: their emails go out of the inbox (labelled) in every mailbox that allows it, now and every morning. Nothing is deleted. */
+export async function blockOne(db: SupabaseClient, userId: string, sender: Sender, ats: string[]): Promise<number> {
+  let n = 0;
+  for (const at of ats) {
+    const ids = await searchIds(at, `from:"${sender.address}" in:inbox`, 500);
+    if (ids.length) await archive(at, ids, await ensureLabel(at, 'LifeTracker/Blocked'));
+    n += ids.length;
+  }
   await db.from('senders').update({ status: 'blocked', done_at: new Date().toISOString(), error: null }).eq('id', sender.id).eq('user_id', userId);
-  return ids.length;
+  return n;
 }

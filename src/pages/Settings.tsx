@@ -3,6 +3,7 @@ import { lastChecked } from '../components/Receipts';
 import { useStore } from '../lib/store';
 import { api, siteUrl, supabase } from '../lib/supabase';
 import { AlertBanks } from '../components/Bank';
+import { GoogleAccounts, type GoogleExtra } from '../components/GoogleAccounts';
 import { Field, Sheet, Toggle, errText, toast } from '../components/ui';
 import { SETTINGS_INDEX as SEC, SettingsSearch, SettingsTiles, settingsHref, type SettingsTile } from '../components/SettingsGrid';
 import { NewPin, PeopleEditor, PinPad } from '../components/Vault';
@@ -56,7 +57,8 @@ export function Settings() {
     const m = location.hash.match(/google=([^&]+)/);
     if (!m) return;
     const msg = decodeURIComponent(m[1]);
-    toast(msg === 'connected' ? 'ok' : 'err', msg === 'connected' ? 'Google connected. Your calendar is being filled.' : msg);
+    const added = msg.startsWith('added:') ? msg.slice(6) : '';
+    toast(msg === 'connected' || added ? 'ok' : 'err', msg === 'connected' ? 'Google connected. Your calendar is being filled.' : added ? `${added} added: its emails are being read now.` : msg);
     show('google');
     void st.reloadStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -64,6 +66,21 @@ export function Settings() {
   const google = async (want: ('calendar' | 'gmail' | 'mailbox')[]) => run('google', async () => {
     const r = await api<{ url: string }>('google-start', { want, back: siteUrl() });
     location.href = r.url;
+  });
+  // ✉️ Extra Gmail accounts: Google asks which account each time (Gmail only; mailing lists only if asked).
+  const addGoogle = (extra: string, want: ('gmail' | 'mailbox')[] = ['gmail']) => run(extra === 'new' ? 'google-add' : extra, async () => {
+    const r = await api<{ url: string }>('google-start', { want, back: siteUrl(), extra });
+    location.href = r.url;
+  });
+  const toggleExtra = (kind: string, on: boolean) => run(kind, async () => {
+    await api('google-extra', { kind, on });
+    await st.reloadStatus();
+  });
+  const dropExtra = (x: GoogleExtra) => run(x.kind, async () => {
+    if (!confirm(`Disconnect ${x.email ?? 'this Google account'}? LifeTracker stops reading it and Google forgets its access. What was already found stays.`)) return;
+    await api('disconnect', { kind: x.kind });
+    toast('ok', `${x.email ?? 'The account'} disconnected.`);
+    await st.reloadStatus();
   });
   const bank = () => run('bank', async () => {
     const r = await api<{ log: { steps: string[]; errors: string[] } }>('bank-connect', { setupToken: token.trim() });
@@ -289,6 +306,14 @@ export function Settings() {
       {!status?.google.gmail && <button className="btn" disabled={!!busy || !status?.keys.google} onClick={() => void google(['gmail'])}>✉️ Also read Gmail receipts</button>}
       {status?.google.connected && <button className="btn text-red-700 dark:text-red-300" disabled={!!busy} onClick={() => void disconnect('google')}>Disconnect</button>}
     </div>
+    {(status?.google.connected || !!status?.googleExtras?.length) && (
+      <GoogleAccounts
+        main={status?.google.connected ? { email: status.google.email ?? null, gmail: !!status.google.gmail, calendar: !!status.google.calendar, lastScan: status.google.lastScan ?? status.google.lastGmail ?? null } : null}
+        extras={status?.googleExtras ?? []} busy={busy} canAdd={!!status?.keys.google}
+        onAdd={() => void addGoogle('new')} onToggle={(k, on) => void toggleExtra(k, on)} onDisconnect={(x) => void dropExtra(x)}
+        onMailbox={(x) => { if (confirm(`Let LifeTracker manage mailing lists in ${x.email ?? 'this account'} too? It can then archive and label emails from senders you blocked or left (never deletes) and send the “unsubscribe” email some senders ask for.`)) void addGoogle(x.kind, ['gmail', 'mailbox']); }}
+      />
+    )}
     <Field label="Put bills in my calendar" hint="One “LifeTracker” calendar: due dates (repeating), renewals, trial ends. The app can’t see or change your other calendars.">
       <Toggle on={s.calendar.on} onChange={(v) => save({ calendar: { ...s.calendar, on: v } })} label="Calendar" />
     </Field>

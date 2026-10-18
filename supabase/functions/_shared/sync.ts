@@ -4,6 +4,8 @@ import { addCycle, daysBetween, dueDayOf, iso, money, nextDue, parseDay, perYear
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
 import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
+import { boxName, boxTag, mailBoxes, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
+import { sameSpend } from './receiptText.ts';
 import { readWithAi } from './ai.ts';
 import { connection, env, open, saveConnection, settingsOf } from './server.ts';
 import { ALERT_QUERY, AUTOPAY_QUERY, parseAutopay, parseBankAlert } from './alerts.ts';
@@ -60,42 +62,53 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
 
   // 📇 Emails the steps below read (appointments, bills, orders): also looked at for contacts, without reading them twice.
   const mails: Mail[] = [];
-  // 📅 Appointments (also every hour on their own): straight into the calendar.
+  // ✉️ Every Gmail step reads each mailbox in turn: the main Google account, then the extra ones switched on.
+  const boxes = await mailBoxes(db, userId).catch(() => [] as Box[]);
+  const each = async (name: string, f: (b: Box) => Promise<string | void>) => { for (const b of boxes) await step(boxName(name, b), () => f(b)); };
+  // 📅 Appointments (also every hour on their own): straight into the (main account's) calendar.
   let apptChanges = 0;
-  if (want('appts')) await step('Appointments', async () => { const r = await apptEmailStep(db, userId, s, alerts, until, mails); apptChanges = r.changed; return r.text; });
+  if (want('appts')) await each('Appointments', async (b) => { const r = await apptEmailStep(db, userId, s, alerts, until, mails, b); apptChanges += r.changed; return r.text; });
   // 🎉 Friday morning: this weekend's list near your zip (early in the run, so the long email reads can't crowd it out).
   if (want('weekend')) await step('This weekend', () => weekendStep(db, userId, s, alerts, opts.force));
   if (!want('bills') && (apptChanges || (opts.only?.includes('calendar')))) await step('Calendar', () => calendarStep(db, userId, s));
   if (want('bills')) {
     await step('Bank', () => bankStep(db, userId, s, opts.full));
-    await step('Bank alerts', () => alertStep(db, userId, s, until));
+    await each('Bank alerts', (b) => alertStep(db, userId, s, until, b));
     await step('Recurring', () => detectStep(db, userId, s, alerts));
-    await step('Gmail', () => gmailStep(db, userId, s, alerts, until, mails));
+    await each('Gmail', (b) => gmailStep(db, userId, s, alerts, until, b, mails));
     await step('Due dates', () => rollStep(db, userId));
     await step('Calendar', () => calendarStep(db, userId, s));
     await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
     await step('Money log', () => pruneLog(db, userId)); // 📜 kept 180 days
   } else if (want('mail')) {
-    await step('Bank alerts', () => alertStep(db, userId, s, until));
-    await step('Gmail', () => gmailStep(db, userId, s, alerts, until, mails));
+    await each('Bank alerts', (b) => alertStep(db, userId, s, until, b));
+    await each('Gmail', (b) => gmailStep(db, userId, s, alerts, until, b, mails));
   }
   const mail = want('mail') || want('vault');
   // 🧾 Receipts the Vault once put in Returns move to Spending (once).
   if (want('bills') || mail) await step('Receipts moved', () => moveOldReceipts(db, userId));
-  if (want('purchases') || want('mail')) await step('Returns & warranties', () => purchaseStep(db, userId, s, until, mails));
+  if (want('purchases') || want('mail')) await each('Returns & warranties', (b) => purchaseStep(db, userId, s, until, b, mails));
   // 📁 Important documents attached to emails → Vault (owner's choice: straight in); receipts → Spending, bills → Bills.
-  if (want('bills') || mail) await step('Vault', () => vaultEmailStep(db, userId, s, alerts, until + 10_000));
+  if (want('bills') || mail) await each('Vault', (b) => vaultEmailStep(db, userId, s, alerts, until + 10_000, b));
   // 🧾 Plain receipt emails → Spending (free patterns first).
-  if (want('bills') || mail) await step('Receipts', () => receiptEmailStep(db, userId, s, until + 10_000, mails));
+  if (want('bills') || mail) await each('Receipts', (b) => receiptEmailStep(db, userId, s, until + 10_000, b, mails));
   if (want('bills') || mail) await saveConnection(db, userId, 'receipts', null, { mailChecked: new Date().toISOString() }).catch(() => undefined);
   // 📇 Contacts: straight into Contacts (owner's choice). The hourly appointment look only folds in what it already read.
-  if (want('contacts') || mails.length) await step('Contacts', () => contactStep(db, userId, s, until + 10_000, { mails, search: want('contacts'), email }));
+  if (want('contacts') || mails.length) await step('Contacts', () => contactStep(db, userId, s, until + 10_000, { mails, search: want('contacts'), email, boxes }));
   if (want('bills') || want('purchases')) await step('Coming up', () => lifeStep(db, userId, s, alerts));
-  if (want('breaches')) await step('Data breaches', () => breachStep(db, userId, alerts));
+  if (want('breaches')) await each('Data breaches', (b) => breachStep(db, userId, alerts, b));
   if (want('online')) await step('Your name online', async () => { await ensureBrokers(db, userId); return onlineStep(db, userId, s, alerts, opts.force); });
   if (want('lists')) {
-    await step('Mailing lists', () => sweepStep(db, userId, s, until));
-    await step('Unsubscribe', () => unsubStep(db, userId, s, until + 10_000));
+    await each('Mailing lists', (b) => sweepStep(db, userId, s, until, b));
+    await step('Unsubscribe', () => unsubStep(db, userId, s, until + 10_000, boxes));
+  }
+  // Each mailbox: when it was last looked at (and its first problem, shown under it in Settings → Google).
+  if (want('bills') || mail || want('appts') || want('purchases')) {
+    const now = new Date().toISOString();
+    for (const b of boxes) {
+      const err = b.main ? undefined : log.errors.find((e) => e.includes(`(${b.email ?? b.kind}):`));
+      await saveState(db, userId, b, 'google', { lastScan: now, ...(b.main ? {} : { lastError: err?.slice(0, 200) ?? null }) }).catch(() => undefined);
+    }
   }
 
   if (alerts.length) {
@@ -142,10 +155,11 @@ export async function storeRows(db: SupabaseClient, userId: string, rows: BankRo
 }
 
 // ---------- 📧 bank alert emails (free: patterns, no AI) ----------
-async function alertStep(db: SupabaseClient, userId: string, s: Settings, until: number): Promise<string | void> {
-  const c = await connection(db, userId, 'google');
-  if (!c || !s.bank.alerts || !has(c.meta.scope as string, 'gmail')) return;
-  const at = await refresh(await open(c.secret));
+async function alertStep(db: SupabaseClient, userId: string, s: Settings, until: number, box: Box): Promise<string | void> {
+  if (!s.bank.alerts) return;
+  const c = { meta: await stateOf(db, userId, box, 'google') };
+  const at = await tokenOf(box);
+  const tag = boxTag(box);
   const seen = new Set((c.meta.seenAlerts as string[] | undefined) ?? []);
   // First time: as far back as your alerts go (400 days), spread over several runs so Gmail's per-minute limit isn't hit; then the last week.
   // A new kind of alert (ALERT_QUERY changed, e.g. PayPal added) looks back again once; emails already read are skipped.
@@ -158,7 +172,7 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
   for (const id of ids) {
     if (Date.now() > until) { stopped = 'out of time: the rest next time'; break; }
     let m;
-    try { m = await readEmail(at, id); } catch (e) {
+    try { m = await readEmail(at, id, tag); } catch (e) {
       if (!isRateLimit(e)) throw e;
       stopped = 'Gmail asked to slow down: the rest next time'; break;
     }
@@ -166,19 +180,42 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
     const tx = parseBankAlert(m);
     if (!tx) { skipped++; continue; }
     banks.add(tx.bank);
-    rows.push({ user_id: userId, external_id: `mail:${id}`, account: tx.account, posted: tx.posted, amount: -tx.amount, description: tx.merchant, merchant: merchantKey(tx.merchant), source: 'alert' });
+    rows.push({ user_id: userId, external_id: `mail:${id}`, account: tx.account, posted: tx.posted, amount: -tx.amount, description: tx.merchant, merchant: merchantKey(tx.merchant), source: 'alert', ...(tag ? { note: `From email (${tag})` } : {}) });
   }
+  // ✉️ The same alert sent to two of your mailboxes: counted once.
+  const { rows: fresh, twins } = await otherBoxTwins(db, userId, rows, tag);
   // 🧾 A purchase already in Spending from its receipt: merged into that line (counted once).
-  const { rows: toAdd, merged } = await mergeBankRows(db, userId, rows);
+  const { rows: toAdd, merged } = await mergeBankRows(db, userId, fresh);
   await storeRows(db, userId, toAdd, s.spend.rules);
   const left = all.filter((id) => !seen.has(id)).length;
-  await saveConnection(db, userId, 'google', null, {
+  await saveState(db, userId, box, 'google', {
     seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(), alertsDone: done || left === 0, alertsQuery: ALERT_QUERY,
     alertsRead: ((c.meta.alertsRead as number) ?? 0) + rows.length, alertBanks: [...new Set([...((c.meta.alertBanks as string[]) ?? []), ...banks])],
   });
-  if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${merged ? ` (${merged} matched a receipt already in Spending)` : ''}${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}${left ? `; ${left} older ones next time` : ''}${stopped ? `. ${stopped}` : ''}`;
+  if (ids.length) return `${rows.length} purchase(s) read from ${ids.length} alert email(s)${twins ? ` (${twins} already read from your other mailbox)` : ''}${merged ? ` (${merged} matched a receipt already in Spending)` : ''}${banks.size ? ` (${[...banks].join(', ')})` : ''}${skipped ? `, ${skipped} not purchases` : ''}${left ? `; ${left} older ones next time` : ''}${stopped ? `. ${stopped}` : ''}`;
 }
 const PER_RUN = 300; // alert emails read per run (about 75 seconds)
+
+/** Which mailbox an alert line came from: "From email (work@…)" in its note for an extra one, else the main one. */
+const mailboxOf = (note: string | null | undefined) => note?.match(/^From email \(([^)]+)\)/)?.[1] ?? '';
+/**
+ * The same bank alert can reach two mailboxes (a forward, two addresses on the card): a line already read from ANOTHER
+ * mailbox with the same amount, a similar shop and a date within 1 day is the same purchase. Two equal purchases in
+ * the same mailbox stay two (two coffees on one day are real).
+ */
+async function otherBoxTwins(db: SupabaseClient, userId: string, rows: BankRow[], tag: string | undefined): Promise<{ rows: BankRow[]; twins: number }> {
+  if (!rows.length) return { rows, twins: 0 };
+  const days = rows.map((r) => r.posted).sort();
+  const shift = (d: string, n: number) => iso(new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400_000));
+  const { data } = await db.from('transactions').select('posted, amount, description, merchant, note').eq('user_id', userId).eq('source', 'alert')
+    .gte('posted', shift(days[0], -1)).lte('posted', shift(days[days.length - 1], 1)).limit(5000);
+  const mine = tag ?? '';
+  const others = ((data ?? []) as { posted: string; amount: number; description: string | null; merchant: string | null; note: string | null }[]).filter((t) => mailboxOf(t.note) !== mine);
+  if (!others.length) return { rows, twins: 0 };
+  const near = (a: string, b: string) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) <= 86400_000;
+  const keep = rows.filter((r) => !others.some((t) => near(r.posted, t.posted) && sameSpend(r, t)));
+  return { rows: keep, twins: rows.length - keep.length };
+}
 
 // ---------- 🔁 recurring bills in the transactions ----------
 async function detectStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[]): Promise<string | void> {
@@ -222,10 +259,12 @@ async function detectStep(db: SupabaseClient, userId: string, s: Settings, alert
 }
 
 // ---------- ✉️ Gmail receipts ----------
-async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number, mails: Mail[] = []): Promise<string | void> {
-  const c = await connection(db, userId, 'google');
-  if (!c || !s.gmail.on || !has(c.meta.scope as string, 'gmail')) return;
-  const at = await refresh(await open(c.secret));
+async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number, box: Box, mails: Mail[] = []): Promise<string | void> {
+  if (!s.gmail.on) return;
+  const c = { meta: await stateOf(db, userId, box, 'google') };
+  const at = await tokenOf(box);
+  const tag = boxTag(box);
+  const via = tag ? { mailbox: tag } : {};
   const seen = new Set((c.meta.seenMail as string[] | undefined) ?? []);
   // Look back to the last run that read everything (first time: 60 days), so a run stopped by limits loses nothing.
   const last = c.meta.gmailDone as string | undefined;
@@ -240,7 +279,7 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   for (const id of apIds) {
     if (Date.now() > until) break;
     let m;
-    try { m = await readEmail(at, id); } catch (e) { if (!isRateLimit(e)) throw e; break; }
+    try { m = await readEmail(at, id, tag); } catch (e) { if (!isRateLimit(e)) throw e; break; }
     apSeen.add(id);
     const n = parseAutopay({ from: m.from, subject: m.subject, text: m.text, date: m.date });
     if (!n) continue;
@@ -251,13 +290,13 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
       endsOn: null, trialEnds: null, last4: n.last4, policyNumber: '', coverage: '', deductible: null, balance: null, rate: null,
       summary: `Auto Pay of ${money(n.amount)} on ${n.due}${n.last4 ? ` from the account ending ${n.last4}` : ''}.`, warnings: [],
     };
-    const r = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(n.company)}`, { subject: m.subject, from: m.from, autopay: true }, (items as Item[]) ?? [], alerts);
+    const r = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(n.company)}`, { subject: m.subject, from: m.from, autopay: true, ...via }, (items as Item[]) ?? [], alerts);
     if (r.itemId) await db.from('items').update({ autopay: true }).eq('id', r.itemId).eq('user_id', userId);
   }
   for (const id of ids) {
     if (Date.now() > until) { stopped = 'out of time: the rest next time'; break; }
     let m;
-    try { m = await readEmail(at, id); } catch (e) {
+    try { m = await readEmail(at, id, tag); } catch (e) {
       if (!isRateLimit(e)) throw e;
       stopped = 'Gmail asked to slow down: the rest next time'; break;
     }
@@ -275,11 +314,11 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
     seen.add(id);
     if (!x.isBill) continue;
     bills++;
-    await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from }, (items as Item[]) ?? [], alerts);
+    await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, ...via }, (items as Item[]) ?? [], alerts);
   }
   const now = new Date().toISOString();
   const done = !stopped && ids.every((id) => seen.has(id));
-  await saveConnection(db, userId, 'google', null, { seenMail: [...seen].slice(-1000), seenAutopay: [...apSeen].slice(-500), gmailScanned: now, ...(done ? { gmailDone: now } : {}) });
+  await saveState(db, userId, box, 'google', { seenMail: [...seen].slice(-1000), seenAutopay: [...apSeen].slice(-500), gmailScanned: now, ...(done ? { gmailDone: now } : {}) });
   return `${ids.length} email(s) looked at: ${read} read by the AI, ${bills} bill(s), ${skipped} skipped for free${stopped ? `. Stopped: ${stopped}` : ''}`;
 }
 
@@ -316,6 +355,8 @@ export async function applyExtracted(db: SupabaseClient, userId: string, x: Extr
 
 const CYCLE_WORD: Record<string, string> = { weekly: 'weekly', biweekly: 'every 2 weeks', monthly: 'monthly', quarterly: 'every 3 months', semiannual: 'every 6 months', yearly: 'yearly', once: 'one time' };
 const FROM: Record<string, string> = { bank: 'from your bank', email: 'from your email', document: 'from a document' };
+/** "from your email (work@…)" when it came from an extra Google account. */
+const fromText = (b: Pick<FoundBill, 'source' | 'evidence'>) => (b.source === 'email' && typeof b.evidence.mailbox === 'string' ? `from your email (${b.evidence.mailbox})` : FROM[b.source]);
 
 /**
  * 🆕 A bill found automatically (bank rhythm, a bill email, an uploaded or emailed bill document) goes straight into
@@ -345,8 +386,8 @@ export async function autoAddBill(db: SupabaseClient, userId: string, b: FoundBi
     user_id: userId, key: b.key, source: b.source, name, category: b.category, amount: b.amount, currency: b.currency || 'USD', cycle, next_due: b.next_due,
     ends_on: b.ends_on ?? null, trial_ends: b.trial_ends ?? null, merchant: b.merchant, details, evidence: { ...b.evidence, auto: true }, status: 'accepted', item_id: item.id,
   }, { onConflict: 'user_id,source,key' }).select('id').single();
-  await logMoney(db, userId, [{ kind: 'bill', ref: item.id, data: { item: item.id, source: b.source }, text: `bill ${name}${amount ? ` ${money(amount)}` : ''} ${CYCLE_WORD[cycle]} auto-added — ${FROM[b.source]}` }]);
-  alerts.push({ user_id: userId, kind: 'found', key: `${b.source}:${b.key}`, item_id: item.id, title: `Added: ${name}${amount ? ` ${money(amount)}` : ''} ${CYCLE_WORD[cycle]} — ${FROM[b.source]}`.slice(0, 200), body: 'Added to your bills by itself. Not a bill, or wrong? Tap Undo in the 🔔 Inbox (it won’t come back), or open it in Money → Bills to change it.' });
+  await logMoney(db, userId, [{ kind: 'bill', ref: item.id, data: { item: item.id, source: b.source }, text: `bill ${name}${amount ? ` ${money(amount)}` : ''} ${CYCLE_WORD[cycle]} auto-added — ${fromText(b)}` }]);
+  alerts.push({ user_id: userId, kind: 'found', key: `${b.source}:${b.key}`, item_id: item.id, title: `Added: ${name}${amount ? ` ${money(amount)}` : ''} ${CYCLE_WORD[cycle]} — ${fromText(b)}`.slice(0, 200), body: 'Added to your bills by itself. Not a bill, or wrong? Tap Undo in the 🔔 Inbox (it won’t come back), or open it in Money → Bills to change it.' });
   return { itemId: item.id, suggestionId: sug?.id, added: true };
 }
 

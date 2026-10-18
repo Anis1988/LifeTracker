@@ -43,6 +43,7 @@ that expire, credit freeze, and a weekly "My week" summary.
 ### 4. Google (Calendar and Gmail)
 Google Cloud console → new project → enable **Google Calendar API** and **Gmail API** → OAuth consent screen (External, add yourself as a test user) → Credentials → OAuth client **Web application** with redirect URI
 `https://<ref>.supabase.co/functions/v1/google-callback`. Put the client id/secret in the Supabase secrets. Publish the consent screen so the sign-in doesn't expire every 7 days.
+Extra Gmail accounts (Settings → Google → ＋ Add another Google account) use the same client and redirect; while the consent screen is still in Testing, add each extra address under Audience → Test users first.
 
 ### 5. Morning run
 Supabase → **Vault** → add two secrets: `lt_project_url` = `https://<ref>.supabase.co` and `lt_cron_secret` = the same text as `CRON_SECRET`.

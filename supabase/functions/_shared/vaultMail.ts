@@ -1,8 +1,8 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Alert, Item, Settings } from './model.ts';
 import { iso } from './money.ts';
-import { getAttachment, has, isRateLimit, readEmail, refresh, searchIds, type Attachment, type Mail } from './google.ts';
-import { connection, open, saveConnection } from './server.ts';
+import { getAttachment, isRateLimit, readEmail, searchIds, type Attachment, type Mail } from './google.ts';
+import { boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 import { classifyAttachment, fromEmailNote, vaultKey, type Route } from './vaultText.ts';
 import { mimeOf, readBill, readVault, safeName, sha256 } from './vault.ts';
 import { applyExtracted } from './sync.ts';
@@ -28,13 +28,11 @@ type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 const QUERY = 'has:attachment -category:promotions -category:social -in:sent -in:chats -in:drafts (filename:pdf OR filename:jpg OR filename:jpeg OR filename:png OR filename:heic OR filename:webp)';
 const addDays = (d: string, n: number) => iso(new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400_000));
 
-export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number): Promise<string | void> {
+export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Settings, alerts: NewAlert[], until: number, box: Box): Promise<string | void> {
   if (!s.vault.emails) return;
-  const c = await connection(db, userId, 'google');
-  if (!c || !has(c.meta.scope as string, 'gmail')) return;
-  const meta = (await connection(db, userId, 'vault'))?.meta ?? {};
+  const meta = await stateOf(db, userId, box, 'vault');
   const seen = new Set((meta.seen as string[] | undefined) ?? []);
-  const at = await refresh(await open(c.secret));
+  const at = await tokenOf(box);
   // First time: the last 6 months; then the last few days (an email stopped half-way is looked at again).
   const ids = (await searchIds(at, `newer_than:${meta.scanned ? 5 : 180}d ${QUERY}`, meta.scanned ? 60 : 150)).filter((id) => !seen.has(id));
   const { data: items } = await db.from('items').select('*').eq('user_id', userId).neq('status', 'cancelled');
@@ -42,7 +40,7 @@ export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Sett
   for (const id of ids) {
     if (Date.now() > until) { stopped = 'out of time: the rest next run'; break; }
     let m: Mail;
-    try { m = await readEmail(at, id); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
+    try { m = await readEmail(at, id, boxTag(box)); } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
     let done = true;
     for (const a of (m.attachments ?? []).slice(0, 6)) {
       const route = classifyAttachment({ subject: m.subject, from: m.from, filename: a.filename, mime: a.mime, size: a.size, text: m.text, listUnsub: m.listUnsub, inline: a.inline });
@@ -62,7 +60,7 @@ export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Sett
     if (done) seen.add(id);
     if (!done) break;
   }
-  await saveConnection(db, userId, 'vault', null, { seen: [...seen].slice(-4000), scanned: new Date().toISOString() });
+  await saveState(db, userId, box, 'vault', { seen: [...seen].slice(-4000), scanned: new Date().toISOString() });
   if (vault || bills || receipts || stopped) return `${ids.length} email(s) with files: ${vault} to Vault, ${bills} bill(s) to Bills, ${receipts} receipt(s) to Money → Spending, ${skipped} skipped for free${stopped ? ` (${stopped})` : ''}`;
 }
 
@@ -121,7 +119,7 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
   if (x.isBill && moneyRoute !== 'receipt') {
     const docId = await keepAsDoc();
     // Same key as the bill emails read in the morning ("mail:<company>"): one bill per company, not two.
-    const link = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, documentId: docId }, items, alerts);
+    const link = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, documentId: docId, ...(m.box ? { mailbox: m.box } : {}) }, items, alerts);
     if (link.itemId) await db.from('documents').update({ item_id: link.itemId }).eq('id', docId);
     return { saved: 'bill', reads };
   }
@@ -138,7 +136,7 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
   if (days) {
     const { data: prev } = await db.from('purchases').select('id, file').eq('user_id', userId).eq('key', `mail:${m.id}`).maybeSingle();
     if (prev) { if (!prev.file) await db.from('purchases').update({ file: path }).eq('id', prev.id); }
-    else await db.from('purchases').insert({ user_id: userId, key: `mail:${m.id}`, store, item: (x.name && x.name !== store ? x.name : null)?.slice(0, 200) ?? null, amount: x.amount, bought, return_by: addDays(bought, days), warranty_ends: null, status: 'keep', notes: `Receipt: ${note.replace(/^From email: /, 'from ')}`.slice(0, 300), file: path });
+    else await db.from('purchases').insert({ user_id: userId, key: `mail:${m.id}`, store, item: (x.name && x.name !== store ? x.name : null)?.slice(0, 200) ?? null, amount: x.amount, bought, return_by: addDays(bought, days), warranty_ends: null, status: 'keep', notes: `Receipt: ${note.replace(/^From email(?: \(([^)]*)\))?: /, (_m, b) => (b ? `from (${b}) ` : 'from '))}`.slice(0, 300), file: path });
   }
   return { saved: 'receipt', reads };
 }

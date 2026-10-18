@@ -2,9 +2,10 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@4.1.12';
 import { CONTACT_KINDS, CYCLES, catOf, type Appointment, type Contact, type Item, type Purchase, type Settings } from './model.ts';
 import { money, today } from './money.ts';
-import { has, isRateLimit, readEmail, refresh, searchIds, type Mail } from './google.ts';
+import { isRateLimit, readEmail, searchIds, type Mail } from './google.ts';
+import { boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 import { askAi } from './ai.ts';
-import { connection, open, saveConnection } from './server.ts';
+import { connection, saveConnection } from './server.ts';
 import {
   autoMerge, bizDomain, contactKey, describe, domainOf, GENERIC_NAME, guessKind, isNoReply, looksLikePerson, monthYear, nameTokens, parseSender,
   PLATFORM_DOMAINS, readFacts, SERVICE_WORDS, SKIP_DOMAINS, sameContact, weakName, type Draft,
@@ -160,7 +161,7 @@ export function checkMail(m: Mail, ctx: { ownEmails: Set<string>; ownPhones: str
 }
 
 /** The contacts step: free sources, the emails other steps read in this run, a small Gmail search of its own, then one write. */
-export async function contactStep(db: SupabaseClient, userId: string, s: Settings, until: number, opts: { mails: Mail[]; search: boolean; email?: string }): Promise<string | void> {
+export async function contactStep(db: SupabaseClient, userId: string, s: Settings, until: number, opts: { mails: Mail[]; search: boolean; email?: string; boxes?: Box[] }): Promise<string | void> {
   if (!s.contacts.on) return;
   const [{ data: list, error }, { data: appts }, { data: items }, { data: buys }, { data: senders }] = await Promise.all([
     db.from('contacts').select('*').eq('user_id', userId).limit(5000),
@@ -180,23 +181,30 @@ export async function contactStep(db: SupabaseClient, userId: string, s: Setting
   const meta = (await connection(db, userId, 'contacts'))?.meta ?? {};
   const seen = new Set((meta.seen as string[] | undefined) ?? []);
   const cache = { ...((meta.ai as Record<string, Cached> | undefined) ?? {}) };
-  const g = await connection(db, userId, 'google');
-  const ownEmails = new Set([...s.me.emails, opts.email, g?.meta.email as string | undefined].filter(Boolean).map((e) => e!.toLowerCase()));
+  // ✉️ Every mailbox watched (the main Google account and the extra ones): your own addresses are never a contact.
+  const boxes = opts.boxes ?? [];
+  const ownEmails = new Set([...s.me.emails, opts.email, ...boxes.map((b) => b.email ?? undefined)].filter(Boolean).map((e) => e!.toLowerCase()));
   const ctx = { ownEmails, ownPhones, lists: new Set(((senders ?? []) as { address: string }[]).map((x) => x.address)) };
   const mails = opts.mails.filter((m) => !seen.has(m.id));
   let stopped = '', searched = 0, aiRead = 0, aiOff = '';
   const aiMax = Math.min(5, s.ai.maxPerRun);
-  if (opts.search && g && has(g.meta.scope as string, 'gmail')) {
+  // Each mailbox has its own "read up to" day (the main one in this row, an extra one in its own row).
+  if (opts.search) for (const b of boxes) {
+    if (stopped || Date.now() > until) break;
     try {
-      const at = await refresh(await open(g.secret));
-      const since = typeof meta.done === 'string' ? Math.ceil((Date.now() - Date.parse(meta.done)) / 86400_000) + 1 : 180;
+      const bm = b.main ? meta : await stateOf(db, userId, b, 'contacts');
+      const at = await tokenOf(b);
+      const since = typeof bm.done === 'string' ? Math.ceil((Date.now() - Date.parse(bm.done)) / 86400_000) + 1 : 180;
       const have = new Set(mails.map((m) => m.id));
       const ids = (await searchIds(at, `newer_than:${Math.min(180, Math.max(2, since))}d ${QUERY}`, 300)).filter((id) => !seen.has(id) && !have.has(id));
       for (const id of ids.slice(0, PER_RUN)) {
         if (Date.now() > until) { stopped = 'out of time: the rest next run'; break; }
-        try { mails.push(await readEmail(at, id)); searched++; } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
+        try { mails.push(await readEmail(at, id, boxTag(b))); searched++; } catch (e) { if (isRateLimit(e)) { stopped = 'Gmail asked to slow down'; break; } throw e; }
       }
-      if (!stopped && ids.length <= PER_RUN) meta.done = new Date().toISOString();
+      if (!stopped && ids.length <= PER_RUN) {
+        if (b.main) meta.done = new Date().toISOString();
+        else await saveState(db, userId, b, 'contacts', { done: new Date().toISOString() });
+      }
     } catch (e) { stopped = e instanceof Error ? e.message.slice(0, 120) : String(e); }
   }
   for (const m of mails) {

@@ -191,5 +191,9 @@ export function bestMatch<T extends SpendLine>(want: SpendLine, list: T[]): T | 
   return list.filter((x) => sameSpend(want, x)).sort((x, y) => Math.abs(dayNum(x.posted) - dayNum(want.posted)) - Math.abs(dayNum(y.posted) - dayNum(want.posted)))[0];
 }
 
-/** A receipt kept as an email (no file): `gmail:<message id>` opens the email in Gmail. */
-export const receiptLink = (path: string) => (path.startsWith('gmail:') ? `https://mail.google.com/mail/u/0/#all/${path.slice(6)}` : null);
+/** A receipt kept as an email (no file): `gmail:<message id>` opens the email in Gmail; `gmail:<id>|<address>` in that extra account. */
+export function receiptLink(path: string): string | null {
+  if (!path.startsWith('gmail:')) return null;
+  const [id, who] = path.slice(6).split('|');
+  return who ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(who)}#all/${id}` : `https://mail.google.com/mail/u/0/#all/${id}`;
+}
