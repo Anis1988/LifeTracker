@@ -15,6 +15,7 @@ import { docIcon } from './vaultText.ts';
 import { vaultEmailStep } from './vaultMail.ts';
 import { purchaseAlerts, purchaseStep } from './purchases.ts';
 import { mergeBankRows, moveOldReceipts, receiptEmailStep, type BankRow } from './receipts.ts';
+import { addedLines, logMoney, pruneLog } from './moneyLog.ts';
 import { spendCat, spendReport, type SpendTx } from './spend.ts';
 import { dateKind } from './model.ts';
 import { apptEmailStep } from './appointments.ts';
@@ -73,6 +74,7 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     await step('Due dates', () => rollStep(db, userId));
     await step('Calendar', () => calendarStep(db, userId, s));
     await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
+    await step('Money log', () => pruneLog(db, userId)); // 📜 kept 180 days
   } else if (want('mail')) {
     await step('Bank alerts', () => alertStep(db, userId, s, until));
     await step('Gmail', () => gmailStep(db, userId, s, alerts, until, mails));
@@ -122,15 +124,21 @@ async function bankStep(db: SupabaseClient, userId: string, s: Settings, full?: 
   }));
   // 🧾 A purchase already in Spending from its receipt: merged into that line (counted once).
   const { rows: toAdd } = await mergeBankRows(db, userId, rows);
-  for (let i = 0; i < toAdd.length; i += 500) {
-    const { error } = await db.from('transactions').upsert(toAdd.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
-    if (error) throw new Error(error.message);
-  }
+  await storeRows(db, userId, toAdd, s.spend.rules);
   await saveConnection(db, userId, 'simplefin', null, {
     lastSync: new Date().toISOString(), errors,
     accounts: accounts.map((a) => ({ name: `${a.org?.name ?? ''} ${a.name}`.trim(), balance: Number(a.balance), currency: a.currency })),
   });
   return `${rows.length} transactions from ${accounts.length} account(s)${errors.length ? ` (bank says: ${errors.join('; ')})` : ''}`;
+}
+
+/** New bank lines stored (a line already there is left alone), each new purchase written in 📜 Money → Log. */
+export async function storeRows(db: SupabaseClient, userId: string, rows: BankRow[], rules: Record<string, string>): Promise<void> {
+  for (let i = 0; i < rows.length; i += 500) {
+    const { data, error } = await db.from('transactions').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true }).select('id, posted, amount, description, merchant, item_id, source, account');
+    if (error) throw new Error(error.message);
+    await logMoney(db, userId, addedLines(data ?? [], rules));
+  }
 }
 
 // ---------- 📧 bank alert emails (free: patterns, no AI) ----------
@@ -161,10 +169,7 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
   }
   // 🧾 A purchase already in Spending from its receipt: merged into that line (counted once).
   const { rows: toAdd, merged } = await mergeBankRows(db, userId, rows);
-  for (let i = 0; i < toAdd.length; i += 500) {
-    const { error } = await db.from('transactions').upsert(toAdd.slice(i, i + 500), { onConflict: 'user_id,external_id', ignoreDuplicates: true });
-    if (error) throw new Error(error.message);
-  }
+  await storeRows(db, userId, toAdd, s.spend.rules);
   const left = all.filter((id) => !seen.has(id)).length;
   await saveConnection(db, userId, 'google', null, {
     seenAlerts: [...seen].slice(-5000), alertsScanned: new Date().toISOString(), alertsDone: done || left === 0,
@@ -319,6 +324,7 @@ export async function autoAddBill(db: SupabaseClient, userId: string, b: FoundBi
     user_id: userId, key: b.key, source: b.source, name, category: b.category, amount: b.amount, currency: b.currency || 'USD', cycle, next_due: b.next_due,
     ends_on: b.ends_on ?? null, trial_ends: b.trial_ends ?? null, merchant: b.merchant, details, evidence: { ...b.evidence, auto: true }, status: 'accepted', item_id: item.id,
   }, { onConflict: 'user_id,source,key' }).select('id').single();
+  await logMoney(db, userId, [{ kind: 'bill', ref: item.id, data: { item: item.id, source: b.source }, text: `bill ${name}${amount ? ` ${money(amount)}` : ''} ${CYCLE_WORD[cycle]} auto-added — ${FROM[b.source]}` }]);
   alerts.push({ user_id: userId, kind: 'found', key: `${b.source}:${b.key}`, item_id: item.id, title: `Added: ${name}${amount ? ` ${money(amount)}` : ''} ${CYCLE_WORD[cycle]} — ${FROM[b.source]}`.slice(0, 200), body: 'Added to your bills by itself. Not a bill, or wrong? Tap Undo in the 🔔 Inbox (it won’t come back), or open it in Money → Bills to change it.' });
   return { itemId: item.id, suggestionId: sug?.id, added: true };
 }

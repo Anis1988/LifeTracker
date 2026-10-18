@@ -9,6 +9,7 @@ import { merchantKey } from './recurring.ts';
 import { classifyAttachment, fromEmailNote, vaultKey } from './vaultText.ts';
 import { RECEIPT_QUERY, bestMatch, emailKind, fitTo, parseReceipt, type ReceiptDetails } from './receiptText.ts';
 import { cached, mimeOf, readBill, remember, sha256 } from './vault.ts';
+import { addedLines, logMoney, rulesOf, shopOf, type LogLine } from './moneyLog.ts';
 
 /**
  * 🧾 Receipts → Money → Spending (owner's request). A receipt becomes a spending line in `transactions`, counted once:
@@ -50,16 +51,20 @@ export async function saveReceipt(db: SupabaseClient, userId: string, r: Receipt
   const want = { posted: r.date, amount: -amount, description: r.business, merchant: merchantKey(r.business) };
   const m = bestMatch(want, (near ?? []) as { id: string; posted: string; amount: number; description: string | null; merchant: string | null }[]);
   const receipt = { receipt_path: r.path ?? null, receipt_key: r.key, receipt_hash: r.hash ?? null, note: r.note.slice(0, 300), details: r.details ?? null };
+  const via = r.key.startsWith('hand:') ? 'a receipt you added' : r.key.startsWith('mail:') ? 'a receipt email' : 'a receipt';
   if (m) {
     const { error } = await db.from('transactions').update(receipt).eq('id', m.id);
     if (error) { if (/duplicate|unique/i.test(error.message)) return 'known'; throw new Error(error.message); }
+    const n = r.details?.items?.length ?? 0;
+    await logMoney(db, userId, [{ kind: 'receipt', ref: m.id, data: { tx: m.id }, text: `${m.description || r.business} ${money(amount)} · receipt attached (${via})${n ? ` · ${n} item${n === 1 ? '' : 's'}` : ''} · total matches the bank` }]);
     return 'attached';
   }
-  const { error } = await db.from('transactions').insert({
+  const { data: row, error } = await db.from('transactions').insert({
     user_id: userId, external_id: `receipt:${r.key}`.slice(0, 200), account: 'Receipt', posted: r.date, amount: -amount,
     description: r.business.slice(0, 200), merchant: merchantKey(r.business), source: 'receipt', ...receipt,
-  });
+  }).select('id, posted, amount, description, merchant, item_id, source, account, details').single();
   if (error) { if (/duplicate|unique/i.test(error.message)) return 'known'; throw new Error(error.message); }
+  await logMoney(db, userId, addedLines([row], await rulesOf(db, userId), via));
   return 'new';
 }
 
@@ -84,6 +89,7 @@ export async function mergeBankRows(db: SupabaseClient, userId: string, rows: Ba
   }
   const left = [...(waiting as { id: string; posted: string; amount: number; description: string | null; merchant: string | null }[])];
   const mergedIds = new Set<string>();
+  const log: LogLine[] = [];
   let merged = 0;
   for (const r of out) {
     if (known.has(r.external_id)) continue;
@@ -94,7 +100,9 @@ export async function mergeBankRows(db: SupabaseClient, userId: string, rows: Ba
     left.splice(left.indexOf(m), 1);
     mergedIds.add(r.external_id);
     merged++;
+    log.push({ kind: 'receipt', ref: m.id, data: { tx: m.id, source: r.source }, text: `${r.description} ${money(-Number(r.amount))} · ${r.source === 'alert' ? `${r.account} alert` : r.source === 'csv' ? 'bank CSV' : 'bank link'} matched the receipt already here (counted once)` });
   }
+  await logMoney(db, userId, log);
   return { rows: rows.filter((r) => !mergedIds.has(r.external_id)), merged };
 }
 
@@ -204,7 +212,7 @@ export async function receiptFromFile(db: SupabaseClient, userId: string, s: Set
 export type LineEdit = { description: string; posted: string; amount: number; note: string | null };
 export type ReceiptOp = { op: 'edit'; id: string; details: Omit<ReceiptDetails, 'read' | 'by' | 'mismatch'> } | { op: 'reread'; id: string } | { op: 'delete'; id: string; entry: boolean }
   | { op: 'attach'; id: string; path: string } | { op: 'detach'; id: string } | { op: 'keep'; id: string } | { op: 'line'; id: string; line: LineEdit };
-type Tx = { id: string; source: string | null; amount: number; posted: string; description: string | null; receipt_path: string | null; receipt_key: string | null; receipt_hash: string | null; details: ReceiptDetails | null };
+type Tx = { id: string; source: string | null; amount: number; posted: string; description: string | null; merchant: string | null; note: string | null; account: string | null; item_id: string | null; receipt_path: string | null; receipt_key: string | null; receipt_hash: string | null; details: ReceiptDetails | null };
 const fileOf = (userId: string, p: string | null | undefined): p is string => typeof p === 'string' && p.startsWith(`${userId}/`) && !p.includes('..');
 /** A stored receipt file goes, unless Returns still shows it. */
 async function dropFile(db: SupabaseClient, userId: string, path: string | null | undefined) {
@@ -227,13 +235,18 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     if (error) throw new Error(error.message);
     return data;
   };
+  // 📜 One Log line per change ("Best Buy $25.00 · receipt attached · 4 items · total matches").
+  const head = `${shopOf(t)} ${money(Math.abs(Number(t.amount)))}`;
+  const note = (kind: 'receipt' | 'change', text: string, data: Record<string, unknown> = {}) => logMoney(db, userId, [{ kind, ref: t.id, data: { tx: t.id, ...data }, text: `${head} · ${text}` }]);
   if (a.op === 'edit') {
     const d = a.details;
     const details: ReceiptDetails = { ...(t.details ?? {}), ...d, store: d.store.trim().slice(0, 120), items: d.items.slice(0, 40), read: 'hand', by: t.details?.by ?? null };
     // A line only from the receipt follows its details; a bank line keeps the bank's amount and date (edited by you = the totals are OK).
     const patch: Record<string, unknown> = { details: t.source === 'receipt' ? details : fitTo(details, t.amount, true) };
     if (t.source === 'receipt' && d.total > 0 && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) Object.assign(patch, { amount: -Math.round(d.total * 100) / 100, posted: d.date, description: details.store || t.description, merchant: merchantKey(details.store || t.description || '') });
-    return { tx: await save(patch) };
+    const tx = await save(patch);
+    await note('change', `receipt details edited · ${details.items.length} item${details.items.length === 1 ? '' : 's'}`);
+    return { tx };
   }
   if (a.op === 'line') {
     // ✎ The line itself: shop name, date, amount, note. The shop's key (`merchant`) stays, so its category and recurring bills follow.
@@ -241,11 +254,16 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     const amount = -Math.round(Math.abs(l.amount) * 100) / 100;
     const patch: Record<string, unknown> = { description: l.description.trim().slice(0, 200), posted: l.posted, amount, note: l.note?.trim().slice(0, 300) || null };
     if (t.details && t.source !== 'receipt') patch.details = fitTo(t.details, amount, t.details.mismatch?.kept ?? false);
-    return { tx: await save(patch) };
+    const what = [patch.description !== (t.description ?? '') && `shop → ${patch.description}`, l.posted !== t.posted && `date → ${l.posted}`, amount !== Number(t.amount) && `amount → ${money(-amount)}`, (patch.note ?? null) !== (t.note ?? null) && 'note'].filter(Boolean);
+    const tx = await save(patch);
+    if (what.length) await note('change', `edited: ${what.join(', ')}`);
+    return { tx };
   }
   if (a.op === 'keep') {
     if (!t.details?.mismatch) return { tx: t };
-    return { tx: await save({ details: { ...t.details, mismatch: { ...t.details.mismatch, kept: true } } }) };
+    const tx = await save({ details: { ...t.details, mismatch: { ...t.details.mismatch, kept: true } } });
+    await note('receipt', `receipt items kept although totals differ (${money(t.details.mismatch.receipt)} ≠ ${money(t.details.mismatch.bank)})`);
+    return { tx };
   }
   if (a.op === 'reread') {
     if (!isFile) throw new Error('Only a receipt file (photo or PDF) can be read again.');
@@ -253,7 +271,9 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     if (error || !f) throw new Error('The file is missing.');
     const bytes = new Uint8Array(await f.arrayBuffer());
     const b = await readBill(db, userId, s, { mime: mimeOf(t.receipt_path!, f.type), bytes }, t.receipt_hash ?? await sha256(bytes), true);
-    return { tx: await save(readPatch(t, detailsOf(b.data, b.by, t.posted))), by: b.by };
+    const tx = await save(readPatch(t, detailsOf(b.data, b.by, t.posted)));
+    await note('receipt', `receipt read again by ${b.by} · ${(tx.details as ReceiptDetails | null)?.items.length ?? 0} item(s)`);
+    return { tx, by: b.by };
   }
   if (a.op === 'attach') {
     // 📎 A receipt file for THIS line (a bank alert purchase, say): never a second line, never the same file twice.
@@ -283,6 +303,8 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     }
     if (t.receipt_path !== p) await dropFile(db, userId, t.receipt_path); // replaced: the old file goes
     const det = tx.details as ReceiptDetails | null;
+    const n = det?.items.length ?? 0;
+    await note('receipt', `receipt ${t.receipt_path ? 'replaced' : 'attached'}${det ? ` · ${n} item${n === 1 ? '' : 's'} · ${det.mismatch ? `totals differ (${money(det.mismatch.receipt)} ≠ ${money(det.mismatch.bank)})` : 'total matches'}` : ' · not read yet'}`);
     if (!det) return { tx, status: 'unread', text: `Receipt saved on this purchase, but it couldn't be read yet (${problem || 'try ✨ Re-read'}).` };
     if (det.mismatch) return { tx, status: 'mismatch', text: `Receipt total ${money(det.mismatch.receipt)} ≠ bank ${money(det.mismatch.bank)}.` };
     return { tx, status: 'matched', text: `Receipt added: ${det.items.length} item${det.items.length === 1 ? '' : 's'} broken down.` };
@@ -293,13 +315,21 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     await dropFile(db, userId, t.receipt_path);
     // A receipt you added by hand can be added again; one from an email keeps its key (never added again by itself).
     const hand = !t.receipt_key || t.receipt_key.startsWith('hand:');
-    return { tx: await save({ receipt_path: null, details: null, ...(hand ? { receipt_key: null, receipt_hash: null } : {}) }) };
+    const tx = await save({ receipt_path: null, details: null, ...(hand ? { receipt_key: null, receipt_hash: null } : {}) });
+    await note('receipt', 'receipt removed (the bank purchase stays)');
+    return { tx };
   }
   // 🗑 delete: the stored file (unless Returns still shows it) and the receipt link; the spending line too when asked.
   await dropFile(db, userId, t.receipt_path);
-  if (a.entry) { await db.from('transactions').delete().eq('id', t.id).eq('user_id', userId); return { deleted: 'entry' }; }
+  if (a.entry) {
+    await db.from('transactions').delete().eq('id', t.id).eq('user_id', userId);
+    await note('change', `deleted${t.receipt_path ? ' (with its receipt)' : ''}`);
+    return { deleted: 'entry' };
+  }
+  if (!t.receipt_path) return { deleted: 'none' };
   // receipt_key / receipt_hash stay: the same receipt is never added again.
   await db.from('transactions').update({ receipt_path: null, details: null }).eq('id', t.id).eq('user_id', userId);
+  await note('receipt', 'receipt deleted (the purchase stays)');
   return { deleted: 'receipt' };
 }
 

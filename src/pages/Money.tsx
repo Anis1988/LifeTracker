@@ -4,23 +4,37 @@ import { api } from '../lib/supabase';
 import { Bills } from './Bills';
 import { PurchaseForm, PurchaseRow, SpendingView } from '../components/Spending';
 import { Empty, Seg, Sheet, errText, toast } from '../components/ui';
-import { categorize, spendCat, spendReport, type SpendTx } from '../../supabase/functions/_shared/spend.ts';
+import { SPEND_CATS, categorize, spendCat, spendReport, type SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { matchSpend } from '../../supabase/functions/_shared/receiptText.ts';
-import { SearchBox } from '../components/Contacts';
-import { AddReceipt, ReceiptCard, ReceiptSheet, ReceiptViewer, SpendRow, lastChecked, useThumbs } from '../components/Receipts';
+import { KindChips, SearchBox } from '../components/Contacts';
+import { AddReceipt, ReceiptSheet, ReceiptViewer, SpendLine, lastChecked, useThumbs } from '../components/Receipts';
+import { MoneyLog } from '../components/MoneyLog';
 import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
 import { takeParam, useView } from '../lib/nav';
 
 const monthName = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+/** "Today", "Yesterday", "Thu, Oct 16". */
+const dayName = (d: string, t = today()) => {
+  if (d === t) return 'Today';
+  const y = new Date(Date.parse(`${t}T12:00:00Z`) - 86400_000).toISOString().slice(0, 10);
+  if (d === y) return 'Yesterday';
+  return new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC', ...(d.slice(0, 4) !== t.slice(0, 4) ? { year: 'numeric' } : {}) });
+};
+/** Purchases grouped by day, newest first. */
+function byDay(list: SpendTx[]): [string, SpendTx[]][] {
+  const m = new Map<string, SpendTx[]>();
+  for (const x of [...list].sort((a, b) => b.posted.localeCompare(a.posted) || (b.created_at ?? '').localeCompare(a.created_at ?? ''))) m.set(x.posted, [...(m.get(x.posted) ?? []), x]);
+  return [...m.entries()];
+}
 
-/** 💳 Money: your bills, what you spend, and what you can still return. */
+/** 💳 Money: your bills, what you spend, what you can still return, and the 📜 Log of what happened. */
 export function MoneyPage() {
   const [view, pick] = useView('money');
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <Seg label="Money" options={[['bills', 'Bills'], ['spending', 'Spending'], ['returns', 'Returns']]} value={view} onChange={pick} />
-      {view === 'bills' ? <Bills /> : view === 'spending' ? <Spending /> : <Returns />}
+      <Seg label="Money" options={[['bills', 'Bills'], ['spending', 'Spending'], ['returns', 'Returns'], ['log', 'Log']]} value={view} onChange={pick} />
+      {view === 'bills' ? <Bills /> : view === 'spending' ? <Spending /> : view === 'log' ? <MoneyLog /> : <Returns />}
     </div>
   );
 }
@@ -28,74 +42,69 @@ export function MoneyPage() {
 function Spending() {
   const st = useStore();
   const s = st.settings;
+  const rules = s.spend.rules;
   const t = today(); // this phone's day, not the UTC one
   const now = t.slice(0, 7);
   const last = addCycle(`${now}-01`, 'monthly', -1).slice(0, 7);
   const [month, setMonth] = useState(now);
   const [q, setQ] = useState('');
+  const [cat, setCat] = useState('all');
+  const [many, setMany] = useState(60);
   const [open, setOpen] = useState<{ id: string; del?: boolean } | null>(null);
   const [view, setView] = useState<string | null>(null);
-  const r = useMemo(() => spendReport(st.tx, s.spend.rules, month, month === now ? Number(t.slice(8, 10)) : 31), [st.tx, s.spend.rules, month, now]);
+  const r = useMemo(() => spendReport(st.tx, rules, month, month === now ? Number(t.slice(8, 10)) : 31), [st.tx, rules, month, now]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = (spend: typeof s.spend) => void st.saveSettings({ ...s, spend }).catch((e) => toast('err', errText(e)));
-  const move = (key: string, cat: string) => { save({ ...s.spend, rules: { ...s.spend.rules, [key]: cat } }); toast('ok', 'Moved. That shop goes there from now on.'); };
-  // 🔎 Search (on this phone): shop, items on the receipt, amount, date, category, notes, the email it came from.
-  const found = useMemo(() => (q.trim() ? st.tx.filter((x) => Number(x.amount) < 0 && matchSpend(x, q, spendCat(categorize(x, s.spend.rules)).label)).slice(0, 80) : []), [q, st.tx, s.spend.rules]);
-  const receipts = useMemo(() => st.tx.filter((x) => x.receipt_path && x.posted.slice(0, 7) === month), [st.tx, month]);
-  // 🏦 The month's other purchases (bank alerts, CSV, bank link): tap one to edit it or 📎 add its receipt.
-  const others = useMemo(() => st.tx.filter((x) => !x.receipt_path && x.id && Number(x.amount) < 0 && x.posted.slice(0, 7) === month), [st.tx, month]);
-  const [allOthers, setAllOthers] = useState(false);
-  const foundReceipts = found.filter((x) => x.receipt_path), foundOther = found.filter((x) => !x.receipt_path);
-  const shown = q.trim() ? foundReceipts : receipts;
+  // 🏷️ A new category for a shop: saved on the server as that shop's rule (the row, the totals and the budgets all follow; 📜 Log notes it).
+  const move = async (id: string, to: string) => {
+    try { await api('spend-cat', { id, cat: to }); await st.reload(); toast('ok', `Moved to ${spendCat(to).label}: that shop goes there from now on.`); } catch (e) { toast('err', errText(e)); }
+  };
+  // ONE list: every purchase (bank alerts, CSV, bank link, receipts). The month's, or all months while searching.
+  const all = useMemo(() => st.tx.filter((x) => Number(x.amount) < 0), [st.tx]);
+  const base = useMemo(() => (q.trim() ? all : all.filter((x) => x.posted.slice(0, 7) === month)), [all, q, month]);
+  const catOf = useMemo(() => new Map(base.map((x) => [x, categorize(x, rules)])), [base, rules]);
+  const list = useMemo(() => base.filter((x) => (cat === 'all' || catOf.get(x) === cat) && (!q.trim() || matchSpend(x, q, spendCat(catOf.get(x)!).label))), [base, cat, q, catOf]);
+  const counts = useMemo(() => { const c: Record<string, number> = {}; for (const x of base) { const k = catOf.get(x)!; c[k] = (c[k] ?? 0) + 1; } return c; }, [base, catOf]);
+  const chips = [{ id: 'all', label: 'All', n: base.length }, ...SPEND_CATS.filter((c) => counts[c.id]).map((c) => ({ id: c.id, label: `${c.icon} ${c.label}`, n: counts[c.id] }))];
+  const shown = list.slice(0, many);
   const urls = useThumbs(shown);
   const byId = (id: string | null | undefined) => st.tx.find((x) => x.id === id);
   const sel = byId(open?.id);
   const viewing = byId(view);
   const onView = (x: SpendTx) => () => { if (x.receipt_path?.startsWith('gmail:')) window.open(`https://mail.google.com/mail/u/0/#all/${x.receipt_path.slice(6)}`, '_blank'); else setView(x.id ?? null); };
   const gmail = !!st.status?.google.gmail;
-  // "#/money/spending?tx=<id>" (from the 🔎 search) opens that purchase.
+  // "#/money/spending?tx=<id>" (from the 🔎 search or the 📜 Log) opens that purchase.
   useEffect(() => { const id = takeParam('tx', '#/money/spending'); if (id) setOpen({ id }); }, []);
-  const card = (x: SpendTx) => <ReceiptCard key={x.id} t={x} url={x.receipt_path ? urls[x.receipt_path] : undefined} rules={s.spend.rules} onOpen={() => x.id && setOpen({ id: x.id })} onView={onView(x)} />;
+  useEffect(() => { if (cat !== 'all' && !counts[cat]) setCat('all'); }, [month]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="stagger space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-[28px] font-semibold leading-tight">Spending</h1>
         <Seg label="Month" options={[[now, 'This month'], [last, 'Last month']]} value={month} onChange={setMonth} />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-0 flex-1 basis-full sm:basis-56"><SearchBox q={q} onChange={setQ} placeholder="Shop, item, 23.45, March…" label="Search spending and receipts" /></div>
-        <AddReceipt userId={st.session.user.id} className="w-full whitespace-nowrap sm:w-auto" onAdded={async () => { await st.reload(); }} />
-      </div>
-      {q.trim() ? (
-        <>
-          <p className="label px-1" aria-live="polite">{found.length ? `${found.length}${found.length === 80 ? '+' : ''} found` : 'Nothing found'}</p>
-          {foundReceipts.length > 0 && <ul className="space-y-3" aria-label="Receipts found">{foundReceipts.map((x) => card(x))}</ul>}
-          {foundOther.length > 0 && (
-            <section className="card space-y-1">
-              {foundReceipts.length > 0 && <p className="label">Other purchases</p>}
-              <ul>{foundOther.map((x) => <SpendRow key={x.id ?? `${x.posted}${x.description}${x.amount}`} t={x} rules={s.spend.rules} onOpen={() => x.id && setOpen({ id: x.id })} />)}</ul>
-            </section>
-          )}
-          {!found.length && <p className="card text-sm text-slate-500 dark:text-slate-400">Try a shop, something you bought, an amount like 23.45, or a month.</p>}
-        </>
-      ) : (
-        <>
-          <SpendingView r={r} budgets={s.spend.budgets} alertAt={s.spend.alertAt} monthName={monthName(month)}
-            onBudget={(cat, n) => { const budgets = { ...s.spend.budgets }; if (n) budgets[cat] = n; else delete budgets[cat]; save({ ...s.spend, budgets }); toast('ok', n ? 'Budget saved: you get a heads-up at 80% and when it’s used up.' : 'Budget removed.'); }}
-            onMove={move} />
-          <div className="flex items-baseline justify-between gap-2 px-1 pt-1"><p className="label">🧾 Receipts <span className="num">· {receipts.length}</span></p><span className="text-[11px] text-slate-500 dark:text-slate-400">Tap a picture for full screen</span></div>
-          {receipts.length ? <ul className="space-y-3">{receipts.map((x) => card(x))}</ul>
-            : <p className="card text-sm text-slate-500 dark:text-slate-400">No receipts this month yet. Receipts in your emails come here by themselves, or tap 📷 Add a receipt.</p>}
-          {others.length > 0 && (
-            <section className="card space-y-1" aria-label="Other purchases">
-              <div className="flex items-baseline justify-between gap-2"><p className="label">🏦 Other purchases <span className="num">· {others.length}</span></p><span className="text-[11px] text-slate-500 dark:text-slate-400">Tap one to edit or 📎 add its receipt</span></div>
-              <ul>{(allOthers ? others : others.slice(0, 12)).map((x) => <SpendRow key={x.id} t={x} rules={s.spend.rules} onOpen={() => setOpen({ id: x.id! })} />)}</ul>
-              {others.length > 12 && <button className="tap min-h-[44px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={() => setAllOthers(!allOthers)} aria-expanded={allOthers}>{allOthers ? 'Show less' : `Show all ${others.length}`}</button>}
-            </section>
-          )}
-        </>
-      )}
-      <p className="text-xs text-slate-500 dark:text-slate-400">{gmail ? `📧 Your Gmail is checked every hour for receipts and bank alerts (free checks first). Last checked: ${lastChecked(st.status?.mail?.mailChecked ?? st.status?.mail?.receiptsScanned)}.` : 'Connect Gmail (Settings → Google) and receipts in your emails come here by themselves.'} A receipt that matches a bank purchase is attached to it, so nothing is counted twice.</p>
-      {sel && <ReceiptSheet key={sel.id} t={sel} url={sel.receipt_path ? urls[sel.receipt_path] : undefined} rules={s.spend.rules} userId={st.session.user.id} startDelete={open?.del} onMove={(cat) => move(sel.merchant || (sel.description ?? 'other').toLowerCase(), cat)} onClose={() => setOpen(null)} onChanged={st.reload} />}
+      <SpendingView r={r} budgets={s.spend.budgets} alertAt={s.spend.alertAt} monthName={monthName(month)} cat={cat} onCat={setCat}
+        onBudget={(c, n) => { const budgets = { ...s.spend.budgets }; if (n) budgets[c] = n; else delete budgets[c]; save({ ...s.spend, budgets }); toast('ok', n ? 'Budget saved: you get a heads-up near it and when it’s used up.' : 'Budget removed.'); }} />
+      <section className="space-y-2" aria-label="Purchases">
+        <div className="space-y-1">
+          <p className="label px-1">🧾 Add a receipt</p>
+          <AddReceipt userId={st.session.user.id} onAdded={async () => { await st.reload(); }} />
+        </div>
+        <SearchBox q={q} onChange={setQ} placeholder="Shop, item, 23.45, March…" label="Search purchases and receipts" />
+        <KindChips label="Category" options={chips} value={cat} onChange={setCat} />
+        <p className="label px-1" aria-live="polite">{q.trim() ? `${list.length} found in all months` : `${list.length} purchase${list.length === 1 ? '' : 's'} · ${monthName(month)}`}{cat !== 'all' ? ` · ${spendCat(cat).label}` : ''}</p>
+        {list.length ? (
+          <div className="card !px-3 !py-1">
+            {byDay(shown).map(([day, xs]) => (
+              <div key={day}>
+                <p className="label border-t border-slate-900/[0.06] pb-0.5 pt-2.5 first:border-0 dark:border-white/[0.06]">{dayName(day, t)}</p>
+                <ul>{xs.map((x) => <SpendLine key={x.id ?? `${x.posted}${x.description}${x.amount}`} t={x} url={x.receipt_path ? urls[x.receipt_path] : undefined} rules={rules} onOpen={() => x.id && setOpen({ id: x.id })} onView={onView(x)} />)}</ul>
+              </div>
+            ))}
+            {list.length > many && <button className="tap min-h-[44px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={() => setMany(many + 100)}>Show more ({list.length - many})</button>}
+          </div>
+        ) : <p className="card text-sm text-slate-500 dark:text-slate-400">{q.trim() || cat !== 'all' ? 'Nothing found. Try a shop, something you bought, an amount like 23.45, or a month.' : 'No purchases this month yet. Receipts in your emails come here by themselves, or 📷 take a photo of one.'}</p>}
+      </section>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{gmail ? `📧 Your Gmail is checked every hour for receipts and bank alerts (free checks first). Last checked: ${lastChecked(st.status?.mail?.mailChecked ?? st.status?.mail?.receiptsScanned)}.` : 'Connect Gmail (Settings → Google) and receipts in your emails come here by themselves.'} A receipt that matches a bank purchase is attached to it, so nothing is counted twice. 📜 Log shows what happened to each one.</p>
+      {sel && <ReceiptSheet key={sel.id} t={sel} url={sel.receipt_path ? urls[sel.receipt_path] : undefined} rules={rules} userId={st.session.user.id} startDelete={open?.del} onMove={(c) => void move(sel.id!, c)} onClose={() => setOpen(null)} onChanged={st.reload} />}
       {viewing?.receipt_path && <ReceiptViewer t={viewing} url={urls[viewing.receipt_path]} onClose={() => setView(null)} onDelete={() => { setView(null); setOpen({ id: viewing.id!, del: true }); }} />}
     </div>
   );

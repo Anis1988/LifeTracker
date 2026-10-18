@@ -37,7 +37,7 @@ export function QuickAddSheet({ onClose }: { onClose: () => void }) {
     <Sheet title="Add" onClose={onClose}>
       <div className="space-y-3">
         <AddReceipt userId={st.session.user.id} className="w-full" onAdded={async () => { await st.reload(); onClose(); goTo('money', 'spending'); }} />
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">🧾 A receipt: take a photo (or pick a photo or PDF); it’s read and goes to Money → Spending.</p>
+        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">🧾 A receipt: 📷 take a photo (the camera opens) or 🖼️ choose a photo or PDF; it’s read and goes to Money → Spending.</p>
         <QuickAddList onPick={(go) => { onClose(); go(); }} />
       </div>
     </Sheet>

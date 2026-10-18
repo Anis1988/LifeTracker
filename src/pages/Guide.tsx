@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import { Empty, Fold, Seg, Toggle } from '../components/ui';
+import { Empty, Fold, Seg, Toggle, shortDate } from '../components/ui';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
 import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
 import { PurchaseRow, SpendingView } from '../components/Spending';
-import { MismatchPanel, ReceiptCard, ReceiptDetailsView, SpendRow } from '../components/Receipts';
-import { matchSpend } from '../../supabase/functions/_shared/receiptText.ts';
+import { MismatchPanel, PhotoPick, ReceiptDetailsView, SpendLine } from '../components/Receipts';
+import { LogLines, type LogRow } from '../components/MoneyLog';
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { DateRow } from '../components/Dates';
 import { timeline } from '../lib/timeline';
@@ -159,6 +159,20 @@ const ALERT_TX: SpendTx = { id: 'a1', posted: d(-3), amount: -25.0, description:
 const ALERT_WITH: SpendTx = { ...ALERT_TX, receipt_path: 'example-3.jpg',
   details: { store: 'Sample Diner', date: d(-3), total: 21.0, tax: 1.5, card: '4821', read: 'ai', by: 'Gemini Flash (free)', mismatch: null, items: [{ name: 'Grilled cheese', qty: 1, price: 8.5 }, { name: 'Tomato soup', qty: 1, price: 5.0 }, { name: 'Iced tea', qty: 2, price: 6.0 }, { name: 'Tip', qty: null, price: 4.0 }] } };
 const ALERT_ODD: SpendTx = { ...ALERT_WITH, details: { ...ALERT_WITH.details!, total: 31.4, items: [], mismatch: { receipt: 31.4, bank: 25, kept: false } } };
+// 💸 the ONE list: a made-up few days of purchases from everywhere (alerts, a CSV, receipts), newest first
+const GAS_TX: SpendTx = { id: 'g1', posted: d(-2), amount: -41.2, description: 'EXAMPLE GAS 0042', merchant: 'example gas', source: 'alert', account: 'Example Bank card', receipt_path: null, note: null, details: null };
+const SHOP_TX: SpendTx = { id: 'c1', posted: d(-4), amount: -18.99, description: 'EXAMPLE BOOKS ONLINE', merchant: 'example books online', source: 'csv', account: 'CSV import', receipt_path: null, note: null, details: null };
+const DAYS_EX: [string, SpendTx[]][] = [[d(-2), [RECEIPTS[0], GAS_TX]], [d(-3), [ALERT_WITH]], [d(-4), [RECEIPTS[1], SHOP_TX]]];
+// 📜 made-up Log lines
+const at = (days: number, hm: string) => new Date(`${d(days)}T${hm}:00`).toISOString();
+const LOG_EX: LogRow[] = [
+  { id: 'l1', at: at(0, '10:42'), kind: 'change', ref: null, data: {}, text: 'Example Corner Shop · category Other → Groceries (rule saved: this shop from now on)' },
+  { id: 'l2', at: at(-2, '18:05'), kind: 'receipt', ref: null, data: {}, text: 'Example Cafe $23.45 · receipt attached (a receipt email) · 3 items · total matches the bank' },
+  { id: 'l3', at: at(-2, '17:31'), kind: 'purchase', ref: null, data: {}, text: 'Example Cafe $23.45 · from Example Bank …4821 alert → 🍽️ Eating out' },
+  { id: 'l4', at: at(-3, '12:10'), kind: 'receipt', ref: null, data: {}, text: 'SQ *SAMPLE DINER $25.00 · receipt attached · 4 items · total matches' },
+  { id: 'l5', at: at(-4, '09:15'), kind: 'bill', ref: null, data: {}, text: 'bill Example Streaming $15.49 monthly auto-added — from your bank' },
+  { id: 'l6', at: at(-5, '20:02'), kind: 'change', ref: null, data: {}, text: 'Example Toys $12.00 · deleted' },
+];
 
 // 📍 made-up places near a made-up zip
 const spBase = { phone: null, website: null, route: false, from: 'osm' as const, lat: 0, lon: 0 };
@@ -296,42 +310,49 @@ export function Guide() {
       </Fold>
 
       <Fold icon="💸" title="Spending and budgets">
-        <P>In <b>Money → Spending</b>: every purchase from your bank alert emails (or a bank CSV) is sorted into groceries, gas, eating out, shopping and so on, with free rules (no AI). You see this month (or last month) against your usual month (the 3 before), each category with a thin mark for its usual amount, and the shops it went to.</P>
-        <P>Tap a category to set a <b>monthly budget</b>: you get a heads-up at 80% (change it in Settings → Spending & returns) and when it’s used up. A shop in the wrong category? Pick the right one next to it: that shop always goes there from now on. Transfers (Zelle, Venmo, cash) aren’t counted as spending.</P>
+        <P>In <b>Money → Spending</b> every purchase is in <b>one list</b>: from your bank alert emails, a bank CSV, your bank link and your receipts, all together, newest first, by day. Nothing is shown twice. Each line has the shop, its <b>category</b>, the amount, where it came from (📧 bank alert email, 📄 CSV, 🏦 bank link, 🧾 receipt only) and a small picture when it has a receipt. A receipt’s items open right there with <b>▾</b>.</P>
+        <P>At the top: this month (or last month) against your usual month (the 3 before), then each category’s total. The category on a line is <b>always the one its money is counted in</b>. Tap a category (or a chip above the list) to see only its purchases; tap it again for all. <b>🎯 Budgets</b> sets a monthly budget per category: you get a heads-up at 80% (change it in Settings → Spending & returns) and when it’s used up. Transfers (Zelle, Venmo, cash) are listed but not counted as spending.</P>
         <Example caption="Made-up month: eating out over its usual amount, groceries with a budget.">
           <SpendingView r={REPORT} budgets={{ groceries: 450, dining: 200 }} monthName="This month" />
         </Example>
-        <P><b>🧾 Receipts go to Spending, written out in full.</b> A receipt in your email (the email itself, or a photo or PDF attached to it) is read <b>by itself</b>, and a paper one too: tap <b>📷 Add a receipt</b>, take a photo (or pick a photo or PDF) and it’s read and saved at once, nothing to press after. Most receipt emails are read with free patterns; a photo or PDF is read by the AI once (the free ones first) and never paid for twice.</P>
-        <P>Each receipt is a card in <b>Money → Spending</b>: the shop, the date and the category, then <b>everything you bought</b>, line by line (the name, how many × the price of one, and the line’s total), then the tax, the <b>total</b> and the card’s last 4. A long receipt shows its first 8 lines and <b>+N more</b> opens the rest right there. The receipt’s picture sits <b>small on the right</b> (the first page for a PDF, ✉️ when the receipt is the email itself). It’s the same card for a receipt you scanned and one from an email; a chip says which, and <b>🏦 Matched to your bank</b> when it’s the same purchase as a bank alert.</P>
-        <Example caption="Made-up receipts: a cafe receipt from an email (matched to a bank alert), a long grocery receipt you scanned (+4 more), and a PDF receipt from an email.">
-          <ul className="space-y-3">{RECEIPTS.map((t) => <ReceiptCard key={t.id} t={t} rules={RULES} example />)}</ul>
+        <Example caption="Made-up purchases: a cafe receipt from an email on a bank alert (items opened), gas from an alert, a diner receipt you added to its bank alert, a grocery receipt you scanned, a book shop from a CSV.">
+          <div className="card !px-3 !py-1">
+            {DAYS_EX.map(([day, xs]) => (
+              <div key={day}>
+                <p className="label border-t border-slate-900/[0.06] pb-0.5 pt-2.5 first:border-0 dark:border-white/[0.06]">{shortDate(day)}</p>
+                <ul>{xs.map((t) => <SpendLine key={t.id} t={t} rules={RULES} example startOpen={t.id === 'r1'} />)}</ul>
+              </div>
+            ))}
+          </div>
         </Example>
-        <P><b>Tap the small picture</b> for full screen (tap again to zoom in) with <b>⬇ Download</b>, ↗ Share and 🗑 Delete. <b>Tap the shop</b> for its sheet: where it came from (“From email: subject — sender, date”), the category (change it like any shop), ✎ Edit details, ✨ Read again (one AI read, at once) and 🗑 Delete (the receipt only, or the purchase too; it asks first).</P>
+        <P><b>🔎 Search</b> and the <b>category chips</b> sit right above the list. Search finds any purchase in any month as you type: a shop, something on a receipt (“latte”), an amount (“23.45”), a month (“March”), a category or words from the email it came from. It all happens on your phone.</P>
+        <P><b>Tap a line</b> to change it: <b>✎ Edit</b> the shop name, date, amount or note; pick another <b>category</b> (that shop always goes there from now on, and its total moves with it); add, replace or remove its receipt; or <b>🗑 Delete</b> it (it asks first).</P>
+        <Example caption="Made-up $25.00 bank alert, tapped: add its receipt.">
+          <div className="card space-y-3">
+            <ReceiptDetailsView t={ALERT_TX} rules={{}} actions={{ attach: <div className="col-span-2 space-y-1"><p className="label px-1">📎 Add its receipt</p><PhotoPick busy={false} onFile={() => undefined} example /></div>, line: () => undefined, del: () => undefined }} />
+          </div>
+        </Example>
+        <P><b>🧾 Receipts.</b> A receipt in your email (the email itself, or a photo or PDF attached to it) comes in <b>by itself</b>. A paper one: tap <b>📷 Take photo</b> (the camera opens straight away) or <b>🖼️ Choose photo / PDF</b> (your gallery or files). The same two buttons are on a purchase (📎 Add its receipt) and in ＋. It’s made smaller on your phone and read once (the free AIs first; the same file is never paid for twice), then saved, nothing to press after.</P>
+        <P><b>Never counted twice</b>: when a receipt has the same amount as a bank purchase (to the cent, or with a tip line), within 3 days and with a matching shop name (“Sample Diner” = “SQ *SAMPLE DINER”), it’s <b>attached to that purchase</b> instead of adding a second one, whichever comes first. If you add a receipt to a purchase and the totals differ, you choose:</P>
+        <Example caption="Made-up receipt whose total isn’t the bank’s.">
+          <MismatchPanel t={ALERT_ODD} />
+        </Example>
+        <P>The receipt’s picture: tap it for full screen (tap again to zoom) with ⬇ Download, ↗ Share and 🗑 Delete; a receipt that is an email opens the email.</P>
         <Example caption="Made-up receipt sheet: what was read from it.">
           <div className="card"><ReceiptDetailsView t={RECEIPTS[0]} rules={{}} example actions={{ edit: () => undefined, del: () => undefined }} /></div>
         </Example>
-        <P><b>📎 Add a receipt to a purchase from your bank.</b> Under the receipts, <b>🏦 Other purchases</b> lists the month’s purchases from your bank alert emails (or a CSV). Tap one: you see the shop, the date, the amount, the category (pick another if it’s wrong) and your note. <b>✎ Edit</b> changes the shop name, date, amount or note; <b>🗑 Delete</b> asks first. Tap <b>📎 Add receipt</b> and take a photo (or pick a photo or PDF): it’s made smaller on your phone, kept with <b>that purchase</b>, and read once (the free AIs first; the same file is never paid for twice).</P>
-        <P>When the receipt’s total is the bank’s amount (to the cent, or with a tip line written on it), its items are <b>broken down right on that purchase</b>: it becomes a full receipt card with the picture on the right. Still one purchase, still the bank’s amount: <b>nothing is counted twice</b>. If the totals differ, the picture stays and you choose: <b>Use its items anyway</b> or <b>Remove picture</b>. Later you can <b>🔁 Replace receipt</b> or <b>✕ Remove receipt</b> (the purchase goes back to a plain line). The same receipt already on another purchase? It tells you instead of adding it twice.</P>
-        <Example caption="Made-up $25.00 bank alert: tap it, 📎 Add receipt, and its items are broken down on the same purchase.">
-          <div className="space-y-3">
-            <div className="card !py-1"><ul><SpendRow t={ALERT_TX} rules={RULES} /></ul></div>
-            <div className="card space-y-3">
-              <ReceiptDetailsView t={ALERT_TX} rules={{}} actions={{ attach: <span className="btn-primary col-span-2 whitespace-nowrap">📎 Add receipt</span>, line: () => undefined, del: () => undefined }} />
-            </div>
-            <ul><ReceiptCard t={ALERT_WITH} rules={RULES} example /></ul>
-            <p className="text-center text-xs text-slate-500 dark:text-slate-400">When the totals don’t match:</p>
-            <MismatchPanel t={ALERT_ODD} />
-          </div>
-        </Example>
-        <P><b>Never counted twice</b>: the same purchase is often in your bank alert emails too. When the amount is the same (to the cent), the dates are within 3 days and the shop names match (“Example Cafe” = “SQ *EXAMPLE CAFE 1234”), the receipt is <b>attached to that purchase</b> instead of adding a second one, whichever comes first. The same receipt email or file is never added twice.</P>
-        <P><b>🔎 Search</b> finds any purchase as you type: a shop, something on a receipt (“latte”), an amount (“23.45”), a month (“March”), a category or words from the email it came from. It all happens on your phone.</P>
-        <Example caption="Made-up search: “latte” finds the cafe receipt.">
-          <div className="space-y-2">
-            <SearchBox q="latte" onChange={() => undefined} placeholder="Shop, item, 23.45, March…" label="Search spending and receipts" />
-            <ul className="space-y-3">{RECEIPTS.filter((t) => matchSpend(t, 'latte')).map((t) => <ReceiptCard key={t.id} t={t} rules={RULES} example />)}</ul>
-          </div>
-        </Example>
         <P><b>How often</b>: your Gmail is checked <b>every hour</b> by itself for receipts, bank alerts, bills, orders and documents (free checks first, so most hours cost nothing). Settings → Spending & returns shows when it last checked.</P>
+      </Fold>
+
+      <Fold icon="📜" title="Money log">
+        <P><b>Money → Log</b> is a short diary of your money, newest first, each line with its date and time: where a purchase came from and the category it counts in, a receipt attached (how many items, whether the total matches), a category you changed, a purchase edited or deleted, a bill added by itself or undone.</P>
+        <P>Search it, or show only <b>Purchases</b>, <b>Receipts</b>, <b>Bills</b> or <b>Changes</b>. Tap a line to open that purchase or bill (if it’s still there). The first time you open it, this month’s purchases already there are written in. Lines are kept for 180 days.</P>
+        <Example caption="Made-up log lines.">
+          <div className="space-y-2">
+            <KindChips label="Show" options={[{ id: 'all', label: 'All', n: 6 }, { id: 'purchase', label: '💳 Purchases', n: 1 }, { id: 'receipt', label: '🧾 Receipts', n: 2 }, { id: 'bill', label: '📋 Bills', n: 1 }, { id: 'change', label: '✎ Changes', n: 2 }]} value="all" onChange={() => undefined} />
+            <LogLines rows={LOG_EX} example />
+          </div>
+        </Example>
       </Fold>
 
       <Fold icon="🧾" title="Returns and warranties">

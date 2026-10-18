@@ -7,7 +7,7 @@ import { useState } from 'react';
  */
 export type Tab = 'home' | 'money' | 'places' | 'me' | 'inbox' | 'guide';
 export const VIEWS = {
-  money: ['bills', 'spending', 'returns'],
+  money: ['bills', 'spending', 'returns', 'log'],
   places: ['contacts', 'nearby', 'list'],
   me: ['vault', 'privacy', 'settings'],
 } as const;

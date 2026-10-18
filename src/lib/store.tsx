@@ -203,6 +203,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
       // Remembered first (so it never comes back), then the bill itself (its heads-ups go with it).
       check(await supabase.from('suggestions').update({ status: 'ignored', item_id: null }).eq('id', sg.id));
       if (sg.item_id) check(await supabase.from('items').delete().eq('id', sg.item_id));
+      void api('money-log', { op: 'bill-undo', id: sg.id }).catch(() => undefined); // 📜 Log line (written by the server)
       setAdded((cur) => cur.filter((x) => x.id !== sg.id));
       setItems((cur) => cur.filter((x) => x.id !== sg.item_id));
       setAlerts((cur) => cur.filter((x) => !sg.item_id || x.item_id !== sg.item_id));
