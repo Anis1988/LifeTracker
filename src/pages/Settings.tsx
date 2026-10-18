@@ -73,7 +73,8 @@ export function Settings() {
   // ✉️ Extra Gmail accounts: Google asks which account each time (Gmail only; mailing lists only if asked).
   const addGoogle = (extra: string, want: ('gmail' | 'mailbox')[] = ['gmail']) => run(extra === 'new' ? 'google-add' : extra, async () => {
     const r = await api<{ url: string }>('google-start', { want, back: siteUrl(), extra });
-    location.href = r.url;
+    // In the app, Google opens in the phone's browser (like the main sign-in).
+    if (isNative()) { toast('info', 'Finish in the browser, then come back to the app.'); await Browser.open({ url: r.url }); } else location.href = r.url;
   });
   const toggleExtra = (kind: string, on: boolean) => run(kind, async () => {
     await api('google-extra', { kind, on });
