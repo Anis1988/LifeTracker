@@ -189,7 +189,7 @@ export function ReceiptDetailsView({ t, url, rules, onMove, onView, actions, exa
       <div>
         <Fact label="Category">
           {onMove ? (
-            <select className="input py-0 text-sm" value={cat} onChange={(e) => onMove(e.target.value)} aria-label="Category">
+            <select className="input min-h-[40px] w-auto max-w-[11rem] py-1.5 text-sm font-semibold" value={cat} onChange={(e) => onMove(e.target.value)} aria-label="Category">
               {SPEND_CATS.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
             </select>
           ) : `${spendCat(cat).icon} ${spendCat(cat).label}`}

@@ -72,7 +72,7 @@ export function SpendingView({ r, budgets, alertAt = 0.8, onBudget, onMove, mont
                   <span className="block text-xs text-slate-500 dark:text-slate-400">{s.count} time{s.count === 1 ? '' : 's'}</span>
                 </span>
                 {onMove ? (
-                  <select className="input py-0 text-sm" value={s.cat} onChange={(e) => onMove(s.key, e.target.value)} aria-label={`Category for ${s.name}`}>
+                  <select className="input min-h-[40px] w-auto max-w-[11rem] py-1.5 text-sm font-semibold" value={s.cat} onChange={(e) => onMove(s.key, e.target.value)} aria-label={`Category for ${s.name}`}>
                     {SPEND_CATS.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
                   </select>
                 ) : <span className="text-xs text-slate-500 dark:text-slate-400">{spendCat(s.cat).icon} {spendCat(s.cat).label}</span>}
