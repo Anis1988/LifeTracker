@@ -6,7 +6,7 @@ import { fetchAccounts } from './simplefin.ts';
 import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
 import { readWithAi } from './ai.ts';
 import { connection, env, open, saveConnection, settingsOf } from './server.ts';
-import { ALERT_QUERY, parseBankAlert } from './alerts.ts';
+import { ALERT_QUERY, AUTOPAY_QUERY, parseAutopay, parseBankAlert } from './alerts.ts';
 import { breachStep, ensureBrokers, onlineStep } from './me.ts';
 import { sweepStep, unsubStep } from './unsub.ts';
 import { spentOf, weekSummary, type WeekInput } from './week.ts';
@@ -234,6 +234,26 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   const { data: items } = await db.from('items').select('*').eq('user_id', userId).neq('status', 'cancelled');
   let read = 0, bills = 0, skipped = 0;
   let stopped = '';
+  // 🔁 "Your Auto Pay payment will be processed soon" notices: read for free (no AI), with their own list of emails done.
+  const apSeen = new Set((c.meta.seenAutopay as string[] | undefined) ?? []);
+  const apIds = (await findAlertEmails(at, 45, AUTOPAY_QUERY, 30)).filter((id) => !apSeen.has(id));
+  for (const id of apIds) {
+    if (Date.now() > until) break;
+    let m;
+    try { m = await readEmail(at, id); } catch (e) { if (!isRateLimit(e)) throw e; break; }
+    apSeen.add(id);
+    const n = parseAutopay({ from: m.from, subject: m.subject, text: m.text, date: m.date });
+    if (!n) continue;
+    seen.add(id); // the AI never needs to read it
+    bills++;
+    const x: Extracted = {
+      isBill: true, name: n.company, merchant: n.company, category: n.category, amount: n.amount, currency: 'USD', cycle: 'monthly', nextDue: n.due,
+      endsOn: null, trialEnds: null, last4: n.last4, policyNumber: '', coverage: '', deductible: null, balance: null, rate: null,
+      summary: `Auto Pay of ${money(n.amount)} on ${n.due}${n.last4 ? ` from the account ending ${n.last4}` : ''}.`, warnings: [],
+    };
+    const r = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(n.company)}`, { subject: m.subject, from: m.from, autopay: true }, (items as Item[]) ?? [], alerts);
+    if (r.itemId) await db.from('items').update({ autopay: true }).eq('id', r.itemId).eq('user_id', userId);
+  }
   for (const id of ids) {
     if (Date.now() > until) { stopped = 'out of time: the rest next time'; break; }
     let m;
@@ -259,7 +279,7 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   }
   const now = new Date().toISOString();
   const done = !stopped && ids.every((id) => seen.has(id));
-  await saveConnection(db, userId, 'google', null, { seenMail: [...seen].slice(-1000), gmailScanned: now, ...(done ? { gmailDone: now } : {}) });
+  await saveConnection(db, userId, 'google', null, { seenMail: [...seen].slice(-1000), seenAutopay: [...apSeen].slice(-500), gmailScanned: now, ...(done ? { gmailDone: now } : {}) });
   return `${ids.length} email(s) looked at: ${read} read by the AI, ${bills} bill(s), ${skipped} skipped for free${stopped ? `. Stopped: ${stopped}` : ''}`;
 }
 
