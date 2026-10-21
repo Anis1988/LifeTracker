@@ -156,7 +156,7 @@ export async function receiptEmailStep(db: SupabaseClient, userId: string, s: Se
     }
     mails.push(m); // 📇 also looked at for contacts (no second read)
     const { business, amount, ...details } = r;
-    const res = await saveReceipt(db, userId, { business, amount, date: details.date, key: `mail:${id}:body`, path: `gmail:${id}${tag ? `|${tag}` : ''}`, note: fromEmailNote(m), details });
+    const res = await saveReceipt(db, userId, { business, amount, date: details.date, key: `mail:${id}:body`, path: `gmail:${id}${tag ? `|${tag}` : ''}`, note: fromEmailNote(m), details: { ...details, ...(box.email ? { mailbox: box.email } : {}) } });
     if (res === 'new') added++; else if (res === 'attached') attached++;
     seen.add(id);
   }

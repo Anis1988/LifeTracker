@@ -6,6 +6,7 @@ import { money, today } from '../../supabase/functions/_shared/money.ts';
 import { downloadFile, fileKind, fileName, openFile, safeName, shareFiles, shrink, signedUrls } from '../lib/vault';
 import { api, supabase } from '../lib/supabase';
 import { Money, Sheet, errText, shortDate, toast } from './ui';
+import { PersonChip, personEdge, usePersonFor } from './Person';
 
 /**
  * 🧾 Money → Spending: ONE list of the month's purchases (`SpendLine`: shop, category chip, amount, source, a small
@@ -93,8 +94,9 @@ export function SpendLine({ t, url, rules, onOpen, onView, example, startOpen }:
   const [icon, from] = SOURCE_ICON[t.source ?? 'bank'] ?? SOURCE_ICON.bank;
   const shop = (t.source === 'receipt' ? d?.store || t.description : t.description || d?.store) || 'Purchase';
   const has = !!t.receipt_path || (example && !!d);
+  const who = usePersonFor(t); // 👥 whose mailbox it came from
   return (
-    <li className="border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]">
+    <li className={`border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
       <div className="flex items-center gap-2.5 py-1.5">
         {has ? <ReceiptThumb t={t} url={url} onView={onView} example={example} /> : <span className="tile !h-11 !w-11 shrink-0 text-lg" title={from} aria-hidden="true">{icon}</span>}
         <button className="tap flex min-h-[52px] min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left" tabIndex={example ? -1 : undefined} onClick={onOpen} aria-label={`${shop}, ${money(-Number(t.amount))}, ${spendCat(categorize(t, rules)).label}: details, edit, receipt`}>
@@ -102,6 +104,7 @@ export function SpendLine({ t, url, rules, onOpen, onView, example, startOpen }:
             <span className="block truncate text-sm font-semibold">{shop}</span>
             <span className="mt-0.5 flex flex-wrap items-center gap-1">
               <CatChip id={categorize(t, rules)} />
+              <PersonChip p={who} />
               {has ? <span className="text-[11px] text-slate-500 dark:text-slate-400" title={from}><span aria-hidden="true">{icon} · 🧾{items.length ? ` ${items.length}` : ''}</span><span className="sr-only">{from}, has a receipt{items.length ? ` with ${items.length} items` : ''}</span></span> : <span className="sr-only">{from}</span>}
               {mm && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 text-[10.5px] font-semibold leading-4 text-amber-900 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-100">⚠️ totals differ</span>}
             </span>

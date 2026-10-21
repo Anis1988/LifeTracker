@@ -118,7 +118,7 @@ export interface Suggestion {
   trial_ends: string | null;
   merchant: string | null;
   details: ItemDetails;
-  evidence: { charges?: { date: string; amount: number }[]; subject?: string; from?: string; documentId?: string; note?: string; auto?: boolean };
+  evidence: { charges?: { date: string; amount: number }[]; subject?: string; from?: string; documentId?: string; note?: string; auto?: boolean; mailbox?: string; box?: string }; // 👥 box = the mailbox (address), mailbox = only for extra ones
   status: 'new' | 'accepted' | 'ignored'; // 🆕 accepted + evidence.auto = added to Bills by itself; ignored = undone (never again)
   item_id: string | null;
   created_at: string;
@@ -343,7 +343,15 @@ export interface Settings {
   };
   /** 📬 Email checks: read Gmail every `every` minutes (15/30/60/120/240), 0 = only in the daily morning run. */
   mail: { every: number };
+  /**
+   * ✉️ Emails to me (owner's request: fewer emails). on = master switch; often = at most one summary a day / one a
+   * week / only important things (still at most 1 a day) / never; kinds = what may be in them. Heads-ups always stay
+   * in the app (Home, 🔔) whatever this says.
+   */
+  emails: { on: boolean; often: EmailOften; kinds: Record<EmailKind, boolean> };
 }
+export type EmailOften = 'daily' | 'weekly' | 'important' | 'never';
+export type EmailKind = 'added' | 'due' | 'price' | 'weekend' | 'week' | 'security';
 
 export const DEFAULT_SETTINGS: Settings = {
   ai: {
@@ -376,7 +384,18 @@ export const DEFAULT_SETTINGS: Settings = {
   place: { zip: '45245', weekend: true },
   vault: { emails: true, maxPerRun: 6, people: [{ name: 'Me', kind: 'me' }], lock: { on: false, hash: '', salt: '', len: 0, minutes: 5, resetAsked: null } },
   mail: { every: 60 },
+  emails: { on: true, often: 'daily', kinds: { added: false, due: true, price: true, weekend: true, week: true, security: true } },
 };
+
+/** ✉️ Emails to me: saved choice, else from the older switches ("Email me new heads-ups", "My week" email). */
+function emailsOf(s: Partial<Settings> | null | undefined): Settings['emails'] {
+  const d = DEFAULT_SETTINGS.emails;
+  const e = s?.emails;
+  const oldOn = s?.notify?.email !== false;
+  const often = (['daily', 'weekly', 'important', 'never'] as const).includes(e?.often as EmailOften) ? e!.often : d.often;
+  const kinds = e?.kinds ? { ...d.kinds, ...e.kinds } : { ...d.kinds, due: oldOn, price: oldOn, weekend: oldOn, security: oldOn, week: s?.week?.on !== false };
+  return { on: typeof e?.on === 'boolean' ? e.on : true, often, kinds };
+}
 
 /** Saved settings merged over the defaults (new options get their default). */
 export function withDefaults(s: Partial<Settings> | null | undefined): Settings {
@@ -406,6 +425,7 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     contacts: { ...d.contacts, ...s?.contacts },
     place: { ...d.place, ...s?.place, zip: /^\d{5}$/.test(s?.place?.zip?.trim() ?? '') ? s!.place!.zip.trim() : d.place.zip },
     vault: { ...d.vault, ...s?.vault, people: s?.vault?.people?.length ? s.vault.people : d.vault.people, lock: { ...d.vault.lock, ...s?.vault?.lock } },
+    emails: emailsOf(s),
     mail: { every: typeof s?.mail?.every === 'number' && (MAIL_EVERY as readonly number[]).includes(s.mail.every) ? s.mail.every : d.mail.every },
   };
 }

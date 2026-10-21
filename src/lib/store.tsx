@@ -15,10 +15,11 @@ import type { GoogleExtra } from '../components/GoogleAccounts';
 /** What the server reports (bank, Google, AI use today, last automatic run, which keys are set). */
 export interface Status {
   bank: { connected: boolean; lastSync?: string | null; accounts?: { name: string; balance: number; currency: string }[]; errors?: string[] };
-  google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean; lastScan?: string | null };
+  google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean; lastScan?: string | null; person?: { name?: string; color?: string } | null };
   googleExtras?: GoogleExtra[]; // ✉️ extra Gmail accounts watched too
   me?: { lastOnline: string | null; lastErrors: string[]; weekSent: string | null; breachScanned: string | null };
   mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null; vaultScanned?: string | null; receiptsScanned?: string | null; mailChecked?: string | null; check?: MailCheck | null }; // check = 📬 the last email check
+  emails?: { lastSent: string | null; lastSubject: string | null }; // ✉️ the last automatic email
   phone?: { since: string | null; lastText: string | null };
   lastRun: { lastRun?: string; steps?: string[]; errors?: string[] } | null;
   aiUsed: Record<string, number>;

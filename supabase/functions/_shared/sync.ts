@@ -27,6 +27,7 @@ import { weekendFor } from './nearbyFind.ts';
 import { driveText, fridayOf, milesText, type Spot } from './place.ts';
 import type { Mail } from './google.ts';
 import type { Appointment } from './model.ts';
+import { emailText, pickAlerts, planEmail } from './emails.ts';
 
 /**
  * 🔄 One automatic run for one person (every morning, or "Sync now"):
@@ -142,9 +143,11 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
   if (alerts.length) {
     const { data } = await db.from('alerts').upsert(alerts, { onConflict: 'user_id,kind,key', ignoreDuplicates: true }).select('title, body');
     log.newAlerts = data?.length ?? 0;
-    if (data?.length && s.notify.email && email) await step('Email', () => digest(email, data as { title: string; body: string | null }[]));
   }
-  if (want('week') && email) await step('My week', () => weekStep(db, userId, email, s, opts.force));
+  // 📊 "Send my week now" (a button): sent right away. The automatic ones go in the one email below.
+  if (want('week') && email && opts.force && opts.only) await step('My week', () => weekStep(db, userId, email, s));
+  // ✉️ At most one automatic email a day (or a week), only the kinds switched on (Settings → Emails to me).
+  if (email && !opts.force) await step('Email', () => emailStep(db, userId, email, s, !opts.only));
   if (!opts.only) await saveConnection(db, userId, 'status', null, { lastRun: new Date().toISOString(), steps: log.steps, errors: log.errors });
   return log;
 }
@@ -292,7 +295,8 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   const c = { meta: await stateOf(db, userId, box, 'google') };
   const at = await tokenOf(box);
   const tag = boxTag(box);
-  const via = tag ? { mailbox: tag } : {};
+  // 👥 box = which mailbox (every one, for the person chip); mailbox = only the extra ones (said in the heads-up).
+  const via = { ...(tag ? { mailbox: tag } : {}), ...(box.email ? { box: box.email } : {}) };
   const seen = new Set((c.meta.seenMail as string[] | undefined) ?? []);
   // Look back to the last run that read everything (first time: 60 days), so a run stopped by limits loses nothing.
   const last = c.meta.gmailDone as string | undefined;
@@ -533,12 +537,9 @@ async function weekendStep(db: SupabaseClient, userId: string, s: Settings, aler
   return `${all.length} ideas for this weekend`;
 }
 
-// ---------- 📊 My week (an email on your chosen day; the same summary as on Home) ----------
-async function weekStep(db: SupabaseClient, userId: string, email: string, s: Settings, force?: boolean): Promise<string | void> {
-  if (!s.week.on && !force) return;
+// ---------- 📊 My week (the same summary as on Home) ----------
+async function weekLines(db: SupabaseClient, userId: string, s: Settings): Promise<{ icon: string; text: string }[]> {
   const t = today();
-  const meta = (await connection(db, userId, 'me'))?.meta ?? {};
-  if (!force && (new Date(`${t}T12:00:00Z`).getUTCDay() !== s.week.day || meta.weekSent === t)) return;
   const since = iso(new Date(Date.now() - 63 * 86400_000));
   const [items, findings, senders, papers, tx, dates, purchases] = await Promise.all([
     db.from('items').select('*').eq('user_id', userId),
@@ -549,16 +550,39 @@ async function weekStep(db: SupabaseClient, userId: string, email: string, s: Se
     db.from('life_dates').select('*').eq('user_id', userId),
     db.from('purchases').select('*').eq('user_id', userId).eq('status', 'keep'),
   ]);
-  const lines = weekSummary({ items: (items.data as Item[]) ?? [], findings: (findings.data as Finding[]) ?? [], senders: (senders.data as Sender[]) ?? [], papers: s.papers.on ? (papers.data as Paper[]) ?? [] : [], settings: s, spent: spentOf(tx.data ?? [], t, s.spend.rules), dates: (dates.data as LifeDate[]) ?? [], purchases: (purchases.data ?? []) as WeekInput['purchases'] }, t);
+  return weekSummary({ items: (items.data as Item[]) ?? [], findings: (findings.data as Finding[]) ?? [], senders: (senders.data as Sender[]) ?? [], papers: s.papers.on ? (papers.data as Paper[]) ?? [] : [], settings: s, spent: spentOf(tx.data ?? [], t, s.spend.rules), dates: (dates.data as LifeDate[]) ?? [], purchases: (purchases.data ?? []) as WeekInput['purchases'] }, t);
+}
+
+/** "✉️ Send my week now": right away (the owner asked for it). */
+async function weekStep(db: SupabaseClient, userId: string, email: string, s: Settings): Promise<string | void> {
+  const t = today();
+  const lines = await weekLines(db, userId, s);
   const r = await sendEmail(email, `LifeTracker: your week (${t})`, ['Your week, in short:', '', ...lines.map((l) => `${l.icon} ${l.text}`)].join('\n'));
   if (r.startsWith('sent')) await saveConnection(db, userId, 'me', null, { weekSent: t });
   return r;
 }
 
-/** The morning email (Resend: RESEND_API_KEY, RESEND_FROM). */
-function digest(to: string, list: { title: string; body: string | null }[]): Promise<string> {
-  const text = [`LifeTracker: ${list.length} new heads-up${list.length > 1 ? 's' : ''}`, '', ...list.map((a) => `• ${a.title}${a.body ? `\n  ${a.body}` : ''}`)].join('\n');
-  return sendEmail(to, `LifeTracker: ${list[0].title}${list.length > 1 ? ` (+${list.length - 1} more)` : ''}`, text);
+/**
+ * ✉️ The one automatic email (Resend: RESEND_API_KEY, RESEND_FROM): `planEmail` decides if one may go now (on/off,
+ * a day / a week / only important / never, max 1 a day), then the unseen heads-ups of the kinds switched on since the
+ * last email, plus "My week" on its day. Last sent kept in the `emails` connection row (server only).
+ */
+async function emailStep(db: SupabaseClient, userId: string, email: string, s: Settings, full: boolean): Promise<string | void> {
+  const meta = (await connection(db, userId, 'emails'))?.meta ?? {};
+  const plan = planEmail(s, { now: Date.now(), tz: s.appts.timeZone || 'America/New_York', lastSent: (meta.lastSent as string | undefined) ?? null, full });
+  if (!plan.send) return;
+  const { data } = await db.from('alerts').select('kind, title, body, seen').eq('user_id', userId).eq('seen', false).gt('created_at', plan.since).order('created_at').limit(300);
+  const list = pickAlerts(s, plan, (data ?? []) as { kind: Alert['kind']; title: string; body: string | null; seen: boolean }[]).slice(0, 40);
+  const week = plan.week ? await weekLines(db, userId, s) : [];
+  if (!list.length && !week.length) return;
+  const m = emailText(list, week, plan, env('SITE_URL'));
+  const r = await sendEmail(email, m.subject, m.body);
+  if (r.startsWith('sent')) {
+    const now = new Date().toISOString();
+    await saveConnection(db, userId, 'emails', null, { lastSent: now, lastSubject: m.subject, lastCount: list.length });
+    if (week.length) await saveConnection(db, userId, 'me', null, { weekSent: today() });
+  }
+  return r;
 }
 
 async function sendEmail(to: string, subject: string, body: string): Promise<string> {
