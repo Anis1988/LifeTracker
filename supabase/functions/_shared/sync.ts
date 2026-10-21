@@ -3,7 +3,7 @@ import type { Alert, Extracted, Finding, Item, LifeDate, Paper, Sender, Settings
 import { addCycle, daysBetween, dueDayOf, iso, money, nextDue, parseDay, perYear, today, todayIn } from './money.ts';
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
-import { ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, syncCalendar } from './google.ts';
+import { countReads, ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, stopCounting, syncCalendar } from './google.ts';
 import { boxName, boxTag, mailBoxes, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 import { sameSpend } from './receiptText.ts';
 import { readWithAi } from './ai.ts';
@@ -19,7 +19,7 @@ import { purchaseAlerts, purchaseStep } from './purchases.ts';
 import { mergeBankRows, moveOldReceipts, receiptEmailStep, type BankRow } from './receipts.ts';
 import { addedLines, logMoney, pruneLog } from './moneyLog.ts';
 import { spendCat, spendReport, type SpendTx } from './spend.ts';
-import { dateKind } from './model.ts';
+import { dateKind, mailDue, nextMailCheck, type MailCheck } from './model.ts';
 import { apptEmailStep } from './appointments.ts';
 import { allRows } from './rows.ts';
 import { contactStep } from './contactFind.ts';
@@ -43,9 +43,17 @@ type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 // document attachments. Free checks first, so most hours cost nothing; the AI only within each step's per-run cap.
 export type Part = 'bills' | 'online' | 'breaches' | 'lists' | 'week' | 'purchases' | 'appts' | 'calendar' | 'contacts' | 'vault' | 'mail' | 'weekend';
 
-export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean } = {}): Promise<RunLog> {
+/** Step names whose result counts for the 📬 email-check status. */
+const MAIL_STEPS = /^(Appointments|Bank alerts|Gmail|Returns & warranties|Vault|Receipts|Contacts)\b/;
+
+/**
+ * slot = the quarter-hour email look (cron, rounded call time): it reads Gmail only when that slot is due for this
+ * person's 📬 Email checks setting (`mail.every`; Off = only the daily run).
+ */
+export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean; slot?: number } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
   const log: RunLog = { steps: [], errors: [], newAlerts: 0 };
+  if (opts.slot != null && !mailDue(s.mail.every, opts.slot)) return log;
   const alerts: NewAlert[] = [];
   // Server functions are stopped after about 150 s: long reads stop in time and carry on the next run.
   const until = Date.now() + 110_000;
@@ -65,6 +73,10 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
   // ✉️ Every Gmail step reads each mailbox in turn: the main Google account, then the extra ones switched on.
   const boxes = await mailBoxes(db, userId).catch(() => [] as Box[]);
   const each = async (name: string, f: (b: Box) => Promise<string | void>) => { for (const b of boxes) await step(boxName(name, b), () => f(b)); };
+  // 📬 New emails read in this run (each step reads only emails it hasn't seen), for the email-check status.
+  const read = new Set<string>();
+  const tokens: string[] = [];
+  if (want('mail')) for (const b of boxes) tokenOf(b).then((at) => { tokens.push(at); countReads(at, read); }).catch(() => undefined);
   // 📅 Appointments (also every hour on their own): straight into the (main account's) calendar.
   let apptChanges = 0;
   if (want('appts')) await each('Appointments', async (b) => { const r = await apptEmailStep(db, userId, s, alerts, until, mails, b); apptChanges += r.changed; return r.text; });
@@ -109,6 +121,22 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
       const err = b.main ? undefined : log.errors.find((e) => e.includes(`(${b.email ?? b.kind}):`));
       await saveState(db, userId, b, 'google', { lastScan: now, ...(b.main ? {} : { lastError: err?.slice(0, 200) ?? null }) }).catch(() => undefined);
     }
+  }
+
+  if (want('mail') && boxes.length) {
+    for (const at of tokens) stopCounting(at);
+    const lines = [...log.steps, ...log.errors].filter((x) => MAIL_STEPS.test(x));
+    const errs = log.errors.filter((x) => MAIL_STEPS.test(x));
+    const slow = lines.some((x) => /slow down|rate limit|quota/i.test(x)) ? 'stopped: Gmail asked to slow down'
+      : errs.some((x) => /out of time/i.test(x)) ? 'stopped: out of time, the rest next check' : '';
+    const at = opts.slot ?? Date.now();
+    const next = nextMailCheck(s.mail.every, at);
+    const check: MailCheck = {
+      at: new Date(at).toISOString(), every: s.mail.every, next: next ? new Date(next).toISOString() : null,
+      state: slow ? 'slow' : errs.length ? 'err' : 'ok',
+      text: slow || (errs.length ? `problem: ${errs[0].replace(/^[^:]+:\s*/, '')}`.slice(0, 90) : read.size ? `${read.size} new` : 'nothing new'),
+    };
+    await saveConnection(db, userId, 'receipts', null, { mailCheck: check }).catch(() => undefined);
   }
 
   if (alerts.length) {

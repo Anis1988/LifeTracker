@@ -67,7 +67,7 @@ async function handle(req: Request): Promise<Response> {
           // ✉️ Extra Gmail accounts (no secrets: only what Settings shows).
           googleExtras: boxes.filter((b) => !b.main).map((b) => ({ kind: b.kind, email: b.email, on: b.on, gmail: has(b.scope, 'gmail'), mailbox: has(b.scope, 'mailbox'), lastScan: b.meta.lastScan ?? null, lastError: b.meta.lastError ?? null, connectedAt: b.meta.connectedAt ?? null })),
           me: { lastOnline: me?.meta.lastOnline ?? null, lastErrors: me?.meta.lastErrors ?? [], weekSent: me?.meta.weekSent ?? null, breachScanned: me?.meta.breachScanned ?? null },
-          mail: { lastSweep: mail?.meta.lastSweep ?? null, sweepDone: !!mail?.meta.sweepDone, headsRead: mail?.meta.headsRead ?? 0, apptsScanned: mail?.meta.apptsScanned ?? null, contactsScanned: contacts?.meta.scanned ?? null, vaultScanned: vault?.meta.scanned ?? null, receiptsScanned: receipts?.meta.scanned ?? null, mailChecked: receipts?.meta.mailChecked ?? null },
+          mail: { lastSweep: mail?.meta.lastSweep ?? null, sweepDone: !!mail?.meta.sweepDone, headsRead: mail?.meta.headsRead ?? 0, apptsScanned: mail?.meta.apptsScanned ?? null, contactsScanned: contacts?.meta.scanned ?? null, vaultScanned: vault?.meta.scanned ?? null, receiptsScanned: receipts?.meta.scanned ?? null, mailChecked: receipts?.meta.mailChecked ?? null, check: receipts?.meta.mailCheck ?? null },
           phone: { since: phone?.meta.since ?? null, lastText: phone?.meta.lastText ?? null },
           lastRun: status?.meta ?? null,
           aiUsed: Object.fromEntries((usage ?? []).map((u) => [u.provider, u.n])),

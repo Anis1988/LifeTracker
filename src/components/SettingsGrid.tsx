@@ -14,6 +14,7 @@ export function matchTile(t: SettingsTile, q: string): boolean {
 export const SETTINGS_INDEX = {
   about: { id: 'about', icon: '👤', title: 'About me', words: 'name names city places emails phones usernames look for me online search google gemini how often' },
   google: { id: 'google', icon: '📅', title: 'Google', words: 'google calendar gmail connect disconnect another account second email mailbox bills renewals trials remind days before receipt emails forward plus' },
+  checks: { id: 'checks', icon: '📬', title: 'Email checks', words: 'email checks how often gmail every 15 minutes 30 hour quarter off daily last next check' },
   appts: { id: 'appts', icon: '🗓️', title: 'Appointments', words: 'appointments doctor dentist calendar remind reminders time zone texts sms android phone emails' },
   spending: { id: 'spending', icon: '💸', title: 'Spending & returns', words: 'spending budgets budget warn receipts emails order emails returns warranties shops category reset last checked' },
   bank: { id: 'bank', icon: '🏦', title: 'Bank & cards', words: 'bank cards alerts alert emails purchases simplefin csv read now disconnect' },

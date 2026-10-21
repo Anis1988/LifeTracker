@@ -34,6 +34,7 @@ import { SearchResults } from '../components/Search';
 import { QuickAddList } from '../components/QuickAdd';
 import { searchAll } from '../lib/search';
 import { AddedCard } from './Home';
+import { MailEveryPicker, MailPill } from '../components/MailCheck';
 
 /* made-up examples, only for this guide */
 const d = (days: number) => new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
@@ -201,6 +202,19 @@ const WEEKEND_EX: Weekend = {
   far: [{ ...spBase, name: 'Example Lake State Park', kind: 'trip', address: 'Lakeview, XX', miles: 58, minutes: 85, from: 'web', source: 'https://www.example.org' }],
 };
 
+// 📬 Email checks example: made-up "now" 10:38 today, last check 10:30 found 3 new emails.
+const clock = (h: number, m: number) => { const x = new Date(); x.setHours(h, m, 0, 0); return x.getTime(); };
+function MailCheckDemo() {
+  const [every, setEvery] = useState(15);
+  return (
+    <div className="space-y-3">
+      <MailPill every={every} now={clock(10, 38)} check={{ at: new Date(clock(10, 30)).toISOString(), state: 'ok', text: '3 new', every, next: null }} />
+      <MailPill every={every} now={clock(10, 38)} check={{ at: new Date(clock(10, 15)).toISOString(), state: 'slow', text: 'stopped: Gmail asked to slow down', every, next: null }} />
+      <MailPill every={0} now={clock(10, 38)} />
+      <MailEveryPicker every={every} onChange={setEvery} />
+    </div>
+  );
+}
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 const GMAIL_EXTRAS: GoogleExtra[] = [
   { kind: 'google:2', email: 'jordan.work@example.com', on: true, gmail: true, mailbox: false, lastScan: hoursAgo(0.4), lastError: null, connectedAt: null },
@@ -241,7 +255,7 @@ export function Guide() {
 
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
-        <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
+        <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour (or as often as you pick in 📬 Email checks) it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
         <P>Four tabs at the bottom: <b>Home</b> (today at a glance), <b>Money</b> (Bills · Spending · Returns), <b>Places</b> (Contacts · Nearby · My list) and <b>Me</b> (Vault · Privacy · Settings). The round <b>＋</b> in the middle adds anything. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>. The Guide and My apps are at the bottom of Me.</P>
         <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and in a weekly email.</P>
         <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
@@ -367,7 +381,7 @@ export function Guide() {
         <Example caption="Made-up receipt sheet: what was read from it.">
           <div className="card"><ReceiptDetailsView t={RECEIPTS[0]} rules={{}} example actions={{ edit: () => undefined, del: () => undefined }} /></div>
         </Example>
-        <P><b>How often</b>: your Gmail is checked <b>every hour</b> by itself for receipts, bank alerts, bills, orders and documents (free checks first, so most hours cost nothing). Settings → Spending & returns shows when it last checked.</P>
+        <P><b>How often</b>: your Gmail is checked <b>every hour</b> by itself (change it in Settings → 📬 Email checks) for receipts, bank alerts, bills, orders and documents (free checks first, so most hours cost nothing). Settings → Spending & returns shows when it last checked.</P>
       </Fold>
 
       <Fold icon="📜" title="Money log">
@@ -391,7 +405,7 @@ export function Guide() {
 
       <Fold icon="📆" title="Appointments (emails and texts)">
         <P>When you book something (doctor, dentist, car service, haircut, a table at a restaurant), the confirmation email or text is enough: LifeTracker finds it and <b>puts it straight into your Google Calendar</b> (the LifeTracker calendar), at the right time, with the place and reminders (1 day and 2 hours before; change it in Settings → Appointments). You get a heads-up saying what was added.</P>
-        <P><b>Emails</b> are checked every hour. <b>Texts</b> work in the LifeTracker <b>Android app</b>: turn on “Read appointment texts” in Settings → Appointments and allow SMS. It also looks at your last 30 days of texts once. Your phone does a free check first, so other texts never leave it, and texts aren’t kept. Chat messages between Google Messages users (RCS) can’t be read; normal texts from businesses can.</P>
+        <P><b>Emails</b> are checked every hour (or as often as you pick in 📬 Email checks). <b>Texts</b> work in the LifeTracker <b>Android app</b>: turn on “Read appointment texts” in Settings → Appointments and allow SMS. It also looks at your last 30 days of texts once. Your phone does a free check first, so other texts never leave it, and texts aren’t kept. Chat messages between Google Messages users (RCS) can’t be read; normal texts from businesses can.</P>
         <P>Moved to another day? The calendar moves too. Cancelled? It’s taken off. The same appointment in an email and a text counts once. Something wrong? Tap it on Home → <b>Remove it</b>.</P>
         <Example caption="Made-up appointments on Home, and the heads-up when one is added.">
           <div className="space-y-2">
@@ -619,8 +633,16 @@ export function Guide() {
         <P>Settings → <b>Connect Google Calendar</b>. LifeTracker makes its own <b>LifeTracker</b> calendar (it can’t see or change your other calendars) with each bill’s due date (repeating), renewals and trial ends, with a phone reminder a couple of days before, plus your appointments at their time. It updates itself every morning when your bills change, and within the hour for a new appointment.</P>
       </Fold>
 
+      <Fold icon="📬" title="Email checks (how often)">
+        <P>Your Gmail is read by itself <b>every hour</b> unless you change it: Settings → <b>📬 Email checks</b>. Pick <b>15m, 30m, 1h, 2h or 4h</b> (minutes or hours), or <b>Off</b> (only in the morning run). Checks always happen on the quarter hour: :00, :15, :30, :45. Each check reads only emails it hasn’t seen yet (bank alerts, PayPal, Auto Pay, bills, receipts, orders, documents, appointments, in every Google account you added). Gmail allows far more than this, and the AI daily limits stay the same, so checking more often doesn’t cost more.</P>
+        <P>Once Gmail is connected, a small line at the top of <b>every tab</b> shows how often, the last check and what it found, and the next one, in your own time. Tap it to change the setting. ✓ = all fine, ⏸ = Gmail asked to slow down (the rest comes next check), ⚠ = a problem.</P>
+        <Example caption="Made-up example: the line at the top (a normal check, a paused one, and Off) and the picker. Try the picker: it only changes this example.">
+          <MailCheckDemo />
+        </Example>
+      </Fold>
+
       <Fold icon="✉️" title="Gmail receipts and forwarding">
-        <P>Tick <b>Also read Gmail receipts</b>: every hour it looks for receipt, invoice, renewal and “free trial” emails (read-only). A free check first skips ads and shipping notices; only emails that look like bills are read by the AI, and a bill goes <b>straight into your bills</b> (or updates the one you have).</P>
+        <P>Tick <b>Also read Gmail receipts</b>: at every email check (every hour unless you change it) it looks for receipt, invoice, renewal and “free trial” emails (read-only). A free check first skips ads and shipping notices; only emails that look like bills are read by the AI, and a bill goes <b>straight into your bills</b> (or updates the one you have).</P>
         <P>To add a bill from any email, <b>forward it to yourself with “+lifetracker”</b> (for example you+lifetracker@gmail.com, shown in Settings): it is picked up the next morning.</P>
         <P><b>More than one email address?</b> Settings → Google → <b>＋ Add another Google account</b>. Google asks which account; pick the other one and allow reading Gmail. That mailbox is then read just like your main one, every hour: bank alerts, PayPal receipts, Auto Pay notices, bills, receipts, orders, appointments, documents, contacts, data breaches and mailing lists. Its appointments go into your main LifeTracker calendar. Anything found there says where it came from, like “From email (work@…)”, and a bank alert that reaches both mailboxes is counted once.</P>
         <P>Each extra account has its own <b>switch</b> (off = not read, nothing deleted), its last look, and <b>Disconnect</b> (it asks first; what was already found stays). The same address can’t be added twice. Managing mailing lists there (archive and label) is a separate “yes” for that account.</P>
