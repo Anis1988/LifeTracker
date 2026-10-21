@@ -49,6 +49,7 @@ export const HIT_LABELS = Object.fromEntries(KINDS.map((k) => [k.kind, `${k.icon
 /** The Guide's topics (title = the Guide's section, words = what it talks about). Opens that section: #/guide?t=<slug>. */
 export const GUIDE_TOPICS: { icon: string; title: string; words: string }[] = [
   { icon: '✨', title: 'What it does', words: 'automatic undo bills receipts documents' },
+  { icon: '🏠', title: 'Home (calm, spending first)', words: 'home spending first ring top categories coming up what was added bottom calm opens' },
   { icon: '🧭', title: 'Finding your way (tabs, search, ＋)', words: 'tabs search find magnifier add where did it go keyboard shortcut' },
   { icon: '🫧', title: 'How it looks and feels', words: 'look glass light dark reduce motion' },
   { icon: '⚙️', title: 'Settings', words: 'settings squares' },
@@ -66,6 +67,8 @@ export const GUIDE_TOPICS: { icon: string; title: string; words: string }[] = [
   { icon: '📋', title: 'Your bills', words: 'bills subscriptions due autopay' },
   { icon: '🆕', title: 'What was added (Inbox)', words: 'inbox added undo bell' },
   { icon: '🔔', title: 'Heads-ups', words: 'heads-ups alerts notifications email' },
+  { icon: '✉️', title: 'Emails to me', words: 'emails to me how often one a day week only important never fewer emails summary' },
+  { icon: '👥', title: 'Whose email it came from', words: 'person people whose email mailbox name colour color roza anis highlight filter' },
   { icon: '🏦', title: 'Your bank (free, by email)', words: 'bank alerts csv simplefin' },
   { icon: '📊', title: 'My week', words: 'week summary email' },
   { icon: '🕵️', title: 'Your name online', words: 'name online google search' },

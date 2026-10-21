@@ -2,6 +2,7 @@ import { CYCLES, apptKind, catOf, contactKind, folderOf, type Appointment, type 
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { money } from '../../supabase/functions/_shared/money.ts';
 import { docIcon } from '../../supabase/functions/_shared/vaultText.ts';
+import type { MailSrc } from '../../supabase/functions/_shared/mailPeople.ts';
 
 /**
  * 🆕 "What was added" (the 🔔 Inbox): everything LifeTracker added by itself lately (owner's choice: fully automatic,
@@ -9,7 +10,8 @@ import { docIcon } from '../../supabase/functions/_shared/vaultText.ts';
  * emails, Vault documents from emails, contacts and appointments. Built on the device from data already loaded.
  */
 export type AddedKind = 'bill' | 'receipt' | 'doc' | 'contact' | 'appt';
-export interface AddedEntry { key: string; kind: AddedKind; id: string; icon: string; title: string; sub: string; where: string; at: string }
+/** src = what it was found from (👥 the mailbox's person chip). */
+export interface AddedEntry { key: string; kind: AddedKind; id: string; icon: string; title: string; sub: string; where: string; at: string; src?: MailSrc }
 export interface AddedInput { items: Item[]; added: Suggestion[]; tx: SpendTx[]; papers: Paper[]; contacts: Contact[]; appts: Appointment[] }
 
 const FROM: Record<string, string> = { bank: 'from your bank', email: 'from an email', document: 'from a document' };
@@ -24,17 +26,17 @@ export function addedFeed(d: AddedInput, days = 30, now = Date.now()): AddedEntr
     const i = d.items.find((x) => x.id === s.item_id);
     const at = s.updated_at ?? s.created_at;
     if (!i || !recent(at)) continue;
-    out.push({ key: `bill:${s.id}`, kind: 'bill', id: s.id, icon: catOf(i.category).icon, title: i.name, sub: `${money(Number(i.amount))} ${cycleWord(i.cycle)} · ${FROM[s.source] ?? 'found for you'}`, where: 'Money → Bills', at });
+    out.push({ key: `bill:${s.id}`, kind: 'bill', id: s.id, icon: catOf(i.category).icon, title: i.name, sub: `${money(Number(i.amount))} ${cycleWord(i.cycle)} · ${FROM[s.source] ?? 'found for you'}`, where: 'Money → Bills', at, src: s.source === 'email' ? { source: 'email', evidence: s.evidence } : undefined });
   }
   for (const t of d.tx) {
     if (!t.id || !t.receipt_path || !t.note?.startsWith('From email')) continue;
     const at = t.created_at ?? `${t.posted}T12:00:00Z`;
     if (!recent(at)) continue;
-    out.push({ key: `receipt:${t.id}`, kind: 'receipt', id: t.id, icon: '🧾', title: t.details?.store || t.description || 'Receipt', sub: `${money(Math.abs(Number(t.amount)))} · receipt from an email${t.source !== 'receipt' ? ' · matched to your bank' : ''}`, where: 'Money → Spending', at });
+    out.push({ key: `receipt:${t.id}`, kind: 'receipt', id: t.id, icon: '🧾', title: t.details?.store || t.description || 'Receipt', sub: `${money(Math.abs(Number(t.amount)))} · receipt from an email${t.source !== 'receipt' ? ' · matched to your bank' : ''}`, where: 'Money → Spending', at, src: t });
   }
   for (const p of d.papers) {
     if (p.source !== 'email' || !recent(p.created_at)) continue;
-    out.push({ key: `doc:${p.id}`, kind: 'doc', id: p.id, icon: docIcon(p), title: p.name, sub: `${folderOf(p.folder).label}${p.holder ? ` · ${p.holder}` : ''} · from an email`, where: 'Vault', at: p.created_at! });
+    out.push({ key: `doc:${p.id}`, kind: 'doc', id: p.id, icon: docIcon(p), title: p.name, sub: `${folderOf(p.folder).label}${p.holder ? ` · ${p.holder}` : ''} · from an email`, where: 'Vault', at: p.created_at!, src: p });
   }
   for (const c of d.contacts) {
     if (c.status !== 'active' || c.sources.includes('hand') || !recent(c.created_at)) continue;
@@ -44,7 +46,7 @@ export function addedFeed(d: AddedInput, days = 30, now = Date.now()): AddedEntr
   for (const a of d.appts) {
     if (a.source === 'hand' || a.status !== 'booked' || !recent(a.created_at)) continue;
     const when = new Date(`${a.day}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-    out.push({ key: `appt:${a.id}`, kind: 'appt', id: a.id, icon: apptKind(a.kind).icon, title: a.title, sub: `${when}${a.time ? `, ${fmtTime(a.time)}` : ''} · from ${a.source === 'text' ? 'a text' : 'an email'}`, where: 'Calendar', at: a.created_at! });
+    out.push({ key: `appt:${a.id}`, kind: 'appt', id: a.id, icon: apptKind(a.kind).icon, title: a.title, sub: `${when}${a.time ? `, ${fmtTime(a.time)}` : ''} · from ${a.source === 'text' ? 'a text' : 'an email'}`, where: 'Calendar', at: a.created_at!, src: a.source === 'email' ? a : undefined });
   }
   return out.sort((a, b) => b.at.localeCompare(a.at));
 }

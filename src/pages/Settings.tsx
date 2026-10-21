@@ -20,6 +20,8 @@ import { zipOf } from '../../supabase/functions/_shared/place.ts';
 import { allRows } from '../../supabase/functions/_shared/rows.ts';
 import { PROVIDERS, mailEveryWords, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
 import { MailEveryPicker, MailPill } from '../components/MailCheck';
+import { EmailControls } from '../components/Emails';
+import { emailsWords } from '../../supabase/functions/_shared/emails.ts';
 
 const REMINDS: [string, string][] = [['1440,120', '1 day and 2 hours before'], ['1440,60', '1 day and 1 hour before'], ['1440', '1 day before'], ['120', '2 hours before'], ['60', '1 hour before'], ['', 'No reminder']];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -254,10 +256,10 @@ export function Settings() {
   </>);
 
   const weekBody = (<>
-    <Field label="“My week” email" hint={status?.keys.email ? `A short summary to ${st.session.user.email}: money, bills coming, your name online, mailing lists, documents, credit.` : 'Needs RESEND_API_KEY on the server (free at resend.com). The same summary is always on Home.'}>
-      <Toggle on={s.week.on} onChange={(v) => save({ week: { ...s.week, on: v } })} label="My week" />
+    <Field label="“My week” in the email" hint={status?.keys.email ? `A short summary to ${st.session.user.email}: money, bills coming, your name online, mailing lists, documents, credit. It comes inside your one email (✉️ Emails to me), on this day.` : 'Needs RESEND_API_KEY on the server (free at resend.com). The same summary is always on Home.'}>
+      <Toggle on={s.emails.kinds.week} onChange={(v) => save({ emails: { ...s.emails, kinds: { ...s.emails.kinds, week: v } }, week: { ...s.week, on: v } })} label="My week" />
     </Field>
-    <Field label="Send it on">
+    <Field label="On" hint="Also the day of “One a week” emails.">
       <select className="input" value={s.week.day} onChange={(e) => save({ week: { ...s.week, day: Number(e.target.value) } })} aria-label="Day">
         {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
       </select>
@@ -266,6 +268,11 @@ export function Settings() {
       const r = await api<{ log: { steps: string[]; errors: string[] } }>('run', { part: 'week' });
       toast(r.log.errors.length ? 'err' : 'ok', [...r.log.steps, ...r.log.errors].join(' · ') || 'Sent.');
     })}>{busy === 'week' ? <span className="spinner" /> : '✉️ Send my week now'}</button>
+  </>);
+
+  // ✉️ Emails to me: on/off, how often at most, which kinds (the server keeps it to one email a day or a week).
+  const emailsBody = (<>
+    <EmailControls s={s.emails} weekDay={DAYS[s.week.day]} canSend={!!status?.keys.email} to={st.session.user.email ?? ''} last={status?.emails ?? null} onChange={(emails) => save({ emails, notify: { ...s.notify, email: emails.on && emails.often !== 'never' } })} />
   </>);
 
   const bankBody = (<>
@@ -313,8 +320,9 @@ export function Settings() {
     </div>
     {(status?.google.connected || !!status?.googleExtras?.length) && (
       <GoogleAccounts
-        main={status?.google.connected ? { email: status.google.email ?? null, gmail: !!status.google.gmail, calendar: !!status.google.calendar, lastScan: status.google.lastScan ?? status.google.lastGmail ?? null } : null}
+        main={status?.google.connected ? { email: status.google.email ?? null, gmail: !!status.google.gmail, calendar: !!status.google.calendar, lastScan: status.google.lastScan ?? status.google.lastGmail ?? null, person: status.google.person } : null}
         extras={status?.googleExtras ?? []} busy={busy} canAdd={!!status?.keys.google}
+        onPerson={(kind, name, color) => void run(kind, async () => { await api('mail-person', { kind, name, color }); await st.reloadStatus(); toast('ok', `Saved: entries from this mailbox show “● ${name}”.`); })}
         onAdd={() => void addGoogle('new')} onToggle={(k, on) => void toggleExtra(k, on)} onDisconnect={(x) => void dropExtra(x)}
         onMailbox={(x) => { if (confirm(`Let LifeTracker manage mailing lists in ${x.email ?? 'this account'} too? It can then archive and label emails from senders you blocked or left (never deletes) and send the “unsubscribe” email some senders ask for.`)) void addGoogle(x.kind, ['gmail', 'mailbox']); }}
       />
@@ -394,7 +402,7 @@ export function Settings() {
     <Field label="Zip code" hint="Distances are from the middle of this zip code. Empty = 45245.">
       <ZipField zip={zipOf(s)} onSave={(zip) => st.saveSettings({ ...s, place: { ...s.place, zip } })} />
     </Field>
-    <Field label="“This weekend” every Friday" hint={`Friday morning: things to do near you and a bit farther (miles + drive time). On Home from Friday to Sunday, as a heads-up${status?.keys.email && s.notify.email ? ' and in the morning email' : ''}.`}>
+    <Field label="“This weekend” every Friday" hint={`Friday morning: things to do near you and a bit farther (miles + drive time). On Home from Friday to Sunday, as a heads-up${status?.keys.email && s.emails.on && s.emails.kinds.weekend && s.emails.often !== 'never' && s.emails.often !== 'important' ? ' and in your email' : ''}.`}>
       <Toggle on={s.place.weekend} onChange={(v) => save({ place: { ...s.place, weekend: v } })} label="This weekend list" />
     </Field>
     <button className="btn" disabled={!!busy} onClick={() => void run('weekend', async () => {
@@ -435,9 +443,7 @@ export function Settings() {
   </>);
 
   const alertsBody = (<>
-    <Field label="Email me new heads-ups each morning" hint={status?.keys.email ? `To ${st.session.user.email}.` : 'Needs RESEND_API_KEY on the server (free at resend.com).'}>
-      <Toggle on={s.notify.email} onChange={(v) => save({ notify: { ...s.notify, email: v } })} label="Email" />
-    </Field>
+    <p className="text-sm text-slate-600 dark:text-slate-300">Heads-ups always show in the app (🔔 and at the bottom of Home). Emails about them: <button className="font-semibold text-teal-700 underline dark:text-teal-300" onClick={() => show('emails')}>✉️ Emails to me ({emailsWords(s)})</button>.</p>
     <Field label="Bills not on autopay: warn me (days before)">
       <input className="input w-20" type="number" min={0} max={14} value={s.notify.dueDays} onChange={(e) => save({ notify: { ...s.notify, dueDays: Number(e.target.value) || 0 } })} aria-label="Days before due" />
     </Field>
@@ -486,8 +492,9 @@ export function Settings() {
     { ...SEC.contacts, status: `${nContacts} saved · ${s.contacts.on ? 'auto' : 'by hand'}`, body: contactsBody },
     { ...SEC.nearby, status: `${zipOf(s)} · weekend ${s.place.weekend ? 'on' : 'off'}`, body: nearbyBody },
     { ...SEC.mail, status: !s.unsub.on ? 'Off' : s.unsub.auto ? `Auto · ${s.unsub.days} days` : 'On · you choose', off: !s.unsub.on, body: mailBody },
-    { ...SEC.week, status: s.week.on ? `Email on ${DAYS[s.week.day]}` : 'Email off', off: !s.week.on, body: weekBody },
-    { ...SEC.alerts, status: s.notify.email ? 'App + email' : 'In the app', body: alertsBody },
+    { ...SEC.emails, status: emailsWords(s), off: !s.emails.on || s.emails.often === 'never', body: emailsBody },
+    { ...SEC.week, status: s.emails.kinds.week && s.emails.on && s.emails.often !== 'never' && s.emails.often !== 'important' ? `In the email on ${DAYS[s.week.day]}` : 'On Home only', off: !s.emails.kinds.week, body: weekBody },
+    { ...SEC.alerts, status: 'In the app', body: alertsBody },
     { ...SEC.ai, status: status ? `${nAi} AI${nAi === 1 ? '' : 's'} set up` : `${free.map((p) => providerOf(p).name).join(' → ')} → Claude`, body: aiBody },
     { ...SEC.apps, status: 'All your apps and their AI cost', href: appsUrl() },
     { ...SEC.guide, status: 'How everything works, in plain words', href: '#/guide' },

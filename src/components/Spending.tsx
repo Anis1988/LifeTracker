@@ -4,6 +4,7 @@ import { SPEND_CATS, spendCat, type SpendReport } from '../../supabase/functions
 import type { Purchase } from '../../supabase/functions/_shared/model.ts';
 import { addCycle, daysBetween, money, today } from '../../supabase/functions/_shared/money.ts';
 import { Ring } from './Dash';
+import { PersonChip, personEdge, usePersonFor } from './Person';
 import { Money, Sheet, errText, shortDate, toast } from './ui';
 
 /**
@@ -107,9 +108,10 @@ export function PurchaseRow({ p, onSet, onOpen }: { p: Purchase; onSet?: (patch:
   const t = today();
   const left = p.return_by ? daysBetween(t, p.return_by) : null;
   const wLeft = p.warranty_ends ? daysBetween(t, p.warranty_ends) : null;
+  const who = usePersonFor(p); // 👥 whose order email it came from
   const tone = left == null || left < 0 || p.status !== 'keep' ? 'border-slate-900/10 text-slate-500 dark:border-white/10 dark:text-slate-400' : left <= 3 ? 'border-red-300 text-red-800 dark:border-red-800 dark:text-red-200' : left <= 10 ? 'border-amber-300 text-amber-800 dark:border-amber-700 dark:text-amber-200' : 'border-emerald-300 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200';
   return (
-    <div className="panel space-y-2">
+    <div className={`panel space-y-2 ${personEdge(who)}`}>
       <button className="tap -m-1 flex w-[calc(100%+0.5rem)] items-center gap-3 rounded-2xl p-1 text-left" onClick={onOpen}>
         <span className="tile" aria-hidden="true">🧾</span>
         <span className="min-w-0 flex-1">
@@ -118,6 +120,7 @@ export function PurchaseRow({ p, onSet, onOpen }: { p: Purchase; onSet?: (patch:
         </span>
       </button>
       <div className="flex flex-wrap items-center gap-1.5">
+        <PersonChip p={who} />
         {p.return_by && <span className={`chip ${tone}`}>{left! < 0 ? `Return window closed ${shortDate(p.return_by)}` : `Return by ${shortDate(p.return_by)}${p.status === 'keep' ? ` · ${left} day${left === 1 ? '' : 's'}` : ''}`}</span>}
         {p.warranty_ends && <span className={`chip ${wLeft! < 0 ? 'border-slate-900/10 text-slate-500 dark:border-white/10 dark:text-slate-400' : 'border-violet-300 text-violet-800 dark:border-violet-800 dark:text-violet-200'}`}>🛡️ Warranty to {shortDate(p.warranty_ends)}</span>}
         {!p.return_by && !p.warranty_ends && <span className="text-xs text-slate-500 dark:text-slate-400">No return date known: tap to add one.</span>}

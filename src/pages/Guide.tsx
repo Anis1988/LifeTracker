@@ -3,7 +3,10 @@ import { useState } from 'react';
 import { Empty, Fold, FoldTarget, Seg, Toggle, shortDate } from '../components/ui';
 import { takeParam } from '../lib/nav';
 import { ItemRow, LoanCalc, Totals } from '../components/Items';
-import { AskChat, MiniRings, MonthHero, Ring, TimelineList } from '../components/Dash';
+import { AskBar, AskChat, Ring, SpendCard, TimelineList } from '../components/Dash';
+import { EmailControls } from '../components/Emails';
+import { PeopleCtx, PersonChip, PersonFilter } from '../components/Person';
+import { personOf } from '../../supabase/functions/_shared/mailPeople.ts';
 import { PurchaseRow, SpendingView } from '../components/Spending';
 import { MismatchPanel, PhotoPick, ReceiptDetailsView, SpendLine } from '../components/Receipts';
 import { LogLines, type LogRow } from '../components/MoneyLog';
@@ -165,7 +168,11 @@ const ALERT_WITH: SpendTx = { ...ALERT_TX, receipt_path: 'example-3.jpg',
   details: { store: 'Sample Diner', date: d(-3), total: 21.0, tax: 1.5, card: '4821', read: 'ai', by: 'Gemini Flash (free)', mismatch: null, items: [{ name: 'Grilled cheese', qty: 1, price: 8.5 }, { name: 'Tomato soup', qty: 1, price: 5.0 }, { name: 'Iced tea', qty: 2, price: 6.0 }, { name: 'Tip', qty: null, price: 4.0 }] } };
 const ALERT_ODD: SpendTx = { ...ALERT_WITH, details: { ...ALERT_WITH.details!, total: 31.4, items: [], mismatch: { receipt: 31.4, bank: 25, kept: false } } };
 // 💸 the ONE list: a made-up few days of purchases from everywhere (alerts, a CSV, receipts), newest first
-const GAS_TX: SpendTx = { id: 'g1', posted: d(-2), amount: -41.2, description: 'EXAMPLE GAS 0042', merchant: 'example gas', source: 'alert', account: 'Example Bank card', receipt_path: null, note: null, details: null };
+const GAS_TX: SpendTx = { id: 'g1', posted: d(-2), amount: -41.2, description: 'EXAMPLE GAS 0042', merchant: 'example gas', source: 'alert', account: 'Example Bank card', receipt_path: null, note: 'From email (sam@example.com)', details: null };
+// 👥 made-up mailboxes: Jordan (the main one) and Sam (an extra one, so Sam's entries get a pink edge)
+const JORDAN = personOf('jordan@example.com', true, { name: 'Jordan', color: 'teal' });
+const SAM = personOf('sam@example.com', false, { name: 'Sam', color: 'pink' });
+const GUIDE_PEOPLE = [JORDAN, SAM];
 const SHOP_TX: SpendTx = { id: 'c1', posted: d(-4), amount: -18.99, description: 'EXAMPLE BOOKS ONLINE', merchant: 'example books online', source: 'csv', account: 'CSV import', receipt_path: null, note: null, details: null };
 const DAYS_EX: [string, SpendTx[]][] = [[d(-2), [RECEIPTS[0], GAS_TX]], [d(-3), [ALERT_WITH]], [d(-4), [RECEIPTS[1], SHOP_TX]]];
 // 📜 made-up Log lines
@@ -218,7 +225,7 @@ function MailCheckDemo() {
 }
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 const GMAIL_EXTRAS: GoogleExtra[] = [
-  { kind: 'google:2', email: 'jordan.work@example.com', on: true, gmail: true, mailbox: false, lastScan: hoursAgo(0.4), lastError: null, connectedAt: null },
+  { kind: 'google:2', email: 'sam@example.com', on: true, gmail: true, mailbox: false, lastScan: hoursAgo(0.4), lastError: null, connectedAt: null, person: { name: 'Sam', color: 'pink' } },
   { kind: 'google:3', email: 'old.shopping@example.com', on: false, gmail: true, mailbox: false, lastScan: hoursAgo(30), lastError: null, connectedAt: null },
 ];
 
@@ -250,6 +257,7 @@ export function Guide() {
   const [topic] = useState(() => takeParam('t', '#/guide'));
   return (
     <FoldTarget.Provider value={topic || null}>
+    <PeopleCtx.Provider value={GUIDE_PEOPLE}>
     <div className="stagger mx-auto max-w-2xl space-y-3">
       <h1 className="text-[28px] font-semibold leading-tight">Guide</h1>
       <p className="text-sm text-slate-500 dark:text-slate-400">How LifeTracker works, in plain words. Tap a topic.</p>
@@ -257,20 +265,26 @@ export function Guide() {
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
         <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour (or as often as you pick in 📬 Email checks) it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
-        <P>Four tabs at the bottom: <b>Home</b> (today at a glance), <b>Money</b> (Bills · Spending · Returns), <b>Places</b> (Contacts · Nearby · My list) and <b>Me</b> (Vault · Privacy · Settings). The round <b>＋</b> in the middle adds anything. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>. The Guide and My apps are at the bottom of Me.</P>
-        <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and in a weekly email.</P>
-        <Example caption="Made-up example of Home: this month against a usual month, three rings, and what’s coming up.">
-          <div className="space-y-2">
-            <MonthHero total={1842} usual={2120} soFarUsual={2120} bills={2940} monthName="October" />
-            <MiniRings rings={[{ label: 'Spending', sub: 'vs usual', value: 0.87, text: '87%', tone: 'emerald' }, { label: 'Bills', sub: 'this month', value: 5 / 8, text: '5/8', tone: 'teal' }, { label: 'Privacy', sub: 'credit frozen', value: 2 / 3, text: '2/3', tone: 'amber' }]} />
-            <TimelineList moments={timeline({ items: EX, papers: PAPERS, dates: DATES, purchases: BUYS }, 30)} max={5} />
+        <P>Four tabs at the bottom: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log), <b>Places</b> (Contacts · Nearby · My list) and <b>Me</b> (Vault · Privacy · Settings). The round <b>＋</b> in the middle adds anything. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>. The Guide and My apps are at the bottom of Me.</P>
+        <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and, if you want, in an email (✉️ Emails to me).</P>
+      </Fold>
+
+      <Fold icon="🏠" title="Home (calm, spending first)">
+        <P>The app always opens on <b>Home</b>, and the first thing on Home is <b>what you spent this month</b>: one big number, the ring (how much of a usual month that is), one short line (under or over a usual month so far) and your top 3 categories. <b>See all spending</b> opens Money → Spending. Each tab still remembers which part you used last.</P>
+        <Example caption="Made-up top of Home: spending first, then Ask.">
+          <div className="space-y-3">
+            <SpendCard total={1842} usual={2120} soFarUsual={1990} top={[{ id: 'groceries', amount: 612.4 }, { id: 'dining', amount: 288.1 }, { id: 'gas', amount: 164 }]} monthName="October" onAll={() => undefined} />
+            <AskBar disabled />
           </div>
         </Example>
-        <P>Below the Ask bar, <b>What was added</b> shows the newest 3 things LifeTracker added by itself, each with ↶ Undo; <b>See all</b> opens the whole list (the 🔔 Inbox).</P>
-        <Example caption="Made-up What was added card on Home.">
-          <AddedCard list={FEED} fresh={2} />
+        <P>Below it, in this order: the <b>💬 Ask</b> bar, the next <b>3 things coming up</b> (bills, appointments, trials, renewals, documents, dates, return windows; <b>See more</b> shows 60 days), the weekend or <b>Nearby</b> link, and <b>My week</b>.</P>
+        <Example caption="Made-up Coming up: only the next 3 on Home.">
+          <TimelineList moments={timeline({ items: EX, papers: PAPERS, dates: DATES, purchases: BUYS, appts: APPTS }, 30)} max={3} onAll={() => undefined} />
         </Example>
-        <P>The three rings: <b>Spending</b> (this month against a usual month), <b>Bills</b> (how many of this month’s bills already came), <b>Privacy</b> (credit bureaus frozen). Tap one to open it. <b>Coming up</b> mixes bills, free trials ending, renewals, documents, important dates and return windows; tap <b>See all</b> for the next 60 days.</P>
+        <P>At the very bottom, quietly: <b>What was added</b> folded to one line (tap <b>View</b> for the newest 3 with ↶ Undo, or open the 🔔 Inbox), then the <b>heads-ups</b>, then when email was last checked.</P>
+        <Example caption="Made-up bottom of Home: What was added, folded.">
+          <AddedCard list={FEED} week={7} />
+        </Example>
       </Fold>
 
       <Fold icon="🧭" title="Finding your way (tabs, search, ＋)">
@@ -391,7 +405,7 @@ export function Guide() {
         <Example caption="Made-up log lines.">
           <div className="space-y-2">
             <KindChips label="Show" options={[{ id: 'all', label: 'All', n: 6 }, { id: 'purchase', label: '💳 Purchases', n: 1 }, { id: 'receipt', label: '🧾 Receipts', n: 2 }, { id: 'bill', label: '📋 Bills', n: 1 }, { id: 'change', label: '✎ Changes', n: 2 }]} value="all" onChange={() => undefined} />
-            <LogLines rows={LOG_EX} example />
+            <LogLines rows={LOG_EX} example whoOf={(x) => (x.id === 'l2' || x.id === 'l3' ? JORDAN : null)} />
           </div>
         </Example>
       </Fold>
@@ -546,7 +560,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🆕" title="What was added (Inbox)">
-        <P><b>Inbox</b> is the 🔔 bell at the top of the screen. Nothing waits there for your OK any more: it shows <b>what LifeTracker added by itself</b> in the last 30 days, newest first: bills (from your bank, bill emails or documents), receipts from emails, documents from emails, contacts and appointments. The number on the bell is how many are new since you last looked. Home’s <b>What was added</b> card shows the newest 3.</P>
+        <P><b>Inbox</b> is the 🔔 bell at the top of the screen. Nothing waits there for your OK any more: it shows <b>what LifeTracker added by itself</b> in the last 30 days, newest first: bills (from your bank, bill emails or documents), receipts from emails, documents from emails, contacts and appointments. The number on the bell is how many are new since you last looked. At the bottom of Home, <b>What was added</b> is one quiet line (“🔔 7 things added this week · View”); open it for the newest 3.</P>
         <P>Tap one to see it where it went. Wrong? Tap <b>↶ Undo</b>: a bill is removed, a receipt taken off Spending (a bank purchase stays, without the receipt), a document deleted, a contact hidden, an appointment taken off your calendar, and <b>it won’t be added again</b>. Below the list: add a bill or document by hand (read at once), and import a bank CSV.</P>
         <Example caption="Made-up Inbox: what was added today, this week and earlier, each with Undo.">
           <AddedList list={FEED} onUndo={() => undefined} />
@@ -554,8 +568,28 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🔔" title="Heads-ups">
-        <P>On Home (and by email each morning if you turn it on): a price went up, a free trial ends in 3 days, a renewal or contract end is coming (30 days before by default), a bill not on autopay is due, or a bill was <b>added by itself</b> (with Undo in the 🔔 Inbox).</P>
+        <P>At the bottom of Home (and in your email, as you choose in ✉️ Emails to me): a price went up, a free trial ends in 3 days, a renewal or contract end is coming (30 days before by default), a bill not on autopay is due, or a bill was <b>added by itself</b> (with Undo in the 🔔 Inbox).</P>
         <Example caption="Made-up heads-ups."><AlertList alerts={ALERTS} /></Example>
+      </Fold>
+
+      <Fold icon="✉️" title="Emails to me">
+        <P>You choose how many emails LifeTracker sends you, in <b>Settings → ✉️ Emails to me</b>. Everything still shows in the app (Home and the 🔔 bell); this only limits emails.</P>
+        <P><b>Automatic emails</b> on or off. <b>How often, at most</b>: <b>One summary a day</b> (the usual: everything new in one email in the morning; nothing new = no email), <b>One a week</b> (on your My week day), <b>Only important</b> (a bill due that isn’t on autopay, a price going up, a security alert; sent when found, still at most one a day) or <b>Never</b>.</P>
+        <P>Then tick what may be in it: what was added, bills due, price changes, weekend ideas, the weekly summary, security alerts. “What was added” starts off. Things you already saw in the app aren’t emailed again.</P>
+        <Example caption="Made-up choices: one summary a day, without “What was added”.">
+          <div className="card"><EmailControls s={{ on: true, often: 'daily', kinds: { added: false, due: true, price: true, weekend: true, week: true, security: true } }} weekDay="Sunday" to="jordan@example.com" last={{ lastSent: ago(20), lastSubject: 'LifeTracker: today, 3 things' }} /></div>
+        </Example>
+      </Fold>
+
+      <Fold icon="👥" title="Whose email it came from">
+        <P>With more than one Gmail connected, everything found in an email shows <b>whose mailbox</b> it came from: a small dot with a name, like <PersonChip p={SAM} /> or <PersonChip p={JORDAN} />. Entries from the extra mailboxes also get a soft coloured edge on the left, so they stand out. It’s on purchases, receipts, bills, the Log, What was added, appointments, Vault documents and returns. Only the name shows, never the address.</P>
+        <P>Pick the name and colour for each mailbox in <b>Settings → Google</b> (saved on the server, the same on every device). In Spending and the Log, <b>Person</b> shows only one person’s entries.</P>
+        <Example caption="Made-up purchases: gas from Sam’s bank alert email, a cafe receipt from Jordan’s email.">
+          <div className="space-y-2">
+            <PersonFilter value="all" onChange={() => undefined} />
+            <div className="card !px-3 !py-1"><ul><SpendLine t={GAS_TX} rules={RULES} example /><SpendLine t={RECEIPTS[0]} rules={RULES} example /></ul></div>
+          </div>
+        </Example>
       </Fold>
 
       <Fold icon="🏦" title="Your bank (free, by email)">
@@ -571,7 +605,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📊" title="My week">
-        <P>A short summary on Home (and by email on the day you pick in Settings → My week): money spent this week against a usual week, bills in the next 7 days, anything new about you online, mailing lists removed, documents expiring soon and your credit freeze.</P>
+        <P>A short summary on Home (and inside your email on the day you pick in Settings → My week, if “Weekly summary” is on in ✉️ Emails to me): money spent this week against a usual week, bills in the next 7 days, anything new about you online, mailing lists removed, documents expiring soon and your credit freeze.</P>
         <Example caption="Made-up example of My week.">
           <WeekCard lines={[
             { icon: '💸', text: 'Spent $412.30 this week (a usual week: $385.00). Most at Example Market $96.10, Example Gas $52.00.' },
@@ -703,6 +737,7 @@ export function Guide() {
         </ol>
       </Fold>
     </div>
+    </PeopleCtx.Provider>
     </FoldTarget.Provider>
   );
 }

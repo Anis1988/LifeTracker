@@ -25,6 +25,8 @@ export function Bills() {
   // 🆕 Bills added by themselves in the last 14 days (bank, bill emails, documents), each with ↶ Undo (remembered).
   const fresh = useMemo(() => addedFeed({ ...st, tx: [], papers: [], contacts: [], appts: [] }, 14), [st]);
   const freshIds = new Set(fresh.map((e) => st.added.find((x) => x.id === e.id)?.item_id));
+  // 👥 A bill found in an email: whose mailbox (the person chip on its row).
+  const srcOf = (i: Item) => { const g = st.added.find((x) => x.item_id === i.id && x.source === 'email'); return g ? { source: 'email', evidence: g.evidence } : null; };
   const [busy, setBusy] = useState('');
   const undo = async (id: string, name: string) => {
     const sg = st.added.find((x) => x.id === id);
@@ -60,7 +62,7 @@ export function Bills() {
             <p className="label">{c.icon} {c.label}</p>
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400"><Money n={items.filter((i) => i.status === 'active').reduce((t, i) => t + monthly(i), 0)} />/mo</span>
           </div>
-          {items.map((i) => <ItemRow key={i.id} i={i} fresh={freshIds.has(i.id)} onOpen={() => setOpen(i)} />)}
+          {items.map((i) => <ItemRow key={i.id} i={i} fresh={freshIds.has(i.id)} src={srcOf(i)} onOpen={() => setOpen(i)} />)}
         </section>
       )) : <Empty icon={st.items.length ? '🔍' : '📋'}>{st.items.length ? 'Nothing matches.' : 'No bills yet. Tap ＋ Add, or let them be found and added by themselves: Settings → connect Gmail (bank alert emails, bill emails).'}</Empty>}
       {open && (

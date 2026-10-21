@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import type { Moment, Tone } from '../lib/timeline';
 import { Money, shortDate, errText } from './ui';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
+import { spendCat } from '../../supabase/functions/_shared/spend.ts';
 
 /** Home's "life at a glance" pieces (Liquid Glass 2 look). Each is also drawn in the Guide with made-up data. */
 
@@ -28,37 +29,40 @@ export function Ring({ value, size = 56, stroke = 6, tone = 'emerald', children,
   );
 }
 
-/** This month's spending against a usual month. */
-export function MonthHero({ total, usual, soFarUsual, bills, monthName }: { total: number; usual: number | null; soFarUsual: number | null; bills: number; monthName: string }) {
+/**
+ * 💸 Home's first card (owner's request: calm, Spending first): this month's spending against a usual month, the ring,
+ * one short line, the top 3 categories at most, and "See all" → Money → Spending.
+ */
+export function SpendCard({ total, usual, soFarUsual, top, monthName, onAll }: { total: number; usual: number | null; soFarUsual: number | null; top: { id: string; amount: number }[]; monthName: string; onAll?: () => void }) {
   const share = usual ? total / usual : 0;
   const diff = soFarUsual != null ? soFarUsual - total : null;
+  const cats = top.filter((c) => c.amount > 0).slice(0, 3);
   return (
-    <section className="card rise flex items-center gap-4 !p-5">
-      <Ring value={share} size={124} stroke={10} tone={share > 1 ? 'red' : share > 0.9 ? 'amber' : 'emerald'} label={usual ? `${Math.round(share * 100)}% of a usual month` : 'No usual month yet'}>
-        <span className="num text-[22px] font-semibold">{usual ? `${Math.round(share * 100)}%` : '—'}</span>
-        <span className="text-[11px] text-slate-500 dark:text-slate-400">{usual ? 'of a usual month' : 'first month'}</span>
-      </Ring>
-      <div className="min-w-0 space-y-1">
-        <p className="label">Spent in {monthName}</p>
-        <Money n={total} className="block text-[32px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white" />
-        {diff != null && <p className={`w-fit rounded-full px-2.5 py-1 text-xs font-extrabold ${diff >= 0 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}><Money n={Math.abs(diff)} /> {diff >= 0 ? 'under' : 'over'} a usual month so far</p>}
-        <p className="text-xs text-slate-500 dark:text-slate-400">Bills: <Money n={bills} className="text-slate-800 dark:text-slate-200" /> a month</p>
+    <section className="card rise space-y-3 !p-5" aria-label={`Spending in ${monthName}`}>
+      <div className="flex items-center gap-4">
+        <Ring value={share} size={112} stroke={10} tone={share > 1 ? 'red' : share > 0.9 ? 'amber' : 'emerald'} label={usual ? `${Math.round(share * 100)}% of a usual month` : 'No usual month yet'}>
+          <span className="num text-[20px] font-semibold">{usual ? `${Math.round(share * 100)}%` : '—'}</span>
+          <span className="text-[10.5px] text-slate-500 dark:text-slate-400">{usual ? 'of usual' : 'first month'}</span>
+        </Ring>
+        <div className="min-w-0 space-y-1">
+          <p className="label">Spent in {monthName}</p>
+          <Money n={total} className="block text-[36px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white" />
+          <p className="text-sm text-slate-600 dark:text-slate-300">{diff == null ? 'Your usual month shows after the first one.' : diff >= 0 ? <><Money n={diff} /> under a usual month so far</> : <><Money n={-diff} /> over a usual month so far</>}</p>
+        </div>
       </div>
+      {cats.length > 0 && (
+        <ul className="border-t border-slate-900/[0.06] pt-1 dark:border-white/[0.06]">
+          {cats.map((c) => { const k = spendCat(c.id); return (
+            <li key={c.id} className="flex items-center gap-2.5 py-1.5 text-sm">
+              <span aria-hidden="true" className="w-6 text-center">{k.icon}</span>
+              <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">{k.label}</span>
+              <Money n={c.amount} className="font-semibold" />
+            </li>
+          ); })}
+        </ul>
+      )}
+      {onAll && <button className="btn-ghost tap -mb-1 min-h-[44px] w-full justify-center text-sm font-semibold text-teal-800 dark:text-teal-200" onClick={onAll}>See all spending →</button>}
     </section>
-  );
-}
-
-export function MiniRings({ rings }: { rings: { label: string; sub: string; value: number; text: string; tone: 'emerald' | 'teal' | 'amber' | 'red'; onClick?: () => void }[] }) {
-  return (
-    <div className="rise rise-1 grid grid-cols-3 gap-2.5">
-      {rings.map((r) => (
-        <button key={r.label} onClick={r.onClick} className="card tap flex flex-col items-center gap-1.5 !rounded-[22px] !px-2 !py-3 text-center">
-          <Ring value={r.value} tone={r.tone} label={`${r.label}: ${r.text}`}><span className="num text-[13px] font-semibold">{r.text}</span></Ring>
-          <span className="text-[13px] font-bold">{r.label}</span>
-          <span className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">{r.sub}</span>
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -74,7 +78,7 @@ export function TimelineList({ moments, max = 6, onAll, onOpen, title = 'Coming 
     <section className="card rise rise-3 space-y-1">
       <div className="flex items-center justify-between">
         <p className="label">{title}</p>
-        {onAll && moments.length > max && <button className="chip -my-2 border-teal-500/30 px-2.5 py-1 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={onAll}>See all {moments.length}</button>}
+        {onAll && moments.length > max && <button className="chip -my-2 min-h-[44px] border-teal-500/30 px-3 py-1 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={onAll}>See more</button>}
       </div>
       {moments.length ? (
         <ul>

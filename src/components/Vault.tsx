@@ -6,6 +6,7 @@ import { daysTo, docIcon, holderText, matchDoc, personOf } from '../../supabase/
 import { today } from '../../supabase/functions/_shared/money.ts';
 import { ListInput, Seg, Toggle, errText, shortDate, toast } from './ui';
 import { combine, downloadFile, fileKind, fileName, openFile, sha256, shareFiles, shrink, signedUrls, safeName, type Page } from '../lib/vault';
+import { PersonChip, personEdge, usePersonFor } from './Person';
 import { supabase } from '../lib/supabase';
 
 /** 📁 Vault pieces: rows, the document card, the full-screen viewer, the scan / edit form, the PIN pad and lock screen,
@@ -31,12 +32,13 @@ export function VaultRow({ p, s, onOpen }: { p: Paper; s: Settings; onOpen?: () 
   const files = p.files?.length ?? 0;
   const pages = files ? (files === 1 && fileKind(p.files[0]) === 'pdf' ? 'PDF' : plural(files, 'page')) : '';
   const sub = [holderText(s, p.holder), p.doc_date && shortDate(p.doc_date), pages, p.source === 'email' && '✉️ email'].filter(Boolean).join(' · ');
+  const who = usePersonFor(p.source === 'email' ? p : null); // 👥 whose email it came from
   return (
-    <li className="border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]">
+    <li className={`border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
       <button className="tap -ml-1 flex min-h-[64px] w-[calc(100%+0.25rem)] items-center gap-3 rounded-[20px] px-1 py-2.5 text-left" onClick={onOpen}>
         <span className="tile" aria-hidden="true">{docIcon(p)}</span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{p.name}</span>
+          <span className="flex min-w-0 items-center gap-1.5"><span className="truncate font-semibold">{p.name}</span><PersonChip p={who} /></span>
           <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{sub || folderOf(p.folder).label}</span>
           {!!p.tags?.length && <span className="mt-0.5 block truncate text-[11px] text-teal-800/80 dark:text-teal-200/70">{p.tags.slice(0, 4).map((t) => `#${t}`).join(' ')}</span>}
         </span>

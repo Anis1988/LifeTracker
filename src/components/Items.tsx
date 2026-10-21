@@ -2,21 +2,25 @@ import { useMemo, useState } from 'react';
 import { CATEGORIES, CYCLES, NEGOTIABLE, catOf, type Category, type Cycle, type Item } from '../../supabase/functions/_shared/model.ts';
 import { amortize, daysBetween, dueDates, loanPayment, monthly, nextDue, today } from '../../supabase/functions/_shared/money.ts';
 import { Field, Money, Toggle, errText, shortDate, toast } from './ui';
+import { PersonChip, personEdge, usePersonFor } from './Person';
+import type { MailSrc } from '../../supabase/functions/_shared/mailPeople.ts';
 import { NegotiateSheet } from './Negotiate';
 
 const cycleWord: Record<Cycle, string> = { weekly: '/wk', biweekly: '/2 wk', monthly: '/mo', quarterly: '/3 mo', semiannual: '/6 mo', yearly: '/yr', once: ' once' };
 
 /** One bill in a list. Also drawn in the Guide with made-up data. */
-export function ItemRow({ i, onOpen, fresh }: { i: Item; onOpen?: () => void; fresh?: boolean }) {
+export function ItemRow({ i, onOpen, fresh, src }: { i: Item; onOpen?: () => void; fresh?: boolean; src?: MailSrc | null }) {
+  const who = usePersonFor(src); // 👥 whose mailbox it was found in
   const due = nextDue(i);
   const days = due ? daysBetween(today(), due) : null;
   const up = i.price_history?.length ? i.price_history[i.price_history.length - 1] : null;
   return (
-    <button className="tap flex min-h-[60px] w-full items-center gap-3 rounded-[20px] px-2 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]" onClick={onOpen}>
+    <button className={`tap flex min-h-[60px] w-full items-center gap-3 rounded-[20px] px-2 py-2.5 text-left hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04] ${personEdge(who)}`} onClick={onOpen}>
       <span className="tile" aria-hidden="true">{catOf(i.category).icon}</span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className={`truncate font-semibold ${i.status !== 'active' ? 'text-slate-400 dark:text-slate-500 line-through' : ''}`}>{i.name}</span>
+          <PersonChip p={who} />
           {fresh && <span className="chip border-teal-400/50 bg-teal-500/10 text-teal-800 dark:border-teal-300/30 dark:bg-teal-300/10 dark:text-teal-100" title="Added by itself">✨ new</span>}
           {i.trial_ends && i.trial_ends >= today() && <span className="chip border-amber-300 bg-amber-500/10 text-amber-800 dark:border-amber-700 dark:bg-amber-400/10 dark:text-amber-200">trial</span>}
           {up && <span className="chip border-red-200 bg-red-500/10 text-red-700 dark:border-red-800 dark:bg-red-400/10 dark:text-red-200" title="Price changed">↑ price</span>}

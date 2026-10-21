@@ -17,6 +17,7 @@ import { todayIn } from '../_shared/money.ts';
 import { negotiate } from '../_shared/negotiate.ts';
 import { mimeOf, readVault } from '../_shared/vault.ts';
 import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow, type ReceiptOp } from '../_shared/receipts.ts';
+import { PERSON_COLORS } from '../_shared/mailPeople.ts';
 import type { Item, Sender } from '../_shared/model.ts';
 
 /**
@@ -31,6 +32,8 @@ const Body = z.discriminatedUnion('action', [
   // extra: "＋ Add another Google account" ('new') or more permission for one already added ('google:<n>'): Gmail only.
   z.object({ action: z.literal('google-start'), want: z.array(z.enum(['calendar', 'gmail', 'mailbox'])).min(1).max(3), back: z.string().url().max(300), extra: z.union([z.literal('new'), z.string().regex(/^google:\d{1,3}$/)]).optional() }),
   z.object({ action: z.literal('google-extra'), kind: z.string().regex(/^google:\d{1,3}$/), on: z.boolean() }),
+  // 👥 A mailbox's name + colour on entries that came from it ("● Roza").
+  z.object({ action: z.literal('mail-person'), kind: z.union([z.literal('google'), z.string().regex(/^google:\d{1,3}$/)]), name: z.string().trim().min(1).max(16), color: z.enum(PERSON_COLORS) }),
   z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail', 'weekend']) }),
   z.object({ action: z.literal('phone-key') }),
   z.object({ action: z.literal('ask'), question: z.string().min(2).max(500), history: z.array(z.object({ q: z.string().max(500), a: z.string().max(2000) })).max(6).optional() }),
@@ -59,15 +62,17 @@ async function handle(req: Request): Promise<Response> {
     const db = admin();
     switch (body.action) {
       case 'status': {
-        const [bank, google, status, me, mail, phone, contacts, vault, receipts, boxes] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), connection(db, user.id, 'me'), connection(db, user.id, 'mail'), connection(db, user.id, 'phone'), connection(db, user.id, 'contacts'), connection(db, user.id, 'vault'), connection(db, user.id, 'receipts'), allBoxes(db, user.id)]);
+        const [bank, google, status, me, mail, phone, contacts, vault, receipts, boxes, emails] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), connection(db, user.id, 'me'), connection(db, user.id, 'mail'), connection(db, user.id, 'phone'), connection(db, user.id, 'contacts'), connection(db, user.id, 'vault'), connection(db, user.id, 'receipts'), allBoxes(db, user.id), connection(db, user.id, 'emails')]);
         const { data: usage } = await db.from('ai_usage').select('provider, n').eq('user_id', user.id).eq('day', new Date().toISOString().slice(0, 10));
         return json({
           bank: bank ? { connected: true, lastSync: bank.meta.lastSync ?? null, accounts: bank.meta.accounts ?? [], errors: bank.meta.errors ?? [] } : { connected: false },
-          google: google ? { connected: true, email: google.meta.email ?? null, calendar: has(google.meta.scope as string, 'calendar'), gmail: has(google.meta.scope as string, 'gmail'), lastGmail: google.meta.gmailScanned ?? null, alertsScanned: google.meta.alertsScanned ?? null, alertsRead: google.meta.alertsRead ?? 0, alertBanks: google.meta.alertBanks ?? [], mailbox: has(google.meta.scope as string, 'mailbox'), lastScan: google.meta.lastScan ?? null } : { connected: false },
+          google: google ? { connected: true, email: google.meta.email ?? null, calendar: has(google.meta.scope as string, 'calendar'), gmail: has(google.meta.scope as string, 'gmail'), lastGmail: google.meta.gmailScanned ?? null, alertsScanned: google.meta.alertsScanned ?? null, alertsRead: google.meta.alertsRead ?? 0, alertBanks: google.meta.alertBanks ?? [], mailbox: has(google.meta.scope as string, 'mailbox'), lastScan: google.meta.lastScan ?? null, person: google.meta.person ?? null } : { connected: false },
           // ✉️ Extra Gmail accounts (no secrets: only what Settings shows).
-          googleExtras: boxes.filter((b) => !b.main).map((b) => ({ kind: b.kind, email: b.email, on: b.on, gmail: has(b.scope, 'gmail'), mailbox: has(b.scope, 'mailbox'), lastScan: b.meta.lastScan ?? null, lastError: b.meta.lastError ?? null, connectedAt: b.meta.connectedAt ?? null })),
+          googleExtras: boxes.filter((b) => !b.main).map((b) => ({ kind: b.kind, email: b.email, on: b.on, gmail: has(b.scope, 'gmail'), mailbox: has(b.scope, 'mailbox'), lastScan: b.meta.lastScan ?? null, lastError: b.meta.lastError ?? null, connectedAt: b.meta.connectedAt ?? null, person: b.meta.person ?? null })),
           me: { lastOnline: me?.meta.lastOnline ?? null, lastErrors: me?.meta.lastErrors ?? [], weekSent: me?.meta.weekSent ?? null, breachScanned: me?.meta.breachScanned ?? null },
           mail: { lastSweep: mail?.meta.lastSweep ?? null, sweepDone: !!mail?.meta.sweepDone, headsRead: mail?.meta.headsRead ?? 0, apptsScanned: mail?.meta.apptsScanned ?? null, contactsScanned: contacts?.meta.scanned ?? null, vaultScanned: vault?.meta.scanned ?? null, receiptsScanned: receipts?.meta.scanned ?? null, mailChecked: receipts?.meta.mailChecked ?? null, check: receipts?.meta.mailCheck ?? null },
+          // ✉️ The last automatic email (Settings → Emails to me).
+          emails: { lastSent: emails?.meta.lastSent ?? null, lastSubject: emails?.meta.lastSubject ?? null },
           phone: { since: phone?.meta.since ?? null, lastText: phone?.meta.lastText ?? null },
           lastRun: status?.meta ?? null,
           aiUsed: Object.fromEntries((usage ?? []).map((u) => [u.provider, u.n])),
@@ -90,6 +95,12 @@ async function handle(req: Request): Promise<Response> {
         const extra = body.kind.startsWith(EXTRA) ? await connection(db, user.id, body.kind) : null;
         await db.from('connections').delete().eq('user_id', user.id).eq('kind', body.kind);
         if (extra?.secret) await revoke(extra.secret);
+        return json({ ok: true });
+      }
+      case 'mail-person': {
+        const cur = await connection(db, user.id, body.kind);
+        if (!cur) throw new HttpError('That Google account isn’t connected any more.', 404);
+        await saveConnection(db, user.id, body.kind, null, { person: { name: body.name, color: body.color } });
         return json({ ok: true });
       }
       case 'google-extra': {

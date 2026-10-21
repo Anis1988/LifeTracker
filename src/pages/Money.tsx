@@ -11,6 +11,8 @@ import { AddReceipt, ReceiptSheet, ReceiptViewer, SpendLine, lastChecked, useThu
 import { MoneyLog } from '../components/MoneyLog';
 import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
 import { mailEveryWords, type Purchase } from '../../supabase/functions/_shared/model.ts';
+import { PersonFilter, ofPerson, usePeople } from '../components/Person';
+import { personFor } from '../../supabase/functions/_shared/mailPeople.ts';
 import { takeParam, useView } from '../lib/nav';
 
 const monthName = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -49,6 +51,8 @@ function Spending() {
   const [month, setMonth] = useState(now);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('all');
+  const [who, setWho] = useState('all'); // 👥 Person: All · Anis · Roza
+  const people = usePeople();
   const [many, setMany] = useState(60);
   const [open, setOpen] = useState<{ id: string; del?: boolean } | null>(null);
   const [view, setView] = useState<string | null>(null);
@@ -62,7 +66,7 @@ function Spending() {
   const all = useMemo(() => st.tx.filter((x) => Number(x.amount) < 0), [st.tx]);
   const base = useMemo(() => (q.trim() ? all : all.filter((x) => x.posted.slice(0, 7) === month)), [all, q, month]);
   const catOf = useMemo(() => new Map(base.map((x) => [x, categorize(x, rules)])), [base, rules]);
-  const list = useMemo(() => base.filter((x) => (cat === 'all' || catOf.get(x) === cat) && (!q.trim() || matchSpend(x, q, spendCat(catOf.get(x)!).label))), [base, cat, q, catOf]);
+  const list = useMemo(() => base.filter((x) => (cat === 'all' || catOf.get(x) === cat) && ofPerson(personFor(x, people), who) && (!q.trim() || matchSpend(x, q, spendCat(catOf.get(x)!).label))), [base, cat, q, catOf, who, people]);
   const counts = useMemo(() => { const c: Record<string, number> = {}; for (const x of base) { const k = catOf.get(x)!; c[k] = (c[k] ?? 0) + 1; } return c; }, [base, catOf]);
   const chips = [{ id: 'all', label: 'All', n: base.length }, ...SPEND_CATS.filter((c) => counts[c.id]).map((c) => ({ id: c.id, label: `${c.icon} ${c.label}`, n: counts[c.id] }))];
   const shown = list.slice(0, many);
@@ -90,7 +94,8 @@ function Spending() {
         </div>
         <SearchBox q={q} onChange={setQ} placeholder="Shop, item, 23.45, March…" label="Search purchases and receipts" />
         <KindChips label="Category" options={chips} value={cat} onChange={setCat} />
-        <p className="label px-1" aria-live="polite">{q.trim() ? `${list.length} found in all months` : `${list.length} purchase${list.length === 1 ? '' : 's'} · ${monthName(month)}`}{cat !== 'all' ? ` · ${spendCat(cat).label}` : ''}</p>
+        <PersonFilter value={who} onChange={setWho} />
+        <p className="label px-1" aria-live="polite">{q.trim() ? `${list.length} found in all months` : `${list.length} purchase${list.length === 1 ? '' : 's'} · ${monthName(month)}`}{cat !== 'all' ? ` · ${spendCat(cat).label}` : ''}{who !== 'all' ? ` · ${people.find((p) => p.email === who)?.name ?? ''}` : ''}</p>
         {list.length ? (
           <div className="card !px-3 !py-1">
             {byDay(shown).map(([day, xs]) => (
@@ -101,7 +106,7 @@ function Spending() {
             ))}
             {list.length > many && <button className="tap min-h-[44px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={() => setMany(many + 100)}>Show more ({list.length - many})</button>}
           </div>
-        ) : <p className="card text-sm text-slate-500 dark:text-slate-400">{q.trim() || cat !== 'all' ? 'Nothing found. Try a shop, something you bought, an amount like 23.45, or a month.' : 'No purchases this month yet. Receipts in your emails come here by themselves, or 📷 take a photo of one.'}</p>}
+        ) : <p className="card text-sm text-slate-500 dark:text-slate-400">{q.trim() || cat !== 'all' || who !== 'all' ? 'Nothing found. Try a shop, something you bought, an amount like 23.45, or a month.' : 'No purchases this month yet. Receipts in your emails come here by themselves, or 📷 take a photo of one.'}</p>}
       </section>
       <p className="text-xs text-slate-500 dark:text-slate-400">{gmail ? `📧 Your Gmail is checked ${mailEveryWords(s.mail.every)} for receipts and bank alerts (free checks first). Last checked: ${lastChecked(st.status?.mail?.mailChecked ?? st.status?.mail?.receiptsScanned)}.` : 'Connect Gmail (Settings → Google) and receipts in your emails come here by themselves.'} A receipt that matches a bank purchase is attached to it, so nothing is counted twice. 📜 Log shows what happened to each one.</p>
       {sel && <ReceiptSheet key={sel.id} t={sel} url={sel.receipt_path ? urls[sel.receipt_path] : undefined} rules={rules} userId={st.session.user.id} startDelete={open?.del} onMove={(c) => void move(sel.id!, c)} onClose={() => setOpen(null)} onChanged={st.reload} />}

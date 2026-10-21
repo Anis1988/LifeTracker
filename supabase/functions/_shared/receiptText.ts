@@ -89,7 +89,9 @@ export function totalOf(text: string): number | null {
 export interface ReceiptItem { name: string; qty: number | null; price: number | null }
 export interface ReceiptDetails { store: string; date: string; total: number; tax: number | null; card: string | null; items: ReceiptItem[]; read: 'free' | 'ai' | 'hand'; by?: string | null;
   /** A receipt added to a bank purchase whose total isn't the bank's amount: kept = "use its items anyway" was picked. */
-  mismatch?: { receipt: number; bank: number; kept: boolean } | null }
+  mismatch?: { receipt: number; bank: number; kept: boolean } | null;
+  /** 👥 The mailbox it came from (address; shown only as the person's name). */
+  mailbox?: string }
 
 const TIP = /\b(tip|gratuity)\b/i;
 /**

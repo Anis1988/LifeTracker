@@ -3,15 +3,17 @@ import type { Alert, Doc } from '../../supabase/functions/_shared/model.ts';
 import { feedGroups, type AddedEntry } from '../lib/added';
 import { errText, shortDate, toast } from './ui';
 import { api, supabase } from '../lib/supabase';
+import { PersonChip, personEdge, usePersonFor } from './Person';
 
 /** 🆕 One thing added by itself (the Inbox feed): what, where it went, when, and ↶ Undo. Also in the Guide (no buttons there). */
 export function AddedRow({ e, onUndo, onOpen, busy }: { e: AddedEntry; onUndo?: () => void; onOpen?: () => void; busy?: boolean }) {
+  const who = usePersonFor(e.src); // 👥 whose mailbox it came from
   return (
-    <li className="flex items-center gap-2 border-t border-slate-900/[0.06] py-2 first:border-0 dark:border-white/[0.06]">
+    <li className={`flex items-center gap-2 border-t border-slate-900/[0.06] py-2 first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
       <button className="tap -ml-1 flex min-h-[56px] min-w-0 flex-1 items-center gap-3 rounded-[18px] px-1 py-1.5 text-left" onClick={onOpen} aria-label={`${e.title}: open in ${e.where}`}>
         <span className="tile !h-10 !w-10 !text-lg" aria-hidden="true">{e.icon}</span>
         <span className="min-w-0 flex-1">
-          <span className="block break-words text-sm font-semibold leading-snug">{e.title}</span>
+          <span className="flex flex-wrap items-center gap-1.5"><span className="break-words text-sm font-semibold leading-snug">{e.title}</span><PersonChip p={who} /></span>
           <span className="block break-words text-xs text-slate-500 dark:text-slate-400">{e.sub}</span>
           <span className="block text-[11px] text-teal-800/80 dark:text-teal-200/70">✓ Added to {e.where} · {ago(e.at)}</span>
         </span>

@@ -21,11 +21,20 @@ import { Icon, PhoneTabBar, TABS } from './components/Nav';
 import { goTo, parseHash, upgradeHash, type Tab } from './lib/nav';
 import { addedFeed, unseen } from './lib/added';
 import { MailCheckBar } from './components/MailCheck';
+import { PeopleProvider } from './components/Person';
 
 const tabOf = (): Tab => parseHash().tab;
 // Old addresses (#/contacts, #/vault, #/me, #/settings/…) move to their new place before anything opens.
 const upgrade = () => { const h = upgradeHash(location.hash); if (h) history.replaceState(null, '', h); };
 upgrade();
+// 🏠 A fresh launch lands on Home (Spending first), not on the last tab. A reload in the same session keeps its place,
+// and a link that opens something ("?doc=…", "#/me/settings/google") still opens it. Each tab still remembers its view.
+try {
+  if (!sessionStorage.getItem('lt.launched')) {
+    sessionStorage.setItem('lt.launched', '1');
+    if (/^#\/(money|places|me|inbox|guide)(\/[a-z]+)?$/.test(location.hash)) history.replaceState(null, '', '#/home');
+  }
+} catch { /* private mode: the address decides */ }
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -51,7 +60,13 @@ export function App() {
   if (!configured) return <Shell><p className="card text-sm">This copy isn’t linked to Supabase yet: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (see README).</p></Shell>;
   if (session === undefined) return <Shell><Skeleton /></Shell>;
   if (!session) return <Shell><Login /></Shell>;
-  return <StoreProvider session={session}><Main /></StoreProvider>;
+  return <StoreProvider session={session}><People><Main /></People></StoreProvider>;
+}
+
+/** 👥 Each mailbox's name + colour (from the server), for the "● Roza" chips on entries. */
+function People({ children }: { children: React.ReactNode }) {
+  const st = useStore();
+  return <PeopleProvider status={st.status}>{children}</PeopleProvider>;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -193,7 +208,7 @@ function Main() {
         </div>
       </header>
       {/* 📬 Email checks: how often, last and next (every tab; hidden until Gmail is connected). */}
-      <MailCheckBar />
+      {tab !== 'home' && <MailCheckBar />}
       <main key={`${tab}:${visit}`} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         <AppUpdateCheck />
         {st.loading ? <Skeleton />

@@ -5,6 +5,8 @@ import { goTo } from '../lib/nav';
 import { today } from '../../supabase/functions/_shared/money.ts';
 import { KindChips, SearchBox } from './Contacts';
 import { Empty, Skeleton, errText, toast } from './ui';
+import { PersonChip, PersonFilter, ofPerson, personEdge, usePeople } from './Person';
+import { hideAddresses, personFor, type MailPerson } from '../../supabase/functions/_shared/mailPeople.ts';
 
 /**
  * 📜 Money → Log (owner's request, like the Trading app): short time-stamped lines on what happened to your money,
@@ -22,19 +24,38 @@ const stamp = (at: string) => {
 };
 
 /** The lines themselves (also in the Guide with made-up lines and no working taps). */
-export function LogLines({ rows, onOpen, example }: { rows: LogRow[]; onOpen?: (r: LogRow) => void; example?: boolean }) {
+export function LogLines({ rows, onOpen, example, whoOf }: { rows: LogRow[]; onOpen?: (r: LogRow) => void; example?: boolean; whoOf?: (r: LogRow) => MailPerson | null }) {
   return (
     <ol className="card !px-2 !py-1.5" aria-label="Money log, newest first">
-      {rows.map((r) => (
-        <li key={r.id} className="border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]">
-          <button className="tap flex min-h-[44px] w-full items-baseline gap-2 rounded-xl px-1.5 py-1.5 text-left" tabIndex={example ? -1 : undefined} onClick={() => onOpen?.(r)}>
-            <time dateTime={r.at} className="num w-[92px] shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{stamp(r.at)}</time>
-            <span className="min-w-0 flex-1 break-words text-[13px] leading-snug text-slate-800 dark:text-slate-100">{r.text}</span>
-          </button>
-        </li>
-      ))}
+      {rows.map((r) => {
+        const who = whoOf?.(r) ?? null; // 👥 whose mailbox it came from
+        return (
+          <li key={r.id} className={`border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
+            <button className="tap flex min-h-[44px] w-full items-baseline gap-2 rounded-xl px-1.5 py-1.5 text-left" tabIndex={example ? -1 : undefined} onClick={() => onOpen?.(r)}>
+              <time dateTime={r.at} className="num w-[92px] shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{stamp(r.at)}</time>
+              <span className="min-w-0 flex-1 break-words text-[13px] leading-snug text-slate-800 dark:text-slate-100">{who && <PersonChip p={who} className="mr-1 align-[1px]" />}{hideAddresses(r.text)}</span>
+            </button>
+          </li>
+        );
+      })}
     </ol>
   );
+}
+
+/** 👥 A log line's person: from its purchase (mailbox on the line) or its bill (the email it was found in). */
+export function useLogPerson(): (r: LogRow) => MailPerson | null {
+  const st = useStore();
+  const people = usePeople();
+  return useMemo(() => {
+    const tx = new Map(st.tx.map((x) => [x.id, x]));
+    const bills = new Map(st.added.filter((g) => g.source === 'email' && g.item_id).map((g) => [g.item_id!, g]));
+    return (r: LogRow) => {
+      const t = r.data?.tx ? tx.get(r.data.tx) : undefined;
+      if (t) return personFor(t, people);
+      const g = r.data?.item ? bills.get(r.data.item) : undefined;
+      return g ? personFor({ source: 'email', evidence: g.evidence }, people) : null;
+    };
+  }, [st.tx, st.added, people]);
 }
 
 export function MoneyLog() {
@@ -42,6 +63,8 @@ export function MoneyLog() {
   const [rows, setRows] = useState<LogRow[] | null>(null);
   const [q, setQ] = useState('');
   const [kind, setKind] = useState<string>('all');
+  const [who, setWho] = useState('all');
+  const whoOf = useLogPerson();
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -60,7 +83,7 @@ export function MoneyLog() {
     return () => { live = false; };
   }, []);
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = useMemo(() => (rows ?? []).filter((r) => (kind === 'all' || r.kind === kind) && words.every((w) => `${r.text} ${stamp(r.at)}`.toLowerCase().includes(w))), [rows, kind, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = useMemo(() => (rows ?? []).filter((r) => (kind === 'all' || r.kind === kind) && ofPerson(whoOf(r), who) && words.every((w) => `${r.text} ${stamp(r.at)}`.toLowerCase().includes(w))), [rows, kind, q, who, whoOf]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = (k: string) => (rows ?? []).filter((r) => k === 'all' || r.kind === k).length;
   // Tap a line: open the purchase or the bill, when it's still there.
   const open = (r: LogRow) => {
@@ -75,7 +98,8 @@ export function MoneyLog() {
       <p className="text-sm text-slate-600 dark:text-slate-300">What happened to your money, newest first: where each purchase came from, the category it counts in, receipts, changes and bills. Tap a line to open it. Kept 180 days.</p>
       <SearchBox q={q} onChange={setQ} placeholder="Shop, receipt, category, Oct 18…" label="Search the log" />
       <KindChips label="Show" options={LOG_KINDS.map((k) => ({ id: k.id, label: k.label, n: n(k.id) }))} value={kind} onChange={setKind} />
-      {rows === null ? <Skeleton /> : shown.length ? <LogLines rows={shown.slice(0, 400)} onOpen={open} />
+      <PersonFilter value={who} onChange={setWho} />
+      {rows === null ? <Skeleton /> : shown.length ? <LogLines rows={shown.slice(0, 400)} onOpen={open} whoOf={whoOf} />
         : <Empty icon="📜">{rows.length ? 'Nothing matches.' : 'Nothing yet. New purchases, receipts, changes and bills are written here as they happen.'}</Empty>}
     </div>
   );

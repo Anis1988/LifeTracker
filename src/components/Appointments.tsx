@@ -5,6 +5,8 @@ import { whenText } from '../../supabase/functions/_shared/apptText.ts';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 import { Sheet, Toggle, errText, toast } from './ui';
 import { settingsHref } from './SettingsGrid';
+import { PersonChip, personEdge, usePeople } from './Person';
+import { personFor } from '../../supabase/functions/_shared/mailPeople.ts';
 import { recentTexts, textsOff, textsOn, textsState, type TextsState } from '../lib/texts';
 
 const FROM: Record<Appointment['source'], string> = { email: '✉️ Email', text: '💬 Text', hand: '✍️ Added' };
@@ -32,12 +34,14 @@ export function ApptCard({ appts, onRemove, max = 5, emailOn = true, contacts = 
 
 function ApptList({ list, onOpen }: { list: Appointment[]; onOpen: (a: Appointment) => void }) {
   const t = today();
+  const people = usePeople(); // 👥 whose email each one came from
   return (
     <ul>
       {list.map((a) => {
         const left = daysBetween(t, a.day);
+        const who = a.source === 'email' ? personFor(a, people) : null;
         return (
-          <li key={a.id} className="border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]">
+          <li key={a.id} className={`border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
             <button className="tap -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-2xl px-2 py-2.5 text-left" onClick={() => onOpen(a)}>
               <span className="w-11 shrink-0 text-center">
                 <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{left === 0 ? 'Today' : left === 1 ? 'Tmrw' : new Date(`${a.day}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}</span>
@@ -47,7 +51,7 @@ function ApptList({ list, onOpen }: { list: Appointment[]; onOpen: (a: Appointme
                 <span className="block truncate text-sm font-semibold"><span aria-hidden="true">{apptKind(a.kind).icon} </span>{a.title}</span>
                 <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{whenText(a).split(' · ')[1]}{a.place ? ` · ${a.place}` : a.with_who ? ` · ${a.with_who}` : ''}</span>
               </span>
-              <span className="chip shrink-0 border-slate-900/10 px-2 py-0.5 text-[11px] text-slate-600 dark:border-white/10 dark:text-slate-300">{FROM[a.source]}</span>
+              {who ? <PersonChip p={who} /> : <span className="chip shrink-0 border-slate-900/10 px-2 py-0.5 text-[11px] text-slate-600 dark:border-white/10 dark:text-slate-300">{FROM[a.source]}</span>}
             </button>
           </li>
         );
