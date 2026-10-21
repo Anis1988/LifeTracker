@@ -75,6 +75,7 @@ export const GUIDE_TOPICS: { icon: string; title: string; words: string }[] = [
   { icon: '🪪', title: 'Documents that expire', words: 'passport licence expire' },
   { icon: '🔒', title: 'Credit freeze and reports', words: 'credit freeze equifax experian transunion report' },
   { icon: '📅', title: 'Google Calendar', words: 'calendar events google' },
+  { icon: '📬', title: 'Email checks (how often)', words: 'email checks how often gmail every 15 minutes quarter hour last next off' },
   { icon: '✉️', title: 'Gmail receipts and forwarding', words: 'gmail forward receipts another google account second email work mailbox add' },
   { icon: '📄', title: 'Documents (bills, policies, statements)', words: 'documents upload pdf photo' },
   { icon: '🏠', title: 'Mortgage and loans', words: 'mortgage loan escrow rate payoff' },

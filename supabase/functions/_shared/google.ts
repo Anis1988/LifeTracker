@@ -234,9 +234,15 @@ function textOf(p: Part): { plain: string; html: string } {
 const stripHtml = (h: string) => h.replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#36;|&dollar;/g, '$').replace(/&[a-z]+;/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
 
+/** 📬 Emails read during one run, per Google access token (for "3 new" in the email-check status). */
+const tally = new Map<string, Set<string>>();
+export const countReads = (at: string, into: Set<string>) => void tally.set(at, into);
+export const stopCounting = (at: string) => void tally.delete(at);
+
 export async function readEmail(at: string, id: string, box?: string): Promise<Mail> {
   await pace();
   const m = await g<{ id: string; payload: Part; internalDate: string }>(at, `${GM}/messages/${id}?format=full`);
+  tally.get(at)?.add(id);
   const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
   const t = textOf(m.payload);
   return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload), ...(box ? { box } : {}) };

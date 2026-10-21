@@ -20,6 +20,7 @@ import { PlusIcon, QuickAddSheet } from './components/QuickAdd';
 import { Icon, PhoneTabBar, TABS } from './components/Nav';
 import { goTo, parseHash, upgradeHash, type Tab } from './lib/nav';
 import { addedFeed, unseen } from './lib/added';
+import { MailCheckBar } from './components/MailCheck';
 
 const tabOf = (): Tab => parseHash().tab;
 // Old addresses (#/contacts, #/vault, #/me, #/settings/…) move to their new place before anything opens.
@@ -191,6 +192,8 @@ function Main() {
           </button>
         </div>
       </header>
+      {/* 📬 Email checks: how often, last and next (every tab; hidden until Gmail is connected). */}
+      <MailCheckBar />
       <main key={`${tab}:${visit}`} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         <AppUpdateCheck />
         {st.loading ? <Skeleton />

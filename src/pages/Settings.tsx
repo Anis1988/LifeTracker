@@ -18,7 +18,8 @@ import { TextsSetup } from '../components/Appointments';
 import { ZipField } from '../components/Nearby';
 import { zipOf } from '../../supabase/functions/_shared/place.ts';
 import { allRows } from '../../supabase/functions/_shared/rows.ts';
-import { PROVIDERS, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
+import { PROVIDERS, mailEveryWords, providerOf, type Provider, type Settings as S } from '../../supabase/functions/_shared/model.ts';
+import { MailEveryPicker, MailPill } from '../components/MailCheck';
 
 const REMINDS: [string, string][] = [['1440,120', '1 day and 2 hours before'], ['1440,60', '1 day and 1 hour before'], ['1440', '1 day before'], ['120', '2 hours before'], ['60', '1 hour before'], ['', 'No reminder']];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -190,10 +191,10 @@ export function Settings() {
   const spendingBody = (<>
     <p className="text-sm text-slate-600 dark:text-slate-300">Budgets are set in Money → Spending (🎯 Budgets). Purchases come from your bank alert emails and your receipts, sorted with free rules.</p>
     <div className="panel text-sm">
-      <p className="font-semibold">📧 Email finding: every hour, by itself</p>
+      <p className="font-semibold">📧 Email finding: {mailEveryWords(s.mail.every)}, by itself</p>
       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{status?.google.gmail ? <>Receipts, bank alerts, bills, orders and documents in your Gmail. Last checked: <span className="num font-semibold text-slate-700 dark:text-slate-200">{lastChecked(status.mail?.mailChecked ?? status.mail?.receiptsScanned)}</span>.</> : 'Needs Gmail: Google → “Also read Gmail receipts”.'}</p>
     </div>
-    <Field label="Receipts in my emails → Spending" hint="Every hour. Free patterns read most receipts (shop, total, items); the AI (free ones first) only when they can’t, and never the same receipt twice. A receipt that matches a bank purchase is attached to it: counted once.">
+    <Field label="Receipts in my emails → Spending" hint="At every email check (📬 Email checks). Free patterns read most receipts (shop, total, items); the AI (free ones first) only when they can’t, and never the same receipt twice. A receipt that matches a bank purchase is attached to it: counted once.">
       <Toggle on={s.receipts.on} onChange={(v) => save({ receipts: { ...s.receipts, on: v } })} label="Receipts in my emails" />
     </Field>
     <Field label="Most receipt emails read by the AI per run">
@@ -445,6 +446,14 @@ export function Settings() {
     </Field>
   </>);
 
+  // 📬 How often Gmail is read (pg_cron runs every quarter hour; your choice decides which ones read).
+  const checksBody = (<>
+    <MailEveryPicker every={s.mail.every} onChange={(n) => save({ mail: { ...s.mail, every: n } })} />
+    {status?.mail?.check && <p className="text-xs text-slate-500 dark:text-slate-400">Last check: <span className="num">{new Date(status.mail.check.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</span>, {status.mail.check.text}.</p>}
+    <MailPill every={s.mail.every} check={status?.mail?.check} />
+    <p className="text-xs text-slate-500 dark:text-slate-400">This line shows at the top of every tab once Gmail is connected; tap it to come back here.</p>
+  </>);
+
   const accountBody = (<>
     {status && (
       <div className="flex flex-wrap gap-1.5">
@@ -469,6 +478,7 @@ export function Settings() {
   const sections: (SettingsTile & { body?: ReactNode })[] = [
     { ...SEC.about, status: s.me.names.length ? `${s.me.names[0]}${s.me.places[0] ? ` · ${s.me.places[0]}` : ''}` : 'Not filled in', off: !s.me.names.length, body: aboutBody },
     { ...SEC.google, status: status?.google.connected ? [status.google.calendar && 'Calendar', status.google.gmail && 'Gmail'].filter(Boolean).join(' + ') || 'Connected' : 'Not connected', off: !status?.google.connected, body: googleBody },
+    { ...SEC.checks, status: s.mail.every ? `Every ${s.mail.every < 60 ? `${s.mail.every} min` : s.mail.every === 60 ? 'hour' : `${s.mail.every / 60} hours`}` : 'Off · daily only', off: !s.mail.every, body: checksBody },
     { ...SEC.appts, status: s.appts.on ? `On · emails${status?.phone?.since ? ' + texts' : ''}` : 'Off', off: !s.appts.on, body: apptsBody },
     { ...SEC.spending, status: `${nBudgets} budget${nBudgets === 1 ? '' : 's'} · receipts ${s.receipts.on ? 'on' : 'off'}`, body: spendingBody },
     { ...SEC.bank, status: !s.bank.alerts ? 'Off' : status?.google.gmail ? `${status.google.alertsRead ?? 0} purchases read` : 'Needs Gmail', off: !s.bank.alerts || !status?.google.gmail, body: bankBody },

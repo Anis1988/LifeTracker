@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { api, supabase } from './supabase';
-import { withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type Purchase, type Sender, type Settings, type Suggestion } from '../../supabase/functions/_shared/model.ts';
+import { withDefaults, type Alert, type Appointment, type Contact, type Doc, type Finding, type Item, type LifeDate, type Paper, type MailCheck, type Purchase, type Sender, type Settings, type Suggestion } from '../../supabase/functions/_shared/model.ts';
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { spentOf, type WeekInput } from '../../supabase/functions/_shared/week.ts';
 import { today } from '../../supabase/functions/_shared/money.ts';
@@ -18,7 +18,7 @@ export interface Status {
   google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean; lastScan?: string | null };
   googleExtras?: GoogleExtra[]; // ✉️ extra Gmail accounts watched too
   me?: { lastOnline: string | null; lastErrors: string[]; weekSent: string | null; breachScanned: string | null };
-  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null; vaultScanned?: string | null; receiptsScanned?: string | null; mailChecked?: string | null };
+  mail?: { lastSweep: string | null; sweepDone: boolean; headsRead: number; apptsScanned?: string | null; contactsScanned?: string | null; vaultScanned?: string | null; receiptsScanned?: string | null; mailChecked?: string | null; check?: MailCheck | null }; // check = 📬 the last email check
   phone?: { since: string | null; lastText: string | null };
   lastRun: { lastRun?: string; steps?: string[]; errors?: string[] } | null;
   aiUsed: Record<string, number>;
@@ -175,7 +175,7 @@ export function StoreProvider({ session, children }: { session: Session; childre
     void reloadStatus();
     void flushTexts(); // 💬 Android app: appointment texts that couldn't be sent earlier
     // Back to the app (another device or the morning run may have changed things): fresh data.
-    const back = () => document.visibilityState === 'visible' && void reload().catch(() => undefined);
+    const back = () => { if (document.visibilityState === 'visible') { void reload().catch(() => undefined); void reloadStatus(); } };
     document.addEventListener('visibilitychange', back);
     return () => document.removeEventListener('visibilitychange', back);
   }, [reload, reloadStatus]);

@@ -341,6 +341,8 @@ export interface Settings {
     emails: boolean; maxPerRun: number; people: VaultPerson[];
     lock: { on: boolean; hash: string; salt: string; len: number; minutes: number; resetAsked: string | null };
   };
+  /** 📬 Email checks: read Gmail every `every` minutes (15/30/60/120/240), 0 = only in the daily morning run. */
+  mail: { every: number };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -373,6 +375,7 @@ export const DEFAULT_SETTINGS: Settings = {
   contacts: { on: true },
   place: { zip: '45245', weekend: true },
   vault: { emails: true, maxPerRun: 6, people: [{ name: 'Me', kind: 'me' }], lock: { on: false, hash: '', salt: '', len: 0, minutes: 5, resetAsked: null } },
+  mail: { every: 60 },
 };
 
 /** Saved settings merged over the defaults (new options get their default). */
@@ -403,5 +406,31 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     contacts: { ...d.contacts, ...s?.contacts },
     place: { ...d.place, ...s?.place, zip: /^\d{5}$/.test(s?.place?.zip?.trim() ?? '') ? s!.place!.zip.trim() : d.place.zip },
     vault: { ...d.vault, ...s?.vault, people: s?.vault?.people?.length ? s.vault.people : d.vault.people, lock: { ...d.vault.lock, ...s?.vault?.lock } },
+    mail: { every: typeof s?.mail?.every === 'number' && (MAIL_EVERY as readonly number[]).includes(s.mail.every) ? s.mail.every : d.mail.every },
   };
 }
+
+/**
+ * 📬 Email checks. pg_cron calls the email look every quarter hour (:00, :15, :30, :45 UTC); a slot is due for someone
+ * when its minute of the day divides by their `every` (all choices divide 60/120/240, so UTC is fine). The slot is the
+ * call time rounded to the nearest quarter hour, so a few seconds' delay never skips one. 0 = Off (daily run only).
+ */
+export const MAIL_EVERY = [15, 30, 60, 120, 240, 0] as const;
+const QUARTER = 15 * 60_000;
+export const slotOf = (ms: number) => Math.round(ms / QUARTER) * QUARTER;
+export function mailDue(every: number, slot: number): boolean {
+  if (!every) return false;
+  const minute = Math.round((((slot % 86_400_000) + 86_400_000) % 86_400_000) / 60_000);
+  return minute % every === 0;
+}
+/** The next check after `after` (ms), or null when Off. */
+export function nextMailCheck(every: number, after: number): number | null {
+  if (!every) return null;
+  let t = Math.floor(after / QUARTER) * QUARTER + QUARTER;
+  while (!mailDue(every, t)) t += QUARTER;
+  return t;
+}
+/** "every 15 min", "every hour", "every 2 hours", "once a day (morning run)". */
+export const mailEveryWords = (every: number) => !every ? 'once a day (morning run)' : every < 60 ? `every ${every} min` : every === 60 ? 'every hour' : `every ${every / 60} hours`;
+/** What the last email check found (kept in the "receipts" connection's meta as `mailCheck`). */
+export interface MailCheck { at: string; state: 'ok' | 'slow' | 'err'; text: string; every: number; next: string | null }

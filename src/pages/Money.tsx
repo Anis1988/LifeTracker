@@ -10,7 +10,7 @@ import { KindChips, SearchBox } from '../components/Contacts';
 import { AddReceipt, ReceiptSheet, ReceiptViewer, SpendLine, lastChecked, useThumbs } from '../components/Receipts';
 import { MoneyLog } from '../components/MoneyLog';
 import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
-import type { Purchase } from '../../supabase/functions/_shared/model.ts';
+import { mailEveryWords, type Purchase } from '../../supabase/functions/_shared/model.ts';
 import { takeParam, useView } from '../lib/nav';
 
 const monthName = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -103,7 +103,7 @@ function Spending() {
           </div>
         ) : <p className="card text-sm text-slate-500 dark:text-slate-400">{q.trim() || cat !== 'all' ? 'Nothing found. Try a shop, something you bought, an amount like 23.45, or a month.' : 'No purchases this month yet. Receipts in your emails come here by themselves, or 📷 take a photo of one.'}</p>}
       </section>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{gmail ? `📧 Your Gmail is checked every hour for receipts and bank alerts (free checks first). Last checked: ${lastChecked(st.status?.mail?.mailChecked ?? st.status?.mail?.receiptsScanned)}.` : 'Connect Gmail (Settings → Google) and receipts in your emails come here by themselves.'} A receipt that matches a bank purchase is attached to it, so nothing is counted twice. 📜 Log shows what happened to each one.</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{gmail ? `📧 Your Gmail is checked ${mailEveryWords(s.mail.every)} for receipts and bank alerts (free checks first). Last checked: ${lastChecked(st.status?.mail?.mailChecked ?? st.status?.mail?.receiptsScanned)}.` : 'Connect Gmail (Settings → Google) and receipts in your emails come here by themselves.'} A receipt that matches a bank purchase is attached to it, so nothing is counted twice. 📜 Log shows what happened to each one.</p>
       {sel && <ReceiptSheet key={sel.id} t={sel} url={sel.receipt_path ? urls[sel.receipt_path] : undefined} rules={rules} userId={st.session.user.id} startDelete={open?.del} onMove={(c) => void move(sel.id!, c)} onClose={() => setOpen(null)} onChanged={st.reload} />}
       {viewing?.receipt_path && <ReceiptViewer t={viewing} url={urls[viewing.receipt_path]} onClose={() => setView(null)} onDelete={() => { setView(null); setOpen({ id: viewing.id!, del: true }); }} />}
     </div>

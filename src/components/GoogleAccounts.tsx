@@ -50,7 +50,7 @@ export function GoogleAccounts({ main, extras, busy, canAdd, onAdd, onToggle, on
         ))}
       </ul>
       <button className="btn w-full" disabled={!!busy || !canAdd} onClick={onAdd}>{busy === 'google-add' ? <span className="spinner" /> : '＋ Add another Google account'}</button>
-      <p className="text-xs text-slate-500 dark:text-slate-400">Each extra account is read the same way as the main one, every hour (bank alerts, receipts, bills, orders, appointments, documents, contacts, data breaches, mailing lists), read-only. Its appointments still go in your main LifeTracker calendar. Things found there say which mailbox, e.g. “From email (work@…)”.</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">Each extra account is read the same way as the main one, at every email check (bank alerts, receipts, bills, orders, appointments, documents, contacts, data breaches, mailing lists), read-only. Its appointments still go in your main LifeTracker calendar. Things found there say which mailbox, e.g. “From email (work@…)”.</p>
     </div>
   );
 }
