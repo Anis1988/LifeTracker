@@ -60,7 +60,8 @@ export function PersonChip({ p, className = '' }: { p: MailPerson | null | undef
 }
 
 /** The soft left edge for someone else's mailbox (not the main account): add to the row's classes. */
-export const personEdge = (p: MailPerson | null | undefined) => (p && !p.main ? `${EDGE[p.color]} rounded-xl pl-2` : '');
+// Every mailbox gets its coloured edge (owner's request: Roza pink, Anis blue).
+export const personEdge = (p: MailPerson | null | undefined) => (p ? `${EDGE[p.color]} rounded-xl pl-2` : '');
 
 /** "Person: All · Anis · Roza" (only when there are two mailboxes or more). */
 export function PersonFilter({ value, onChange, counts }: { value: string; onChange: (v: string) => void; counts?: Record<string, number> }) {

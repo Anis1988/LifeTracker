@@ -168,8 +168,8 @@ const ALERT_WITH: SpendTx = { ...ALERT_TX, receipt_path: 'example-3.jpg',
 const ALERT_ODD: SpendTx = { ...ALERT_WITH, details: { ...ALERT_WITH.details!, total: 31.4, items: [], mismatch: { receipt: 31.4, bank: 25, kept: false } } };
 // 💸 the ONE list: a made-up few days of purchases from everywhere (alerts, a CSV, receipts), newest first
 const GAS_TX: SpendTx = { id: 'g1', posted: d(-2), amount: -41.2, description: 'EXAMPLE GAS 0042', merchant: 'example gas', source: 'alert', account: 'Example Bank card', receipt_path: null, note: 'From email (sam@example.com)', details: null };
-// 👥 made-up mailboxes: Jordan (the main one) and Sam (an extra one, so Sam's entries get a pink edge)
-const JORDAN = personOf('jordan@example.com', true, { name: 'Jordan', color: 'teal' });
+// 👥 made-up mailboxes: Jordan (the main one, blue edge) and Sam (an extra one, pink edge)
+const JORDAN = personOf('jordan@example.com', true, { name: 'Jordan', color: 'sky' });
 const SAM = personOf('sam@example.com', false, { name: 'Sam', color: 'pink' });
 const GUIDE_PEOPLE = [JORDAN, SAM];
 const SHOP_TX: SpendTx = { id: 'c1', posted: d(-4), amount: -18.99, description: 'EXAMPLE BOOKS ONLINE', merchant: 'example books online', source: 'csv', account: 'CSV import', receipt_path: null, note: null, details: null };
@@ -581,7 +581,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="👥" title="Whose email it came from">
-        <P>With more than one Gmail connected, everything found in an email shows <b>whose mailbox</b> it came from: a small dot with a name, like <PersonChip p={SAM} /> or <PersonChip p={JORDAN} />. Entries from the extra mailboxes also get a soft coloured edge on the left, so they stand out. It’s on purchases, receipts, bills, the Log, What was added, appointments, Vault documents and returns. Only the name shows, never the address.</P>
+        <P>With more than one Gmail connected, everything found in an email shows <b>whose mailbox</b> it came from: a small dot with a name, like <PersonChip p={SAM} /> or <PersonChip p={JORDAN} />. Each person’s entries also get a soft coloured edge on the left in their colour (for example blue for one, pink for the other), so you can tell them apart at a glance. It’s on purchases, receipts, bills, the Log, What was added, appointments, Vault documents and returns. Only the name shows, never the address.</P>
         <P>Pick the name and colour for each mailbox in <b>Settings → Google</b> (saved on the server, the same on every device). In Spending and the Log, <b>Person</b> shows only one person’s entries.</P>
         <Example caption="Made-up purchases: gas from Sam’s bank alert email, a cafe receipt from Jordan’s email.">
           <div className="space-y-2">

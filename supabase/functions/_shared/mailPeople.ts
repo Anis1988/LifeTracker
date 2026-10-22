@@ -9,7 +9,7 @@ export type PersonColor = (typeof PERSON_COLORS)[number];
 export interface MailPerson { email: string; name: string; color: PersonColor; main: boolean }
 
 const KNOWN: Record<string, { name: string; color: PersonColor }> = {
-  'anis1011@gmail.com': { name: 'Anis', color: 'teal' },
+  'anis1011@gmail.com': { name: 'Anis', color: 'sky' },
   'mediniroza@gmail.com': { name: 'Roza', color: 'pink' },
 };
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
