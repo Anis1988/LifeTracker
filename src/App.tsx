@@ -10,7 +10,7 @@ import { Aurora, Skeleton, Toasts, errText, toast } from './components/ui';
 import { Home } from './pages/Home';
 import { MoneyPage } from './pages/Money';
 import { Reports } from './pages/Reports';
-import { MenuPage } from './pages/Menu';
+import { MenuDrawer } from './components/Menu';
 import { Inbox } from './pages/Inbox';
 import { Guide } from './pages/Guide';
 import { pushWidget } from './lib/widget';
@@ -19,8 +19,8 @@ import { MePage } from './pages/Me';
 import { Places } from './pages/Contacts';
 import { SearchSheet } from './components/Search';
 import { PlusIcon, QuickAddSheet } from './components/QuickAdd';
-import { Icon, PhoneTabBar, TABS } from './components/Nav';
-import { goTo, parseHash, upgradeHash, type Tab } from './lib/nav';
+import { Icon, MENU_ICON, PhoneTabBar, TABS } from './components/Nav';
+import { goTo, parseHash, takeMenuHash, upgradeHash, type Tab } from './lib/nav';
 import { addedFeed, unseen } from './lib/added';
 import { MailCheckBar } from './components/MailCheck';
 import { PeopleProvider } from './components/Person';
@@ -29,12 +29,15 @@ const tabOf = (): Tab => parseHash().tab;
 // Old addresses (#/contacts, #/vault, #/me, #/settings/…) move to their new place before anything opens.
 const upgrade = () => { const h = upgradeHash(location.hash); if (h) history.replaceState(null, '', h); };
 upgrade();
+// ☰ "#/menu" (the old Menu tab, or a link to it) opens the Menu drawer over Home. Read once here, not in a state
+// initializer (StrictMode runs those twice).
+let menuAtStart = takeMenuHash();
 // 🏠 A fresh launch lands on Home (Spending first), not on the last tab. A reload in the same session keeps its place,
 // and a link that opens something ("?doc=…", "#/me/settings/google") still opens it. Each tab still remembers its view.
 try {
   if (!sessionStorage.getItem('lt.launched')) {
     sessionStorage.setItem('lt.launched', '1');
-    if (/^#\/(money|reports|places|me|menu|inbox|guide)(\/[a-z]+)?$/.test(location.hash)) history.replaceState(null, '', '#/home');
+    if (/^#\/(money|reports|places|me|inbox|guide)(\/[a-z]+)?$/.test(location.hash)) history.replaceState(null, '', '#/home');
   }
 } catch { /* private mode: the address decides */ }
 
@@ -132,13 +135,16 @@ function Login() {
 
 function Main() {
   const st = useStore();
+  // ☰ Menu drawer (#/menu opens it over Home).
+  const [menu, setMenu] = useState(menuAtStart);
+  useEffect(() => { menuAtStart = false; }, []);
   const [tab, setTab] = useState<Tab>(tabOf());
   // Every move opens the page fresh (so "?doc=…" style links open their item), even within the same tab.
   const [visit, setVisit] = useState(0);
   const [search, setSearch] = useState(false);
   const [adding, setAdding] = useState(false);
   useEffect(() => {
-    const f = () => { upgrade(); setTab(tabOf()); setVisit((n) => n + 1); };
+    const f = () => { upgrade(); if (takeMenuHash()) setMenu(true); setTab(tabOf()); setVisit((n) => n + 1); };
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);
@@ -175,7 +181,8 @@ function Main() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Me: worrying pages, people-search listings and breaches still to handle.
   const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
-  const badge = (t: Tab): number => (t === 'me' || t === 'menu' ? meCount : 0);
+  const badge = (t: Tab): number => (t === 'me' ? meCount : 0);
+  const signOut = () => { if (confirm('Sign out of LifeTracker on this device?')) void supabase.auth.signOut(); };
   // 🔔 New in the Inbox: things added by themselves since the Inbox was last opened on this device.
   const fresh = tab === 'inbox' ? 0 : unseen(addedFeed(st));
   const roundBtn = 'btn relative h-11 w-11 shrink-0 !overflow-visible !p-0';
@@ -185,7 +192,12 @@ function Main() {
       <Aurora />
       <header className="sticky top-0 z-30 border-b border-slate-900/5 bg-[#eaeff6]/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#060912]/70" style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }}>
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-2.5">
-          <button onClick={() => go('home')} className="tap -ml-1 flex min-h-[44px] min-w-0 items-center gap-2.5 rounded-2xl px-1" aria-label="LifeTracker: Home">
+          {/* ☰ Menu: every page, in a drawer from the left (each tab folded until tapped). */}
+          <button onClick={() => setMenu(true)} aria-label={`Menu${meCount ? `: ${meCount} to look at in Me` : ''}`} title="Menu" aria-haspopup="dialog" aria-expanded={menu} className={`${roundBtn} -ml-1 text-slate-700 dark:text-slate-200`}>
+            <Icon d={MENU_ICON} className="h-[22px] w-[22px]" />
+            {meCount ? <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-amber-400 px-1 text-center text-[10px] font-bold leading-[18px] text-slate-900 ring-2 ring-white/80 dark:ring-[#0b1020]/80">{meCount}</span> : null}
+          </button>
+          <button onClick={() => go('home')} className="tap flex min-h-[44px] min-w-0 items-center gap-2.5 rounded-2xl px-1" aria-label="LifeTracker: Home">
             <img src="./icon.svg" alt="" className="h-8 w-8" />
             <span className="truncate font-display text-xl font-semibold tracking-tight">LifeTracker</span>
           </button>
@@ -214,9 +226,10 @@ function Main() {
       <main key={`${tab}:${visit}`} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         <AppUpdateCheck />
         {st.loading ? <Skeleton />
-          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <MePage /> : tab === 'places' ? <Places /> : tab === 'reports' ? <Reports /> : tab === 'menu' ? <MenuPage onSearch={() => setSearch(true)} meCount={meCount} /> : <Guide />}
+          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <MePage /> : tab === 'places' ? <Places /> : tab === 'reports' ? <Reports /> : <Guide />}
       </main>
             <PhoneTabBar tab={tab} onGo={go} onAdd={() => setAdding(true)} badge={badge} />
+      {menu && <MenuDrawer saved={st.settings.reports.saved} meCount={meCount} onClose={() => setMenu(false)} onSearch={() => setSearch(true)} onSignOut={signOut} />}
       {search && <SearchSheet onClose={() => setSearch(false)} />}
       {adding && <QuickAddSheet onClose={() => setAdding(false)} />}
       <Toasts />

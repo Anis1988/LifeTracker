@@ -135,6 +135,57 @@ export function Sheet({ title, onClose, children, head, wide }: { title: string;
   );
 }
 
+/**
+ * A panel that slides in from the left (☰ Menu): a portal over the page, closed by a tap on the dimmed page, ✕, Escape
+ * or the Android back button (only when it's the top panel). Tab stays inside it; focus goes back where it was after.
+ */
+export function Drawer({ title, onClose, children, head }: { title: string; onClose: () => void; children: ReactNode; head?: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    ref.current?.focus({ preventScroll: true });
+    const k = (e: KeyboardEvent) => {
+      const all = document.querySelectorAll('[role="dialog"]');
+      if (all[all.length - 1] !== ref.current) return;
+      if (e.key === 'Escape') { close.current(); return; }
+      if (e.key !== 'Tab' || !ref.current) return;
+      const f = [...ref.current.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', k);
+    openSheets++;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', k);
+      if (--openSheets === 0) document.body.style.overflow = '';
+      before?.focus?.({ preventScroll: true });
+    };
+  }, []);
+  return createPortal(
+    <div className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm animate-[fade_.3s_ease-out]" onClick={onClose}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
+        className="drawer flex h-full w-[min(88vw,400px)] flex-col overflow-hidden rounded-r-[32px] border border-l-0 border-white/70 bg-[#f4f7fb]/95 shadow-[20px_0_60px_-20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] outline-none backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1020]/95 dark:shadow-[20px_0_60px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.12)]"
+        style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))', paddingLeft: 'env(safe-area-inset-left, 0px)' }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="shrink-0 px-4 pb-3 pt-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="min-w-0 truncate text-[21px] font-semibold">{title}</h2>
+            <button className="btn h-11 w-11 shrink-0 !rounded-full !p-0" aria-label="Close the menu" onClick={onClose}><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+          </div>
+          {head}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(1.5rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]">{children}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ---------- toasts ----------
 type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string; undo?: () => void };
 let toasts: Toast[] = [];

@@ -282,7 +282,7 @@ export function Guide() {
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
         <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour (or as often as you pick in 📬 Email checks) it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
-        <P>At the bottom of your phone: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log), the round <b>＋</b> that adds anything, <b>📊 Reports</b> (your spending, your way) and <b>☰ Menu</b>. The Menu lists every page: <b>Places</b> (Contacts · Nearby · My list), <b>Me</b> (Vault · Privacy · Settings), the Guide, My apps and Sign out. On a computer all the tabs sit at the top. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>.</P>
+        <P>At the bottom of your phone: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log), the round <b>＋</b> that adds anything, <b>📊 Reports</b> (your spending, your way) and <b>Places</b> (Contacts · Nearby · My list). At the top: <b>☰ Menu</b> on the left (every page, including <b>Me</b>: Vault · Privacy · Settings, the Guide, My apps and Sign out), then <b>🔎 search</b> and the <b>🔔 Inbox</b> on the right. On a computer all the tabs also sit at the top.</P>
         <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and, if you want, in an email (✉️ Emails to me).</P>
       </Fold>
 
@@ -305,20 +305,24 @@ export function Guide() {
       </Fold>
 
       <Fold icon="🧭" title="Finding your way (tabs, search, ＋)">
-        <P>Each tab has a switch at the top for its parts (like <b>Bills | Spending | Returns</b>), and it remembers the part you used last on this phone. Tap the tab again any time; the phone’s back button closes an open panel first, then goes back to Home.</P>
-        <P>On a phone the bar at the bottom is <b>Home · Money · ＋ · Reports · Menu</b>. <b>☰ Menu</b> is the map of the whole app: every tab and its parts, one line each saying what’s there, your ⭐ saved reports under Reports, and every Settings square under Settings (tap the arrow to unfold them). Type in the box at the top to find a page by name (“vault”, “zip”, “budgets”). While you’re in Places, Me or the Guide, Menu stays lit so you know where you came from. Sign out is at the bottom (it asks first).</P>
+        <P>Each tab has a switch at the top for its parts (like <b>Bills | Spending | Returns</b>), and it remembers the part you used last on this phone. Tap the tab again any time; the phone’s back button closes an open panel (or the ☰ Menu) first, then goes back to Home.</P>
+        <P>On a phone the bar at the bottom is <b>Home · Money · ＋ · Reports · Places</b>.</P>
+        <P><b>☰ Menu</b> is the button at the top-left of every page. It slides in from the left and is the map of the whole app. Each tab is one closed line: tap it to open it and see its parts, then tap the part you want (the menu closes and takes you there). Only one tab is open at a time; tap it again to close it. <b>Home</b> is a single line. <b>Reports</b> holds your ⭐ saved reports, and <b>Me → Settings</b> has an arrow that opens every Settings square. The tab you’re in starts open with your page lit. Type in the box at the top to find a page by name (“vault”, “zip”, “budgets”): the matching tabs open by themselves. Inbox, Guide, My apps, Search and Sign out (it asks first) are at the bottom. Close it with ✕, a tap on the page beside it, or the back button.</P>
         <Example caption="Made-up tab bar: Reports is open; ＋ sits in the middle.">
           <PhoneTabBar tab="reports" example />
         </Example>
-        <Example caption="Made-up Menu with two saved reports.">
-          <MenuList saved={[{ id: 's1', name: 'Sam’s food', filter: FOOD_F }, { id: 's2', name: 'Groceries this year', filter: REPORT_F }]} meCount={2} example onSignOut={() => undefined} />
+        <Example caption="Made-up Menu, all tabs closed.">
+          <MenuList saved={[{ id: 's1', name: 'Sam’s food', filter: FOOD_F }]} meCount={2} example startOpen={null} />
+        </Example>
+        <Example caption="Made-up Menu with Money opened (you’re in Spending) and two saved reports.">
+          <MenuList saved={[{ id: 's1', name: 'Sam’s food', filter: FOOD_F }, { id: 's2', name: 'Groceries this year', filter: REPORT_F }]} meCount={2} example here={{ tab: 'money', view: 'spending' }} startOpen="money" onSignOut={() => undefined} />
         </Example>
         <P><b>Where did it go?</b> Nothing was removed, things just moved:</P>
         <div className="card overflow-hidden !p-0">
           <table className="w-full text-left text-sm">
             <thead><tr className="label"><th className="px-3 py-2 font-normal">Before</th><th className="px-3 py-2 font-normal">Now</th></tr></thead>
             <tbody className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">
-              {[['Money → 📊 Reports', '📊 Reports, its own tab at the bottom'], ['Places tab at the bottom', '☰ Menu → 📍 Places (a tab at the top on a computer)'], ['Me tab at the bottom', '☰ Menu → 👤 Me (a tab at the top on a computer)'], ['Contacts tab', 'Places → 📇 Contacts'], ['Contacts → 📍 Nearby', 'Places → 🔎 Nearby'], ['Nearby → 📌 My list', 'Places → 📌 My list'], ['Vault tab', 'Me → 📁 Vault'], ['Me tab', 'Me → 🛡️ Privacy'], ['Documents that expire (Me)', 'Me → 📁 Vault (same documents)'], ['Settings tab', 'Me → ⚙️ Settings'], ['Guide and My apps (top)', '☰ Menu, the bottom of Me, and Settings'], ['🆕 “added by itself” card', 'Home → What was added (the 🔔 bell still opens all)']].map(([a, b]) => (
+              {[['Money → 📊 Reports', '📊 Reports, its own tab at the bottom'], ['☰ Menu tab at the bottom', '☰ at the top-left of every page'], ['Places in ☰ Menu', '📍 Places, back at the bottom'], ['Me tab at the bottom', '☰ Menu → 👤 Me (a tab at the top on a computer)'], ['Contacts tab', 'Places → 📇 Contacts'], ['Contacts → 📍 Nearby', 'Places → 🔎 Nearby'], ['Nearby → 📌 My list', 'Places → 📌 My list'], ['Vault tab', 'Me → 📁 Vault'], ['Me tab', 'Me → 🛡️ Privacy'], ['Documents that expire (Me)', 'Me → 📁 Vault (same documents)'], ['Settings tab', 'Me → ⚙️ Settings'], ['Guide and My apps (top)', '☰ Menu, the bottom of Me, and Settings'], ['🆕 “added by itself” card', 'Home → What was added (the 🔔 bell still opens all)']].map(([a, b]) => (
                 <tr key={a}><td className="px-3 py-2.5 text-slate-500 dark:text-slate-400">{a}</td><td className="px-3 py-2.5 font-semibold">{b}</td></tr>
               ))}
             </tbody>
