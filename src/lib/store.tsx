@@ -28,6 +28,10 @@ export interface Status {
 }
 
 const TX_COLS = 'id, posted, amount, description, merchant, item_id, account, source, receipt_path, note, details, created_at';
+/** 📊 Older money out than the store keeps (~7 months), for a longer report: read with your sign-in (Row Level Security). */
+export async function loadOlderTx(from: string, to: string): Promise<SpendTx[]> {
+  return allRows<SpendTx>((a, b) => supabase.from('transactions').select(TX_COLS).gte('posted', from).lte('posted', to).lt('amount', 0).order('posted', { ascending: false }).order('external_id').range(a, b), 20000);
+}
 
 interface Store {
   session: Session;

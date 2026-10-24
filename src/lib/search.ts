@@ -57,6 +57,7 @@ export const GUIDE_TOPICS: { icon: string; title: string; words: string }[] = [
   { icon: '⚙️', title: 'Settings', words: 'settings squares' },
   { icon: '💬', title: 'Ask LifeTracker', words: 'ask question chat open show where' },
   { icon: '💸', title: 'Spending and budgets', words: 'spending budget category receipt photo items card' },
+  { icon: '📊', title: 'Reports (your spending, your way)', words: 'reports report chart charts filter period category person shop question saved compare top average' },
   { icon: '📜', title: 'Money log', words: 'log history lines' },
   { icon: '🧾', title: 'Returns and warranties', words: 'returns warranty order return window' },
   { icon: '📆', title: 'Appointments (emails and texts)', words: 'appointments doctor dentist calendar texts sms' },

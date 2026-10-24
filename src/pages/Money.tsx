@@ -9,6 +9,7 @@ import { matchSpend, receiptLink } from '../../supabase/functions/_shared/receip
 import { KindChips, SearchBox } from '../components/Contacts';
 import { AddReceipt, ReceiptSheet, ReceiptViewer, SpendLine, lastChecked, useThumbs } from '../components/Receipts';
 import { MoneyLog } from '../components/MoneyLog';
+import { Reports } from './Reports';
 import { addCycle, today } from '../../supabase/functions/_shared/money.ts';
 import { mailEveryWords, type Purchase } from '../../supabase/functions/_shared/model.ts';
 import { PersonFilter, ofPerson, usePeople } from '../components/Person';
@@ -30,13 +31,13 @@ function byDay(list: SpendTx[]): [string, SpendTx[]][] {
   return [...m.entries()];
 }
 
-/** 💳 Money: your bills, what you spend, what you can still return, and the 📜 Log of what happened. */
+/** 💳 Money: your bills, what you spend, what you can still return, the 📜 Log of what happened, and 📊 Reports. */
 export function MoneyPage() {
   const [view, pick] = useView('money');
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <Seg label="Money" options={[['bills', 'Bills'], ['spending', 'Spending'], ['returns', 'Returns'], ['log', 'Log']]} value={view} onChange={pick} />
-      {view === 'bills' ? <Bills /> : view === 'spending' ? <Spending /> : view === 'log' ? <MoneyLog /> : <Returns />}
+      <Seg label="Money" className="seg-tight" options={[['bills', 'Bills'], ['spending', 'Spending'], ['returns', 'Returns'], ['log', 'Log'], ['reports', 'Reports']]} value={view} onChange={pick} />
+      {view === 'bills' ? <Bills /> : view === 'spending' ? <Spending /> : view === 'log' ? <MoneyLog /> : view === 'reports' ? <Reports /> : <Returns />}
     </div>
   );
 }
