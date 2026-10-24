@@ -3,6 +3,8 @@ import type { Moment, Tone } from '../lib/timeline';
 import { Money, shortDate, errText } from './ui';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 import { spendCat } from '../../supabase/functions/_shared/spend.ts';
+import { nameAddresses, personFor, type MailSrc } from '../../supabase/functions/_shared/mailPeople.ts';
+import { PersonChip, personEdge, usePeople } from './Person';
 
 /** Home's "life at a glance" pieces (Liquid Glass 2 look). Each is also drawn in the Guide with made-up data. */
 
@@ -74,6 +76,7 @@ const DOT: Record<Tone, string> = {
 /** 🗓️ Coming up: one line per moment, with a glowing dot by kind. */
 export function TimelineList({ moments, max = 6, onAll, onOpen, title = 'Coming up' }: { moments: Moment[]; max?: number; onAll?: () => void; onOpen?: (m: Moment) => void; title?: string }) {
   const t = today();
+  const people = usePeople();
   return (
     <section className="card rise rise-3 space-y-1">
       <div className="flex items-center justify-between">
@@ -84,16 +87,17 @@ export function TimelineList({ moments, max = 6, onAll, onOpen, title = 'Coming 
         <ul>
           {moments.slice(0, max).map((m, i) => {
             const left = daysBetween(t, m.date);
+            const who = personFor(m.src ?? {}, people); // 👥 found in Roza's / Anis's email
             return (
               <li key={`${m.date}${m.title}${i}`} className="rise border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]" style={{ animationDelay: `${0.12 + i * 0.04}s` }}>
-                <button className="tap -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-2xl px-2 py-2.5 text-left" onClick={() => onOpen?.(m)}>
+                <button className={`tap -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-2xl px-2 py-2.5 text-left ${personEdge(who)}`} onClick={() => onOpen?.(m)}>
                   <span className="w-11 shrink-0 text-center">
                     <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{left === 0 ? 'Today' : left === 1 ? 'Tmrw' : new Date(`${m.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}</span>
                     <span className="num block text-lg font-semibold">{m.date.slice(8, 10)}</span>
                   </span>
                   <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${DOT[m.tone]}`} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold"><span aria-hidden="true">{m.icon} </span>{m.title}</span>
+                    <span className="flex min-w-0 items-center gap-1.5"><span className="truncate text-sm font-semibold"><span aria-hidden="true">{m.icon} </span>{m.title}</span><PersonChip p={who} /></span>
                     <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{m.sub}{left > 1 ? ` · in ${left} days` : ''}</span>
                   </span>
                   {m.amount != null && <Money n={m.amount} className="text-sm font-semibold" />}
@@ -125,10 +129,11 @@ export function AskBar({ onAsk, disabled }: { onAsk?: (q: string) => void; disab
   );
 }
 
-export interface Turn { q: string; a: string; by?: string; followUps?: string[]; error?: boolean; open?: { label: string; href: string } }
+export interface Turn { q: string; a: string; by?: string; followUps?: string[]; error?: boolean; open?: { label: string; href: string; src?: MailSrc } }
 
 /** The conversation (inside a Sheet): questions, answers, follow-up chips. */
 export function AskChat({ turns, busy, onAsk }: { turns: Turn[]; busy?: boolean; onAsk?: (q: string) => void }) {
+  const people = usePeople();
   return (
     <div className="space-y-3">
       {!turns.length && !busy && (
@@ -141,8 +146,8 @@ export function AskChat({ turns, busy, onAsk }: { turns: Turn[]; busy?: boolean;
         <div key={i} className="space-y-2">
           <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-teal-300 to-violet-400 px-3.5 py-2 text-sm font-semibold text-[#04121a]">{t.q}</p>
           <div className={`rise max-w-[92%] rounded-2xl rounded-bl-md border px-3.5 py-2.5 text-sm ${t.error ? 'border-red-300 text-red-800 dark:border-red-800 dark:text-red-200' : 'border-slate-900/[0.07] bg-white/80 dark:border-white/10 dark:bg-white/[0.05]'}`}>
-            <p className="whitespace-pre-line">{t.a}</p>
-            {t.open && <a href={t.open.href} className="btn-primary mt-2 w-full sm:w-auto">{t.open.label} →</a>}
+            <p className="whitespace-pre-line">{nameAddresses(t.a, people)}</p>
+            {t.open && <span className="mt-2 flex flex-wrap items-center gap-2"><a href={t.open.href} className="btn-primary w-full sm:w-auto">{nameAddresses(t.open.label, people)} →</a><PersonChip p={t.open.src ? personFor(t.open.src, people) : null} /></span>}
             {t.by && <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Answered by {t.by}</p>}
           </div>
           {i === turns.length - 1 && !!t.followUps?.length && !busy && (

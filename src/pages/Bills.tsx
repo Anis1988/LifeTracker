@@ -4,6 +4,7 @@ import { useStore } from '../lib/store';
 import { ItemForm, ItemRow, Totals } from '../components/Items';
 import { Empty, Money, Sheet, errText, toast } from '../components/ui';
 import { AddedRow } from '../components/Inbox';
+import { FoundIn } from '../components/Person';
 import { addedFeed } from '../lib/added';
 import { CATEGORIES, type Item } from '../../supabase/functions/_shared/model.ts';
 import { monthly } from '../../supabase/functions/_shared/money.ts';
@@ -67,6 +68,7 @@ export function Bills() {
       )) : <Empty icon={st.items.length ? '🔍' : '📋'}>{st.items.length ? 'Nothing matches.' : 'No bills yet. Tap ＋ Add, or let them be found and added by themselves: Settings → connect Gmail (bank alert emails, bill emails).'}</Empty>}
       {open && (
         <Sheet title={open.id ? open.name ?? 'Bill' : 'New bill'} onClose={() => setOpen(null)}>
+          {open.id && <div className="mb-3"><FoundIn src={open.details?.mailbox ? open : srcOf(open as Item) ?? (open.source === 'email' ? open : null)} /></div>}
           <ItemForm item={open} onSave={st.saveItem} onDelete={open.id ? () => st.deleteItem(open.id!) : undefined} onDone={() => setOpen(null)} />
         </Sheet>
       )}

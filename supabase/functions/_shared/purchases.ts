@@ -73,7 +73,7 @@ export async function purchaseStep(db: SupabaseClient, userId: string, s: Settin
     const days = x.returnDays ?? returnDaysFor(`${x.store} ${m.from}`);
     const returnBy = /^\d{4}-\d{2}-\d{2}$/.test(x.returnBy) ? x.returnBy : days ? addDays(bought, days) : null;
     const warranty = x.warrantyMonths ? addMonths(bought, x.warrantyMonths) : null;
-    const { error } = await db.from('purchases').upsert({ user_id: userId, key: `mail:${id}`, store: x.store.trim().slice(0, 120), item: x.item.slice(0, 200) || null, amount: x.amount, bought, return_by: returnBy, warranty_ends: warranty, notes: [tag && `From email (${tag})`, !/^\d{4}/.test(x.returnBy) && !x.returnDays && days ? `Return window: the store's usual ${days} days (check its policy).` : ''].filter(Boolean).join('. ') || null }, { onConflict: 'user_id,key', ignoreDuplicates: true });
+    const { error } = await db.from('purchases').upsert({ user_id: userId, key: `mail:${id}`, store: x.store.trim().slice(0, 120), item: x.item.slice(0, 200) || null, amount: x.amount, bought, return_by: returnBy, warranty_ends: warranty, ...(box.email ? { mailbox: box.email.toLowerCase() } : {}), notes: [tag && `From email (${tag})`, !/^\d{4}/.test(x.returnBy) && !x.returnDays && days ? `Return window: the store's usual ${days} days (check its policy).` : ''].filter(Boolean).join('. ') || null }, { onConflict: 'user_id,key', ignoreDuplicates: true });
     if (!error) found++;
   }
   await saveState(db, userId, box, 'mail', { seenOrders: [...seen].slice(-3000), ordersScanned: iso(new Date()) });

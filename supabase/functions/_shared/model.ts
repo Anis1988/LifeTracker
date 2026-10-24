@@ -65,6 +65,7 @@ export interface Item {
 
 /** Extra facts depending on the kind of bill. */
 export interface ItemDetails {
+  mailbox?: string; // 👥 the Gmail address a bill found in email came from
   // 🏠 mortgage / loans
   balance?: number;
   rate?: number; // yearly interest %
@@ -125,7 +126,7 @@ export interface Suggestion {
   updated_at?: string;
 }
 
-export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt' | 'vault' | 'nearby'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string }
+export interface Alert { id: string; kind: 'price' | 'trial' | 'renewal' | 'due' | 'found' | 'sync' | 'me' | 'breach' | 'paper' | 'credit' | 'unsub' | 'budget' | 'return' | 'warranty' | 'date' | 'appt' | 'vault' | 'nearby'; key: string; title: string; body: string | null; item_id: string | null; seen: boolean; created_at: string; mailbox?: string | null } // mailbox = 👥 found in this Gmail address
 
 // ---------- 👤 Me: name online, people-search sites, breaches, mailing lists, documents that expire ----------
 export interface Finding {
@@ -149,6 +150,7 @@ export interface Paper {
   folder: string; due_kind: 'expires' | 'due'; doc_date: string | null; tags: string[]; files: string[]; file_hash: string | null;
   summary: string | null; body: string | null; source: 'hand' | 'scan' | 'email' | 'inbox'; source_key: string | null;
   remind: boolean; calendar: boolean; ai_by: string | null;
+  mailbox?: string | null; // 👥 the Gmail address it was found in (email finds only)
   created_at?: string; updated_at?: string;
 }
 export type VaultDoc = Paper;
@@ -177,7 +179,7 @@ export const personIcon = (p: VaultPerson | undefined) => p?.emoji || (p?.kind =
 export type Freeze = 'unknown' | 'frozen' | 'not';
 
 // ---------- 🧾 returns & warranties, 🎂 important dates ----------
-export interface Purchase { id: string; key: string; store: string; item: string | null; amount: number | null; bought: string; return_by: string | null; warranty_ends: string | null; status: 'keep' | 'kept' | 'returning' | 'returned' | 'ignored'; notes: string | null; file?: string | null; created_at?: string } // file = the receipt (from an email) in the private bucket
+export interface Purchase { id: string; key: string; store: string; item: string | null; amount: number | null; bought: string; return_by: string | null; warranty_ends: string | null; status: 'keep' | 'kept' | 'returning' | 'returned' | 'ignored'; notes: string | null; file?: string | null; mailbox?: string | null; created_at?: string } // mailbox = 👥 the Gmail address it was found in; file = the receipt (from an email) in the private bucket
 export interface LifeDate { id: string; kind: string; title: string; next_date: string; every_months: number | null; remind_days: number; notes: string | null; created_at?: string }
 export const DATE_KINDS: { id: string; icon: string; label: string }[] = [
   { id: 'birthday', icon: '🎂', label: 'Birthday' },
@@ -197,6 +199,7 @@ export interface Appointment {
   time: string | null; // HH:MM (24 h, your time zone); null = all day
   minutes: number | null; place: string | null; with_who: string | null; notes: string | null;
   source: 'email' | 'text' | 'hand'; source_from: string | null;
+  mailbox?: string | null; // 👥 the Gmail address it was found in (email finds only)
   status: 'booked' | 'cancelled' | 'removed';
   history: { at: string; what: string }[];
   created_at?: string; updated_at?: string;
@@ -225,6 +228,7 @@ export interface Contact {
   mine: string[]; // fields you set yourself: automatic finds never change them
   status: 'active' | 'hidden'; // hidden = "Not a contact": remembered, so it never comes back
   last_seen: string | null; // YYYY-MM-DD
+  mailbox?: string | null; // 👥 the Gmail address it was first found in (automatic finds only)
   created_at?: string; updated_at?: string;
 }
 export const CONTACT_KINDS: { id: string; icon: string; label: string; you: string }[] = [

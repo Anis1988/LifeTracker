@@ -1,20 +1,22 @@
 import { useRef, useState } from 'react';
-import type { Alert, Doc } from '../../supabase/functions/_shared/model.ts';
+import type { Alert, Doc, Item } from '../../supabase/functions/_shared/model.ts';
+import { nameAddresses, personFor } from '../../supabase/functions/_shared/mailPeople.ts';
 import { feedGroups, type AddedEntry } from '../lib/added';
 import { errText, shortDate, toast } from './ui';
 import { api, supabase } from '../lib/supabase';
-import { PersonChip, personEdge, usePersonFor } from './Person';
+import { PersonChip, personEdge, usePeople, usePersonFor } from './Person';
 
 /** 🆕 One thing added by itself (the Inbox feed): what, where it went, when, and ↶ Undo. Also in the Guide (no buttons there). */
 export function AddedRow({ e, onUndo, onOpen, busy }: { e: AddedEntry; onUndo?: () => void; onOpen?: () => void; busy?: boolean }) {
   const who = usePersonFor(e.src); // 👥 whose mailbox it came from
+  const people = usePeople();
   return (
     <li className={`flex items-center gap-2 border-t border-slate-900/[0.06] py-2 first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
       <button className="tap -ml-1 flex min-h-[56px] min-w-0 flex-1 items-center gap-3 rounded-[18px] px-1 py-1.5 text-left" onClick={onOpen} aria-label={`${e.title}: open in ${e.where}`}>
         <span className="tile !h-10 !w-10 !text-lg" aria-hidden="true">{e.icon}</span>
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-1.5"><span className="break-words text-sm font-semibold leading-snug">{e.title}</span><PersonChip p={who} /></span>
-          <span className="block break-words text-xs text-slate-500 dark:text-slate-400">{e.sub}</span>
+          <span className="flex flex-wrap items-center gap-1.5"><span className="break-words text-sm font-semibold leading-snug">{nameAddresses(e.title, people)}</span><PersonChip p={who} /></span>
+          <span className="block break-words text-xs text-slate-500 dark:text-slate-400">{nameAddresses(e.sub, people)}</span>
           <span className="block text-[11px] text-teal-800/80 dark:text-teal-200/70">✓ Added to {e.where} · {ago(e.at)}</span>
         </span>
       </button>
@@ -43,22 +45,29 @@ export function AddedList({ list, onUndo, onOpen, busy }: { list: AddedEntry[]; 
 
 // '' = the title already starts with its own icon (documents, credit, breaches).
 const ALERT_ICON: Record<Alert['kind'], string> = { price: '📈', trial: '⏳', renewal: '🔁', due: '💳', found: '🔎', sync: '⚠️', me: '🕵️', breach: '', paper: '', credit: '', unsub: '📭', budget: '', return: '', warranty: '', date: '', appt: '', vault: '', nearby: '' };
-export function AlertList({ alerts, onSeen }: { alerts: Alert[]; onSeen?: (id: string) => void }) {
+export function AlertList({ alerts, onSeen, items = [] }: { alerts: Alert[]; onSeen?: (id: string) => void; items?: Item[] }) {
+  const people = usePeople();
   if (!alerts.length) return null;
+  // 👥 Whose mailbox a heads-up is about: saved on it (newer ones), else the bill it's about.
+  const whoOf = (a: Alert) => {
+    if (a.mailbox) return personFor({ mailbox: a.mailbox }, people);
+    const i = a.item_id ? items.find((x) => x.id === a.item_id) : undefined;
+    return i && i.source === 'email' ? personFor(i, people) : null;
+  };
   return (
     <section className="card space-y-1">
       <p className="label">Heads-ups</p>
       <ul className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">
-        {alerts.slice(0, 12).map((a) => (
-          <li key={a.id} className="flex items-start gap-3 py-2.5">
+        {alerts.slice(0, 12).map((a) => { const who = whoOf(a); return (
+          <li key={a.id} className={`flex items-start gap-3 py-2.5 ${personEdge(who)}`}>
             {ALERT_ICON[a.kind] && <span aria-hidden="true" className="tile !h-9 !w-9 !rounded-xl !text-base">{ALERT_ICON[a.kind]}</span>}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold leading-snug">{a.title}</p>
-              {a.body && <p className="mt-0.5 whitespace-pre-line text-xs leading-snug text-slate-500 dark:text-slate-400">{a.body}</p>}
+              <p className="text-sm font-semibold leading-snug">{nameAddresses(a.title, people)}{who && <> <PersonChip p={who} className="align-[1px]" /></>}</p>
+              {a.body && <p className="mt-0.5 whitespace-pre-line text-xs leading-snug text-slate-500 dark:text-slate-400">{nameAddresses(a.body, people)}</p>}
             </div>
             {onSeen && <button className="btn-ghost -my-1 -mr-1 shrink-0 rounded-full text-base text-teal-700 dark:text-teal-300" onClick={() => onSeen(a.id)} aria-label="Got it">✓</button>}
           </li>
-        ))}
+        ); })}
       </ul>
     </section>
   );

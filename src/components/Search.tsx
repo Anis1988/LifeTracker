@@ -5,6 +5,8 @@ import { useVaultOpen } from '../pages/Vault';
 import { KINDS, buildIndex, dataOf, marks, queryWords, searchIndex, type Hit, type HitGroup, type HitKind, type LogLine } from '../lib/search';
 import { KindChips } from './Contacts';
 import { Empty, Sheet } from './ui';
+import { PersonChip, personEdge, usePeople } from './Person';
+import { nameAddresses, personFor } from '../../supabase/functions/_shared/mailPeople.ts';
 
 /** The matched words, lit with the accent glow (readable in light and dark). */
 export function Highlight({ text, words }: { text: string; words: string[] }) {
@@ -20,6 +22,7 @@ export function Highlight({ text, words }: { text: string; words: string[] }) {
 /** The results, grouped by section (icon, name, how many): each row opens the thing itself. */
 export function SearchResults({ groups, q, active = -1, onPick, example }: { groups: HitGroup[]; q: string; active?: number; onPick?: (h: Hit) => void; example?: boolean }) {
   const { words } = queryWords(q);
+  const people = usePeople();
   let n = -1;
   return (
     <div className="space-y-3" aria-live="polite">
@@ -34,13 +37,14 @@ export function SearchResults({ groups, q, active = -1, onPick, example }: { gro
             {g.hits.map((h) => {
               n++;
               const on = n === active;
+              const who = h.src ? personFor(h.src, people) : null; // 👥 found in Roza's / Anis's email
               return (
                 <li key={h.id}>
                   <a id={`sr-${n}`} href={example ? undefined : h.href} tabIndex={example ? -1 : undefined} onClick={() => onPick?.(h)} data-active={on || undefined}
-                    className={`qrow tap flex min-h-[56px] items-center gap-3 rounded-2xl px-2 py-2 ${h.locked ? 'bg-amber-400/10' : ''}`}>
+                    className={`qrow tap flex min-h-[56px] items-center gap-3 rounded-2xl px-2 py-2 ${h.locked ? 'bg-amber-400/10' : ''} ${personEdge(who)}`}>
                     <span className="tile !h-10 !w-10 !rounded-xl !text-lg" aria-hidden="true">{h.icon}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="line-clamp-2 block break-words text-[15.5px] font-semibold leading-snug text-slate-900 dark:text-slate-50"><Highlight text={h.title} words={words} /></span>
+                      <span className="line-clamp-2 block break-words text-[15.5px] font-semibold leading-snug text-slate-900 dark:text-slate-50"><Highlight text={nameAddresses(h.title, people)} words={words} />{who && <> <PersonChip p={who} className="align-[2px]" /></>}</span>
                       <span className="block truncate text-[13px] leading-snug text-slate-600 dark:text-slate-300">
                         {h.snippet ? <Highlight text={h.snippet} words={words} /> : <Highlight text={h.sub} words={words} />}
                       </span>

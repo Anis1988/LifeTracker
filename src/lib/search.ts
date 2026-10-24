@@ -10,6 +10,7 @@ import {
 } from '../../supabase/functions/_shared/model.ts';
 import { SETTINGS_INDEX } from '../components/SettingsGrid';
 import { addedFeed } from './added';
+import type { MailSrc } from '../../supabase/functions/_shared/mailPeople.ts';
 import { hrefTo, slug } from './nav';
 
 /**
@@ -25,6 +26,7 @@ export interface Hit {
   snippet?: string; // a short piece of text around the match (when the title alone doesn't show why it matched)
   amount?: string; date?: string; // right side, in mono
   locked?: boolean; // 🔒 "Vault is locked" row
+  src?: MailSrc; // 👥 what it was found in (the person chip)
 }
 export interface HitGroup { kind: HitKind; label: string; icon: string; hits: Hit[]; more: number }
 export interface LogLine { id: string; at: string; kind: string; text: string; data: { tx?: string; item?: string } | null }
@@ -162,7 +164,7 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
       kind: 'bill', id: i.id, icon: i.status === 'cancelled' ? '✂️' : cat.icon, title: i.name,
       sub: `${cycleLabel(i.cycle)}${i.status === 'cancelled' ? ' · cancelled' : i.next_due ? ` · next ${day(i.next_due)}` : ''}`,
       amount: money(Number(i.amount)), date: i.next_due && i.status !== 'cancelled' ? day(i.next_due) : undefined,
-      href: hrefTo('money', 'bills', `?item=${i.id}`),
+      href: hrefTo('money', 'bills', `?item=${i.id}`), src: i.source === 'email' ? i : undefined,
     }, [i.merchant, i.notes, i.account, i.website, cat.label, ...amountWords(i.amount)], i.next_due ?? i.updated_at, [], [i.status, i.category, i.cycle]));
   }
   for (const t of d.tx) {
@@ -173,7 +175,7 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
     e.push(entry({
       kind: 'spend', id: t.id, icon: t.receipt_path ? '🧾' : '💳', title,
       sub: `${cat.label}${t.receipt_path ? ' · receipt' : ''}`, amount: money(-Number(t.amount)), date: day(t.posted),
-      href: hrefTo('money', 'spending', `?tx=${t.id}`),
+      href: hrefTo('money', 'spending', `?tx=${t.id}`), src: t,
     }, [
       t.description !== title && t.description, t.merchant !== title && t.merchant, t.note, cat.label, t.account,
       det?.card && `card ···${det.card}`, ...(det?.items ?? []).map((x) => `${x.name}${x.price != null ? ` ${money(x.price)}` : ''}`), ...amountWords(t.amount),
@@ -184,12 +186,13 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
     e.push(entry({
       kind: 'return', id: p.id, icon: p.status === 'returned' ? '↩️' : '🧾', title: p.store,
       sub: clean([p.item, status, p.return_by && `return by ${day(p.return_by)}`]).join(' · '),
-      amount: p.amount != null ? money(Number(p.amount)) : undefined, date: day(p.bought), href: hrefTo('money', 'returns'),
+      amount: p.amount != null ? money(Number(p.amount)) : undefined, date: day(p.bought), href: hrefTo('money', 'returns'), src: p,
     }, [p.item, p.notes, status, p.warranty_ends && `warranty until ${day(p.warranty_ends)}`, ...amountWords(p.amount)], p.bought, [], [p.bought]));
   }
   for (const l of d.log ?? []) {
     const tx = l.data?.tx, item = l.data?.item;
-    e.push(entry({
+    const lt = tx ? d.tx.find((x) => x.id === tx) : undefined, li = item ? d.items.find((x) => x.id === item) : undefined;
+    e.push(entry({ src: lt ?? (li?.source === 'email' ? li : undefined),
       kind: 'log', id: l.id, icon: { purchase: '💳', receipt: '🧾', bill: '📋', change: '✎' }[l.kind] ?? '📜', title: l.text,
       sub: 'Money log', date: day(l.at.slice(0, 10)),
       href: tx && d.tx.some((x) => x.id === tx) ? hrefTo('money', 'spending', `?tx=${tx}`) : item && d.items.some((x) => x.id === item) ? hrefTo('money', 'bills', `?item=${item}`) : hrefTo('money', 'log'),
@@ -197,7 +200,7 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
   }
   if (d.added) {
     for (const a of addedFeed({ items: d.items, added: d.added, tx: d.tx, papers: o.vaultOpen ? d.papers : [], contacts: d.contacts, appts: d.appts })) {
-      e.push(entry({ kind: 'added', id: a.key, icon: a.icon, title: a.title, sub: a.sub, date: day(a.at.slice(0, 10)), href: '#/inbox' }, [a.where], a.at));
+      e.push(entry({ kind: 'added', id: a.key, icon: a.icon, title: a.title, sub: a.sub, date: day(a.at.slice(0, 10)), href: '#/inbox', src: a.src }, [a.where], a.at));
     }
   }
   for (const c of d.contacts) {
@@ -206,7 +209,7 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
     e.push(entry({
       kind: 'contact', id: c.id, icon: c.favorite ? '★' : k.icon, title: c.name,
       sub: clean([c.person, c.phones?.[0], c.address]).join(' · ') || c.description || k.label,
-      href: hrefTo('places', 'contacts', `?c=${c.id}`),
+      href: hrefTo('places', 'contacts', `?c=${c.id}`), src: c.mailbox ? c : undefined,
     }, [c.person, k.label, ...(c.phones ?? []), ...(c.emails ?? []), c.website, c.address, c.description, c.notes], c.last_seen ?? c.updated_at, c.phones ?? []));
   }
   if (d.weekend) {
@@ -230,7 +233,7 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
       e.push(entry({
         kind: 'doc', id: p.id, icon: docIcon(p), title: p.name,
         sub: clean([p.holder, folderOf(p.folder).label]).join(' · '), date: p.expires ? `${p.due_kind === 'due' ? 'due' : 'exp.'} ${day(p.expires)}` : undefined,
-        href: hrefTo('me', 'vault', `?doc=${p.id}`),
+        href: hrefTo('me', 'vault', `?doc=${p.id}`), src: p.source === 'email' ? p : undefined,
       }, [p.summary, ...(p.tags ?? []).map((t) => `#${t}`), p.notes, p.body, p.number_end && `ends in ${p.number_end}`, paperKind(p.kind).label], p.doc_date ?? p.created_at, [], [p.folder, p.expires, p.doc_date]));
     }
   } else {
@@ -242,7 +245,7 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
     if (a.status !== 'booked') continue;
     const k = apptKind(a.kind);
     e.push(entry({
-      kind: 'appt', id: a.id, icon: k.icon, title: a.title, sub: clean([a.time, a.place ?? a.with_who]).join(' · ') || k.label, date: day(a.day), href: `#/home?appt=${a.id}`,
+      kind: 'appt', id: a.id, icon: k.icon, title: a.title, sub: clean([a.time, a.place ?? a.with_who]).join(' · ') || k.label, date: day(a.day), href: `#/home?appt=${a.id}`, src: a.source === 'email' ? a : undefined,
     }, [a.place, a.with_who, a.notes, k.label, a.source_from], a.day, [], [a.day, monthName(a.day)]));
   }
   const privacy = hrefTo('me', 'privacy');

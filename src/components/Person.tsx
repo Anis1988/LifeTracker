@@ -83,3 +83,10 @@ export function PersonFilter({ value, onChange, counts }: { value: string; onCha
 
 /** Does this entry belong to the picked person ('all' = yes)? */
 export const ofPerson = (p: MailPerson | null, pick: string) => pick === 'all' || p?.email === pick;
+
+/** "● Roza Found in Roza’s email": the line at the top of a details sheet (nothing when it wasn't found in email). */
+export function FoundIn({ src }: { src: MailSrc | null | undefined }) {
+  const p = usePersonFor(src);
+  if (!p) return null;
+  return <p className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300"><PersonChip p={p} />Found in {p.name}’s email</p>;
+}

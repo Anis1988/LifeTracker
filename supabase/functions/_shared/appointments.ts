@@ -45,7 +45,7 @@ export const dayIn = (ms: number, tz: string) => { try { return new Date(ms).toL
 const weekday = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
 
 /** What the AI read → an appointment row added, moved, cancelled or merged. */
-export async function applyAppt(db: SupabaseClient, userId: string, s: Settings, x: Read, source: 'email' | 'text', key: string, from: string, alerts: NewAlert[]): Promise<{ result: 'added' | 'moved' | 'cancelled' | 'updated' | 'same' | 'skipped'; appt?: Appointment }> {
+export async function applyAppt(db: SupabaseClient, userId: string, s: Settings, x: Read, source: 'email' | 'text', key: string, from: string, alerts: NewAlert[], mailbox?: string | null): Promise<{ result: 'added' | 'moved' | 'cancelled' | 'updated' | 'same' | 'skipped'; appt?: Appointment }> {
   const t = todayIn(tzOf(s)); // the owner's day, not the UTC one (US evenings are already tomorrow in UTC)
   const okDay = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
   const tm = x.time.trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -89,7 +89,7 @@ export async function applyAppt(db: SupabaseClient, userId: string, s: Settings,
   }
   const row = {
     user_id: userId, key, title: x.title.trim().slice(0, 120), kind: x.kind, day: x.date, time, minutes: x.minutes && x.minutes > 0 && x.minutes <= 720 ? Math.round(x.minutes) : null,
-    place: x.place.slice(0, 200) || null, with_who: x.withWho.slice(0, 120) || null, notes: x.notes.slice(0, 300) || null, source, source_from: from.slice(0, 120) || null,
+    place: x.place.slice(0, 200) || null, with_who: x.withWho.slice(0, 120) || null, notes: x.notes.slice(0, 300) || null, source, source_from: from.slice(0, 120) || null, ...(mailbox ? { mailbox } : {}),
     status: 'booked', history: [{ at: stamp(), what: `Found in ${via}` }],
   };
   const { data, error } = await db.from('appointments').upsert(row, { onConflict: 'user_id,key', ignoreDuplicates: true }).select().maybeSingle();
@@ -133,7 +133,7 @@ export async function apptEmailStep(db: SupabaseClient, userId: string, s: Setti
     read++;
     seen.add(id);
     const from = `${m.from.replace(/<[^>]*>/g, '').replace(/"/g, '').trim() || m.from}${tag ? ` (to ${tag})` : ''}`;
-    const r = await applyAppt(db, userId, s, x, 'email', `mail:${id}`, from, alerts);
+    const r = await applyAppt(db, userId, s, x, 'email', `mail:${id}`, from, alerts, box.email?.toLowerCase());
     if (r.result !== 'same' && r.result !== 'skipped') changed++;
   }
   const done = !stopped && ids.every((id) => seen.has(id));

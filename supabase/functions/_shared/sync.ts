@@ -4,7 +4,9 @@ import { addCycle, daysBetween, dueDayOf, iso, money, nextDue, parseDay, perYear
 import { findRecurring, matchesItem, merchantKey } from './recurring.ts';
 import { fetchAccounts } from './simplefin.ts';
 import { countReads, ensureCalendar, findAlertEmails, findBillEmails, has, isRateLimit, looksLikeBill, readEmail, refresh, stopCounting, syncCalendar } from './google.ts';
-import { boxName, boxTag, mailBoxes, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
+import { allBoxes, boxName, boxPeople, boxPerson, boxTag, mailBoxes, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
+import { nameAddresses, personOf, personOfBox } from './mailPeople.ts';
+import { labelAlerts, mailboxStep } from './mailboxFill.ts';
 import { sameSpend } from './receiptText.ts';
 import { readWithAi } from './ai.ts';
 import { connection, env, open, saveConnection, settingsOf } from './server.ts';
@@ -93,6 +95,7 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
     await step('Calendar', () => calendarStep(db, userId, s));
     await step('Heads-ups', () => headsUpStep(db, userId, s, alerts));
     await step('Money log', () => pruneLog(db, userId)); // 📜 kept 180 days
+    await step('Whose mailbox', async () => mailboxStep(db, userId, await allBoxes(db, userId))); // 👥 older email finds learn their mailbox (once each)
   } else if (want('mail')) {
     await each('Bank alerts', (b) => alertStep(db, userId, s, until, b));
     await each('Gmail', (b) => gmailStep(db, userId, s, alerts, until, b, mails));
@@ -141,6 +144,8 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
   }
 
   if (alerts.length) {
+    // 👥 Whose mailbox each heads-up is about (chip in the app, "Roza:" in emails); names instead of addresses.
+    await labelAlerts(db, userId, alerts, await allBoxes(db, userId).catch(() => boxes)).catch(() => undefined);
     const { data } = await db.from('alerts').upsert(alerts, { onConflict: 'user_id,kind,key', ignoreDuplicates: true }).select('title, body');
     log.newAlerts = data?.length ?? 0;
   }
@@ -211,7 +216,7 @@ async function alertStep(db: SupabaseClient, userId: string, s: Settings, until:
     const tx = parseBankAlert(m);
     if (!tx) { skipped++; continue; }
     banks.add(tx.bank);
-    rows.push({ user_id: userId, external_id: `mail:${id}`, account: tx.account, posted: tx.posted, amount: -tx.amount, description: tx.merchant, merchant: merchantKey(tx.merchant), source: 'alert', ...(tag ? { note: `From email (${tag})` } : {}) });
+    rows.push({ user_id: userId, external_id: `mail:${id}`, account: tx.account, posted: tx.posted, amount: -tx.amount, description: tx.merchant, merchant: merchantKey(tx.merchant), source: 'alert', ...(tag ? { note: `From email (${tag})` } : {}), ...(box.email ? { details: { mailbox: box.email.toLowerCase() } } : {}) });
   }
   // ✉️ The same alert sent to two of your mailboxes: counted once.
   const { rows: fresh, twins } = await otherBoxTwins(db, userId, rows, tag);
@@ -296,7 +301,7 @@ async function gmailStep(db: SupabaseClient, userId: string, s: Settings, alerts
   const at = await tokenOf(box);
   const tag = boxTag(box);
   // 👥 box = which mailbox (every one, for the person chip); mailbox = only the extra ones (said in the heads-up).
-  const via = { ...(tag ? { mailbox: tag } : {}), ...(box.email ? { box: box.email } : {}) };
+  const via = { ...(tag ? { mailbox: tag } : {}), ...(box.email ? { box: box.email, who: boxPerson(box)?.name } : {}) };
   const seen = new Set((c.meta.seenMail as string[] | undefined) ?? []);
   // Look back to the last run that read everything (first time: 60 days), so a run stopped by limits loses nothing.
   const last = c.meta.gmailDone as string | undefined;
@@ -370,7 +375,8 @@ export async function applyExtracted(db: SupabaseClient, userId: string, x: Extr
       patch.price_history = [...(item.price_history ?? []), { date: today(), amount: x.amount }].slice(-24);
       alerts.push({ user_id: userId, kind: 'price', key: `${item.id}:${x.amount}`, item_id: item.id, title: `${item.name}: ${money(item.amount)} → ${money(x.amount)}`, body: x.summary || null });
     }
-    const details = { ...item.details, ...(x.policyNumber ? { policyNumber: x.policyNumber } : {}), ...(x.coverage ? { coverage: x.coverage } : {}), ...(x.deductible ? { deductible: x.deductible } : {}), ...(x.balance ? { balance: x.balance } : {}), ...(x.rate ? { rate: x.rate } : {}) };
+    const box = item.source === 'email' && !item.details?.mailbox ? boxOfEvidence(evidence) : undefined; // 👥 an older bill learns its mailbox
+    const details = { ...item.details, ...(box ? { mailbox: box } : {}), ...(x.policyNumber ? { policyNumber: x.policyNumber } : {}), ...(x.coverage ? { coverage: x.coverage } : {}), ...(x.deductible ? { deductible: x.deductible } : {}), ...(x.balance ? { balance: x.balance } : {}), ...(x.rate ? { rate: x.rate } : {}) };
     if (JSON.stringify(details) !== JSON.stringify(item.details)) patch.details = details;
     if (Object.keys(patch).length) await db.from('items').update(patch).eq('id', item.id);
     for (const w of x.warnings.slice(0, 2)) alerts.push({ user_id: userId, kind: 'renewal', key: `${item.id}:${w.slice(0, 60)}`, item_id: item.id, title: `${item.name}: ${w}`.slice(0, 200), body: null });
@@ -387,8 +393,15 @@ export async function applyExtracted(db: SupabaseClient, userId: string, x: Extr
 
 const CYCLE_WORD: Record<string, string> = { weekly: 'weekly', biweekly: 'every 2 weeks', monthly: 'monthly', quarterly: 'every 3 months', semiannual: 'every 6 months', yearly: 'yearly', once: 'one time' };
 const FROM: Record<string, string> = { bank: 'from your bank', email: 'from your email', document: 'from a document' };
-/** "from your email (work@…)" when it came from an extra Google account. */
-const fromText = (b: Pick<FoundBill, 'source' | 'evidence'>) => (b.source === 'email' && typeof b.evidence.mailbox === 'string' ? `from your email (${b.evidence.mailbox})` : FROM[b.source]);
+/** 👥 "from Roza’s email": the person's name, never the address. */
+const fromText = (b: Pick<FoundBill, 'source' | 'evidence'>) => {
+  if (b.source !== 'email') return FROM[b.source];
+  const box = typeof b.evidence.box === 'string' ? b.evidence.box : typeof b.evidence.mailbox === 'string' ? b.evidence.mailbox : '';
+  const who = typeof b.evidence.who === 'string' && b.evidence.who ? b.evidence.who : box ? personOf(box, false).name : '';
+  return who ? `from ${who}’s email` : FROM.email;
+};
+/** 👥 The mailbox (address) a find came from, kept on the bill itself (`details.mailbox`) so its chip never depends on old finds. */
+const boxOfEvidence = (e: Record<string, unknown>) => (typeof e.box === 'string' && e.box ? e.box.toLowerCase() : typeof e.mailbox === 'string' && e.mailbox.includes('@') ? e.mailbox.toLowerCase() : undefined);
 
 /**
  * 🆕 A bill found automatically (bank rhythm, a bill email, an uploaded or emailed bill document) goes straight into
@@ -407,7 +420,7 @@ export async function autoAddBill(db: SupabaseClient, userId: string, b: FoundBi
   const name = (b.name || b.merchant || 'Bill').trim().slice(0, 120) || 'Bill';
   const cycle = b.cycle && b.cycle in CYCLE_WORD ? b.cycle : 'monthly';
   const amount = Number(b.amount ?? 0) || 0;
-  const details = Object.fromEntries(Object.entries(b.details ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+  const details = Object.fromEntries(Object.entries({ ...b.details, ...(b.source === 'email' ? { mailbox: boxOfEvidence(b.evidence) } : {}) }).filter(([, v]) => v !== undefined && v !== null && v !== ''));
   const { data: item, error } = await db.from('items').insert({
     user_id: userId, name, category: b.category || 'other', amount, currency: b.currency || 'USD', cycle, next_due: b.next_due, ends_on: b.ends_on ?? null,
     trial_ends: b.trial_ends ?? null, merchant: b.merchant, details, source: b.source, autopay: b.source === 'bank',
@@ -571,8 +584,11 @@ async function emailStep(db: SupabaseClient, userId: string, email: string, s: S
   const meta = (await connection(db, userId, 'emails'))?.meta ?? {};
   const plan = planEmail(s, { now: Date.now(), tz: s.appts.timeZone || 'America/New_York', lastSent: (meta.lastSent as string | undefined) ?? null, full });
   if (!plan.send) return;
-  const { data } = await db.from('alerts').select('kind, title, body, seen').eq('user_id', userId).eq('seen', false).gt('created_at', plan.since).order('created_at').limit(300);
-  const list = pickAlerts(s, plan, (data ?? []) as { kind: Alert['kind']; title: string; body: string | null; seen: boolean }[]).slice(0, 40);
+  const { data } = await db.from('alerts').select('kind, title, body, seen, mailbox').eq('user_id', userId).eq('seen', false).gt('created_at', plan.since).order('created_at').limit(300);
+  const people = boxPeople(await allBoxes(db, userId).catch(() => [] as Box[]));
+  // 👥 "Roza: …" / "Anis: …" on lines found in a mailbox; never an address.
+  const list = pickAlerts(s, plan, (data ?? []) as { kind: Alert['kind']; title: string; body: string | null; seen: boolean; mailbox?: string | null }[]).slice(0, 40)
+    .map((a) => ({ ...a, title: `${a.mailbox ? `${personOfBox(a.mailbox, people)?.name}: ` : ''}${nameAddresses(a.title, people)}`, body: a.body ? nameAddresses(a.body, people) : a.body }));
   const week = plan.week ? await weekLines(db, userId, s) : [];
   if (!list.length && !week.length) return;
   const m = emailText(list, week, plan, env('SITE_URL'));

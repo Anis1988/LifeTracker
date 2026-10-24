@@ -5,8 +5,8 @@ import { whenText } from '../../supabase/functions/_shared/apptText.ts';
 import { daysBetween, today } from '../../supabase/functions/_shared/money.ts';
 import { Sheet, Toggle, errText, toast } from './ui';
 import { settingsHref } from './SettingsGrid';
-import { PersonChip, personEdge, usePeople } from './Person';
-import { personFor } from '../../supabase/functions/_shared/mailPeople.ts';
+import { FoundIn, PersonChip, personEdge, usePeople } from './Person';
+import { nameAddresses, personFor } from '../../supabase/functions/_shared/mailPeople.ts';
 import { recentTexts, textsOff, textsOn, textsState, type TextsState } from '../lib/texts';
 
 const FROM: Record<Appointment['source'], string> = { email: '✉️ Email', text: '💬 Text', hand: '✍️ Added' };
@@ -68,8 +68,10 @@ export function ApptDetails({ a, onRemove, contact }: { a: Appointment; onRemove
     setBusy(true);
     try { await onRemove(); toast('ok', 'Removed from your calendar.'); } catch (e) { toast('err', errText(e)); setBusy(false); }
   };
+  const people = usePeople();
   return (
     <div className="space-y-3">
+      <FoundIn src={a.source === 'email' ? a : null} />
       <div className="panel space-y-1 text-sm">
         <p className="text-base font-semibold"><span aria-hidden="true">{apptKind(a.kind).icon} </span>{whenText(a)}{a.minutes ? ` (${a.minutes} min)` : ''}</p>
         {a.with_who && <p>With <b>{a.with_who}</b></p>}
@@ -86,7 +88,7 @@ export function ApptDetails({ a, onRemove, contact }: { a: Appointment; onRemove
         </div>
       )}
       <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
-        {a.history.map((h, i) => <p key={i}>{new Date(h.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: {h.what}</p>)}
+        {a.history.map((h, i) => <p key={i}>{new Date(h.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: {nameAddresses(h.what, people)}</p>)}
         <p>✓ In your LifeTracker calendar in Google, with reminders.</p>
       </div>
       {onRemove && <button className="btn w-full text-red-700 dark:text-red-300" disabled={busy} onClick={() => void remove()}>{busy ? <span className="spinner" /> : '🗑 Wrong? Remove it'}</button>}

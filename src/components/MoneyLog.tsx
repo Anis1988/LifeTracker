@@ -6,7 +6,7 @@ import { today } from '../../supabase/functions/_shared/money.ts';
 import { KindChips, SearchBox } from './Contacts';
 import { Empty, Skeleton, errText, toast } from './ui';
 import { PersonChip, PersonFilter, ofPerson, personEdge, usePeople } from './Person';
-import { hideAddresses, personFor, type MailPerson } from '../../supabase/functions/_shared/mailPeople.ts';
+import { nameAddresses, personFor, type MailPerson } from '../../supabase/functions/_shared/mailPeople.ts';
 
 /**
  * 📜 Money → Log (owner's request, like the Trading app): short time-stamped lines on what happened to your money,
@@ -25,6 +25,7 @@ const stamp = (at: string) => {
 
 /** The lines themselves (also in the Guide with made-up lines and no working taps). */
 export function LogLines({ rows, onOpen, example, whoOf }: { rows: LogRow[]; onOpen?: (r: LogRow) => void; example?: boolean; whoOf?: (r: LogRow) => MailPerson | null }) {
+  const people = usePeople();
   return (
     <ol className="card !px-2 !py-1.5" aria-label="Money log, newest first">
       {rows.map((r) => {
@@ -33,7 +34,7 @@ export function LogLines({ rows, onOpen, example, whoOf }: { rows: LogRow[]; onO
           <li key={r.id} className={`border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
             <button className="tap flex min-h-[44px] w-full items-baseline gap-2 rounded-xl px-1.5 py-1.5 text-left" tabIndex={example ? -1 : undefined} onClick={() => onOpen?.(r)}>
               <time dateTime={r.at} className="num w-[92px] shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{stamp(r.at)}</time>
-              <span className="min-w-0 flex-1 break-words text-[13px] leading-snug text-slate-800 dark:text-slate-100">{who && <PersonChip p={who} className="mr-1 align-[1px]" />}{hideAddresses(r.text)}</span>
+              <span className="min-w-0 flex-1 break-words text-[13px] leading-snug text-slate-800 dark:text-slate-100">{who && <PersonChip p={who} className="mr-1 align-[1px]" />}{nameAddresses(r.text, people)}</span>
             </button>
           </li>
         );
@@ -49,13 +50,17 @@ export function useLogPerson(): (r: LogRow) => MailPerson | null {
   return useMemo(() => {
     const tx = new Map(st.tx.map((x) => [x.id, x]));
     const bills = new Map(st.added.filter((g) => g.source === 'email' && g.item_id).map((g) => [g.item_id!, g]));
+    const items = new Map(st.items.map((i) => [i.id, i]));
     return (r: LogRow) => {
       const t = r.data?.tx ? tx.get(r.data.tx) : undefined;
       if (t) return personFor(t, people);
+      const i = r.data?.item ? items.get(r.data.item) : undefined;
+      if (i?.details?.mailbox) return personFor(i, people); // kept on the bill itself
       const g = r.data?.item ? bills.get(r.data.item) : undefined;
-      return g ? personFor({ source: 'email', evidence: g.evidence }, people) : null;
+      if (g) return personFor({ source: 'email', evidence: g.evidence }, people);
+      return i?.source === 'email' ? personFor(i, people) : null;
     };
-  }, [st.tx, st.added, people]);
+  }, [st.tx, st.added, st.items, people]);
 }
 
 export function MoneyLog() {
