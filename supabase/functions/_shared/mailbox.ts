@@ -1,6 +1,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { connection, open, saveConnection, type Connection } from './server.ts';
 import { has, refresh } from './google.ts';
+import { personOf, type MailPerson } from './mailPeople.ts';
 
 /**
  * ✉️ The Gmail mailboxes LifeTracker watches. The main Google account is the `connections` row "google" (it also holds
@@ -47,6 +48,9 @@ export function tokenOf(b: Box): Promise<string> {
 
 /** "From email (work@…)" for an extra mailbox; nothing for the main one (as before). */
 export const boxTag = (b: Box): string | undefined => (b.main ? undefined : b.email ?? b.kind);
+/** 👥 Whose mailbox it is (name + colour saved with it, else the default: Anis / Roza / the address's first part). */
+export const boxPerson = (b: Box): MailPerson | null => (b.email ? personOf(b.email, b.main, b.meta.person) : null);
+export const boxPeople = (boxes: Box[]): MailPerson[] => boxes.map(boxPerson).filter((p): p is MailPerson => !!p);
 /** The step name with the mailbox, for the run log ("Receipts (work@…)"). */
 export const boxName = (name: string, b: Box) => (b.main ? name : `${name} (${b.email ?? b.kind})`);
 

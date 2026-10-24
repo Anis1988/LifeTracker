@@ -96,7 +96,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
     const before = chat ?? [];
     // "Open my lease", "show Example Dental", "where is my passport?": found on this phone, no AI needed.
     const hit = navTarget(dataOf(st), q, vaultOpen);
-    if (hit) { setChat([...before, { q, a: `Here it is: ${hit.title}${hit.sub ? ` (${hit.sub})` : ''}, in ${HIT_LABELS[hit.kind].replace(/^\S+\s/, '')}.`, by: 'this phone (no AI)', open: { label: `Open ${hit.title}`, href: hit.href } }]); return; }
+    if (hit) { setChat([...before, { q, a: `Here it is: ${hit.title}${hit.sub ? ` (${hit.sub})` : ''}, in ${HIT_LABELS[hit.kind].replace(/^\S+\s/, '')}.`, by: 'this phone (no AI)', open: { label: `Open ${hit.title}`, href: hit.href, src: hit.src } }]); return; }
     setChat([...before]);
     setThinking(true);
     try {
@@ -154,7 +154,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
           : <NearbyLink zip={zip} onGo={() => toNearby()} toDo={st.places.filter((p) => !p.done).length} onList={() => toNearby(true)} onMake={s.place.weekend && (dow === 5 || dow === 6 || dow === 0) ? () => void makeWeekend() : undefined} making={making} />}
         <WeekCard lines={lines} onOpen={() => goTo('me', 'privacy')} />
         {feed.length > 0 && <AddedCard list={feed} week={weekAdded} busy={added.busy} onUndo={(e) => void added.undo(e)} onOpen={added.open} onAll={() => go('inbox')} />}
-        <AlertList alerts={st.alerts} onSeen={(id) => void st.seeAlert(id)} />
+        <AlertList alerts={st.alerts} items={st.items} onSeen={(id) => void st.seeAlert(id)} />
         <div className="space-y-1 pb-2 opacity-80">
           <MailCheckBar />
           <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">🔄 Automatic check {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</p>

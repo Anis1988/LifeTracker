@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useState } from 'react';
 import { CONTACT_KINDS, contactKind, type Contact, type ContactSource } from '../../supabase/functions/_shared/model.ts';
 import { fmtPhone, matchContact, nameTokens } from '../../supabase/functions/_shared/contacts.ts';
 import { Toggle, errText, shortDate, toast, useStrip } from './ui';
+import { PersonChip, personEdge, usePersonFor } from './Person';
 
 /** 📇 Contacts: rows, the card, the add/edit form, the kind chips and the merge picker. Also drawn in the Guide (made-up, no buttons). */
 
@@ -21,12 +22,13 @@ export const PhoneIcon = ({ className = 'h-5 w-5' }: { className?: string }) => 
 export function ContactRow({ c, onOpen }: { c: Contact; onOpen?: () => void }) {
   const k = contactKind(c.kind);
   const sub = [c.person, k.label].filter(Boolean).join(' · ');
+  const who = usePersonFor(c.mailbox ? c : null); // 👥 whose email it was found in
   return (
-    <li className="flex items-center gap-1 border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06]">
+    <li className={`flex items-center gap-1 border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
       <button className="tap -ml-1 flex min-h-[64px] min-w-0 flex-1 items-center gap-3 rounded-[20px] px-1 py-2.5 text-left" onClick={onOpen} aria-label={`${c.name}, ${k.label}`}>
         <span className="tile" aria-hidden="true">{k.icon}</span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5"><span className="truncate font-semibold">{c.name}</span>{c.favorite && <span className="shrink-0 text-amber-500 dark:text-amber-300" aria-label="favourite">★</span>}</span>
+          <span className="flex items-center gap-1.5"><span className="truncate font-semibold">{c.name}</span>{c.favorite && <span className="shrink-0 text-amber-500 dark:text-amber-300" aria-label="favourite">★</span>}<PersonChip p={who} /></span>
           <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{sub}{c.phones[0] ? ` · ${fmtPhone(c.phones[0])}` : c.website ? ` · ${siteText(c.website)}` : ''}</span>
           {c.description && <span className="block truncate text-xs text-slate-600 dark:text-slate-300">{c.description}</span>}
         </span>
@@ -110,6 +112,7 @@ export function kindOptions(list: Contact[]) {
 export function ContactDetails({ c, onEdit, onFavorite, onHide, onDelete, onMerge }: { c: Contact; onEdit?: () => void; onFavorite?: () => void; onHide?: () => void; onDelete?: () => void; onMerge?: () => void }) {
   const k = contactKind(c.kind);
   const auto = c.sources.some((s) => s !== 'hand');
+  const who = usePersonFor(c.mailbox ? c : null);
   const actions = [
     c.phones[0] && { href: tel(c.phones[0]), label: 'Call', icon: '📞' },
     c.website && { href: c.website, label: 'Website', icon: '🌐', out: true },
@@ -122,7 +125,7 @@ export function ContactDetails({ c, onEdit, onFavorite, onHide, onDelete, onMerg
       <div className="flex items-center gap-3">
         <span className="tile !h-14 !w-14 !text-2xl" aria-hidden="true">{k.icon}</span>
         <div className="min-w-0 flex-1">
-          <p className="label">{k.label}{c.favorite ? ' · ★ favourite' : ''}</p>
+          <p className="label flex items-center gap-1.5">{k.label}{c.favorite ? ' · ★ favourite' : ''}<PersonChip p={who} className="normal-case tracking-normal" /></p>
           {c.person && <p className="truncate text-[15px] font-semibold">{c.person}</p>}
           {c.description && <p className="text-sm text-slate-600 dark:text-slate-300">{c.description}</p>}
         </div>

@@ -6,7 +6,7 @@ import { daysTo, docIcon, holderText, matchDoc, personOf } from '../../supabase/
 import { today } from '../../supabase/functions/_shared/money.ts';
 import { ListInput, Seg, Toggle, errText, shortDate, toast } from './ui';
 import { combine, downloadFile, fileKind, fileName, openFile, sha256, shareFiles, shrink, signedUrls, safeName, type Page } from '../lib/vault';
-import { PersonChip, personEdge, usePersonFor } from './Person';
+import { FoundIn, PersonChip, personEdge, usePersonFor } from './Person';
 import { supabase } from '../lib/supabase';
 
 /** 📁 Vault pieces: rows, the document card, the full-screen viewer, the scan / edit form, the PIN pad and lock screen,
@@ -114,6 +114,7 @@ export function VaultDetails({ p, s, onEdit, onDelete, example }: { p: Paper; s:
   const open = (i: number) => (fileKind(p.files[i]) === 'pdf' ? void act('open', () => openFile(p.files[i])) : setView(i));
   return (
     <div className="space-y-3">
+      <FoundIn src={p.source === 'email' ? p : null} />
       <div className="flex items-center gap-3">
         <span className="orb !h-14 !w-14 !text-2xl" aria-hidden="true">{docIcon(p)}</span>
         <div className="min-w-0">

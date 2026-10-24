@@ -26,33 +26,57 @@ export function personOf(email: string, main: boolean, saved?: unknown): MailPer
 
 const ADDR = /[^\s()<>|"']+@[^\s()<>|"']+/;
 /**
- * The mailbox an entry came from, from what is stored on it: an address (details.mailbox / evidence.box /
+ * The mailbox an entry came from, from what is stored on it: an address (the `mailbox` column / details.mailbox / evidence.box /
  * evidence.mailbox / receipt_path "gmail:<id>|<address>" / a note "From email (address)" / an appointment's "(to
  * address)"), 'main' when it came from email but names no mailbox (the main one never did), or null (bank, by hand…).
  */
 export type MailSrc = {
-  source?: string | null; note?: string | null; notes?: string | null; receipt_path?: string | null; source_from?: string | null; key?: string | null;
+  mailbox?: string | null; source?: string | null; note?: string | null; notes?: string | null; receipt_path?: string | null; source_from?: string | null; key?: string | null;
   details?: object | null; evidence?: object | null;
 };
 export function mailboxOf(r: MailSrc): string | 'main' | null {
   const str = (v: unknown) => (typeof v === 'string' && ADDR.test(v) ? v.match(ADDR)![0].toLowerCase() : null);
   const d = r.details as Record<string, unknown> | null | undefined, e = r.evidence as Record<string, unknown> | null | undefined;
-  const direct = str(d?.mailbox) ?? str(e?.box) ?? str(e?.mailbox);
+  const direct = str(r.mailbox) ?? str(d?.mailbox) ?? str(e?.box) ?? str(e?.mailbox);
   if (direct) return direct;
   const path = r.receipt_path?.startsWith('gmail:') ? r.receipt_path : null;
   if (path?.includes('|')) return str(path.split('|')[1]);
   const note = [r.note, r.notes].find((n) => n?.startsWith('From email'));
   if (note) return str(note.match(/^From email \(([^)]+)\)/)?.[1]) ?? 'main';
+  const buy = [r.note, r.notes].find((n) => n?.startsWith('Receipt: from ')); // a Returns line from an emailed receipt
+  if (buy) return str(buy.match(/^Receipt: from \(([^)]+)\)/)?.[1]) ?? 'main';
   if (r.source_from && /\(to [^)]+\)$/.test(r.source_from)) return str(r.source_from.match(/\(to ([^)]+)\)$/)?.[1]) ?? 'main';
   if (path || r.source === 'alert' || r.source === 'email' || r.key?.startsWith('mail:')) return 'main';
   return null;
 }
 
-/** The person for an entry (null when it didn't come from a mailbox, or no mailbox is known). */
+/**
+ * The person for an entry (null when it didn't come from a mailbox). A mailbox no longer connected still gets its
+ * default name (Roza / Anis / the address's first part), so an email-found row never loses its chip.
+ */
 export function personFor(r: MailSrc, people: MailPerson[]): MailPerson | null {
-  const box = mailboxOf(r);
-  if (!box || !people.length) return null;
-  return box === 'main' ? people.find((p) => p.main) ?? null : people.find((p) => p.email === box) ?? null;
+  return personOfBox(mailboxOf(r), people);
+}
+export function personOfBox(box: string | 'main' | null | undefined, people: MailPerson[]): MailPerson | null {
+  if (!box) return null;
+  if (box === 'main') return people.find((p) => p.main) ?? null;
+  return people.find((p) => p.email === box) ?? personOf(box, false);
+}
+
+/** "Roza’s email" (the words for a heads-up / log line), or "your email" when the person isn't known. */
+export const emailOf = (p: MailPerson | null | undefined) => (p ? `${p.name}’s email` : 'your email');
+
+/**
+ * Raw addresses out of a text, names in: "from your email (roza@…)" → "from Roza’s email", "Dr. Lee (to roza@…)" →
+ * "Dr. Lee (to Roza)", any other of your mailboxes' addresses → its person's name (other people's addresses stay).
+ * Used for heads-ups, the Log, the Inbox and emails to you.
+ */
+export function nameAddresses(text: string, people: MailPerson[]): string {
+  const nameOf = (a: string) => personOfBox(a.toLowerCase(), people)?.name ?? a.split('@')[0];
+  return text
+    .replace(/your email \(([^\s()]+@[^\s()]+)\)/g, (_m, a: string) => `${nameOf(a)}’s email`)
+    .replace(/\(to ([^\s()]+@[^\s()]+)\)/g, (_m, a: string) => `(to ${nameOf(a)})`)
+    .replace(/[^\s()<>|"']+@[^\s()<>|"',:;]+/g, (a) => (KNOWN[a.toLowerCase()] || people.some((p) => p.email === a.toLowerCase()) ? nameOf(a) : a));
 }
 
 /** "from your email (roza@…)" → "from your email": the name chip says whose it is. */

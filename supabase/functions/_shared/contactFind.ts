@@ -40,7 +40,7 @@ const BIG_STORES = /^(amazon|ebay|walmart|target|etsy|temu|shein|aliexpress|appl
 const shortDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 type Row = Contact & { _new?: boolean; _orig?: string };
-const FIELDS = ['name', 'kind', 'person', 'phones', 'emails', 'website', 'address', 'description', 'sources', 'last_seen'] as const;
+const FIELDS = ['name', 'kind', 'person', 'phones', 'emails', 'website', 'address', 'description', 'sources', 'last_seen', 'mailbox'] as const;
 const sig = (c: Contact) => JSON.stringify(FIELDS.map((f) => c[f]));
 
 /** The cards in memory while a run folds everything in; written once at the end (only what changed). */
@@ -55,6 +55,7 @@ class Book {
     if (hit) {
       if (hit.status === 'hidden') return 'hidden';
       Object.assign(hit, autoMerge(hit, d));
+      if (!hit.mailbox && d.mailbox && !hit.sources.includes('hand')) hit.mailbox = d.mailbox; // 👥 whose mailbox it was found in
       return 'merged';
     }
     if (!d.name.trim()) return 'skipped';
@@ -95,7 +96,7 @@ export function apptDrafts(appts: Appointment[], own: { phones: string[] }, t = 
         name: who, kind, person: doc ? who : null, phones: readFacts(a.notes ?? '', '', own).phones, emails: [], website: null,
         address: a.place && /\d/.test(a.place) ? a.place : null,
         description: describe(kind, past ? `last visit ${monthYear(a.day)}` : `next visit ${shortDay(a.day)}`),
-        sources: ['appt'], last_seen: past ? a.day : (a.created_at ?? t).slice(0, 10), rank: 2,
+        sources: ['appt'], last_seen: past ? a.day : (a.created_at ?? t).slice(0, 10), rank: 2, mailbox: a.source === 'email' ? a.mailbox ?? null : null,
       } satisfies Draft;
     });
 }
@@ -109,7 +110,7 @@ export function itemDrafts(items: Item[]): Draft[] {
     return {
       name: i.name, kind, person: null, phones: [], emails: [], website: i.website ? (/^https?:/i.test(i.website) ? i.website : `https://${i.website}`) : null, address: null,
       description: describe(kind, `${catOf(i.category).label.toLowerCase()} bill${i.amount ? ` ${money(Number(i.amount), i.currency)} ${cyc}` : ''}`.trim()),
-      sources: ['bill'], last_seen: i.last_charged ?? (i.updated_at ?? today()).slice(0, 10), rank: 1,
+      sources: ['bill'], last_seen: i.last_charged ?? (i.updated_at ?? today()).slice(0, 10), rank: 1, mailbox: i.source === 'email' ? i.details?.mailbox ?? null : null,
     } satisfies Draft;
   });
 }
@@ -118,7 +119,7 @@ export function itemDrafts(items: Item[]): Draft[] {
 export function purchaseDrafts(list: Purchase[]): Draft[] {
   return list.filter((p) => p.status !== 'ignored' && p.store?.trim() && !BIG_STORES.test(p.store.trim())).sort((a, b) => a.bought.localeCompare(b.bought)).map((p) => ({
     name: p.store.trim(), kind: 'shop', person: null, phones: [], emails: [], website: null, address: null,
-    description: `You bought ${p.item ? p.item.slice(0, 60) : 'something'} here (${monthYear(p.bought)})`, sources: ['purchase'], last_seen: p.bought, rank: 1,
+    description: `You bought ${p.item ? p.item.slice(0, 60) : 'something'} here (${monthYear(p.bought)})`, sources: ['purchase'], last_seen: p.bought, rank: 1, mailbox: p.mailbox ?? null,
   }) satisfies Draft);
 }
 
@@ -128,7 +129,7 @@ export interface MailCheck { draft?: Draft; ai?: { key: string; text: string; ba
  * between people, giant online services and "no-reply" senders without real contact details are skipped.
  * When the name or the kind can't be told for free, it says the AI could (`ai`).
  */
-export function checkMail(m: Mail, ctx: { ownEmails: Set<string>; ownPhones: string[]; lists: Set<string> }): MailCheck {
+export function checkMail(m: Mail, ctx: { ownEmails: Set<string>; ownPhones: string[]; lists: Set<string>; main?: string | null }): MailCheck {
   const { name: dn, address } = parseSender(m.from);
   if (!address) return { skip: 'no sender' };
   if (ctx.ownEmails.has(address)) return { skip: 'you' };
@@ -153,6 +154,7 @@ export function checkMail(m: Mail, ctx: { ownEmails: Set<string>; ownPhones: str
   const base: Draft = {
     name: name || biz, kind, person: null, phones: facts.phones, emails: isNoReply(address) || platform ? [] : [address], website: facts.website, address: facts.address,
     description: kind !== 'other' ? describe(kind) : null, sources: ['email'], last_seen: m.date, rank: 0,
+    mailbox: (m.box ?? ctx.main ?? null)?.toLowerCase() ?? null, // 👥 the extra mailbox it came from, else the main one
   };
   const sure = !!name && !looksLikePerson(name) && kind !== 'other';
   if (sure || (kind !== 'other' && !!biz && info)) return { draft: base };
@@ -184,7 +186,7 @@ export async function contactStep(db: SupabaseClient, userId: string, s: Setting
   // ✉️ Every mailbox watched (the main Google account and the extra ones): your own addresses are never a contact.
   const boxes = opts.boxes ?? [];
   const ownEmails = new Set([...s.me.emails, opts.email, ...boxes.map((b) => b.email ?? undefined)].filter(Boolean).map((e) => e!.toLowerCase()));
-  const ctx = { ownEmails, ownPhones, lists: new Set(((senders ?? []) as { address: string }[]).map((x) => x.address)) };
+  const ctx = { ownEmails, ownPhones, main: boxes.find((b) => b.main)?.email ?? null, lists: new Set(((senders ?? []) as { address: string }[]).map((x) => x.address)) };
   const mails = opts.mails.filter((m) => !seen.has(m.id));
   let stopped = '', searched = 0, aiRead = 0, aiOff = '';
   const aiMax = Math.min(5, s.ai.maxPerRun);

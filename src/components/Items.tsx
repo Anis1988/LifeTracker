@@ -10,7 +10,7 @@ const cycleWord: Record<Cycle, string> = { weekly: '/wk', biweekly: '/2 wk', mon
 
 /** One bill in a list. Also drawn in the Guide with made-up data. */
 export function ItemRow({ i, onOpen, fresh, src }: { i: Item; onOpen?: () => void; fresh?: boolean; src?: MailSrc | null }) {
-  const who = usePersonFor(src); // 👥 whose mailbox it was found in
+  const who = usePersonFor(i.details?.mailbox ? i : src ?? (i.source === 'email' ? i : null)); // 👥 whose mailbox it was found in (kept on the bill itself)
   const due = nextDue(i);
   const days = due ? daysBetween(today(), due) : null;
   const up = i.price_history?.length ? i.price_history[i.price_history.length - 1] : null;

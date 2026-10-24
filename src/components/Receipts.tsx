@@ -6,7 +6,7 @@ import { money, today } from '../../supabase/functions/_shared/money.ts';
 import { downloadFile, fileKind, fileName, openFile, safeName, shareFiles, shrink, signedUrls } from '../lib/vault';
 import { api, supabase } from '../lib/supabase';
 import { Money, Sheet, errText, shortDate, toast } from './ui';
-import { PersonChip, personEdge, usePersonFor } from './Person';
+import { FoundIn, PersonChip, personEdge, usePersonFor } from './Person';
 
 /**
  * 🧾 Money → Spending: ONE list of the month's purchases (`SpendLine`: shop, category chip, amount, source, a small
@@ -427,6 +427,7 @@ export function ReceiptSheet({ t, url, rules, userId, onMove, onClose, onChanged
   ) : undefined;
   return (
     <Sheet title={mode === 'edit' ? 'Edit the receipt' : mode === 'line' ? 'Edit the purchase' : title} onClose={onClose}>
+      {mode === 'view' && <div className="mb-3"><FoundIn src={t} /></div>}
       {mode === 'edit' ? (
         <ReceiptEdit t={t} onCancel={() => setMode('view')} onSave={async (details) => { await api('receipt', { op: 'edit', id: t.id, details }); toast('ok', 'Saved.'); await onChanged(); setMode('view'); onClose(); }} />
       ) : mode === 'line' ? (

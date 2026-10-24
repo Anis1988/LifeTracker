@@ -110,7 +110,7 @@ const DATES: LifeDate[] = [
 const aBase = { status: 'booked' as const, minutes: null, notes: null, history: [] as Appointment['history'] };
 const APPTS: Appointment[] = [
   { ...aBase, id: 'ap1', key: 'ap1', title: 'Dentist: cleaning', kind: 'dental', day: d(2), time: '15:30', place: '12 Example St', with_who: 'Example Dental', source: 'text', source_from: 'Example Dental', notes: 'Arrive 10 minutes early.' },
-  { ...aBase, id: 'ap2', key: 'ap2', title: 'Car service', kind: 'car', day: d(6), time: '09:00', place: null, with_who: 'Example Garage', source: 'email', source_from: 'Example Garage' },
+  { ...aBase, id: 'ap2', key: 'ap2', title: 'Car service', kind: 'car', day: d(6), time: '09:00', place: null, with_who: 'Example Garage', source: 'email', source_from: 'Example Garage', mailbox: 'sam@example.com' },
   { ...aBase, id: 'ap3', key: 'ap3', title: 'Dinner for 2', kind: 'food', day: d(9), time: '19:45', place: 'Example Bistro', with_who: null, source: 'email', source_from: 'Example Reservations' },
 ] as Appointment[];
 const APPT_ALERT: Alert[] = [{ id: 'aa1', kind: 'appt', key: '', title: '📅 Added to your calendar: Dentist: cleaning · in 2 days, 3:30 PM', body: '12 Example St. Found in a text from Example Dental. Wrong? Remove it on Home.', item_id: null, seen: false, created_at: '' }];
@@ -581,8 +581,14 @@ export function Guide() {
       </Fold>
 
       <Fold icon="👥" title="Whose email it came from">
-        <P>With more than one Gmail connected, everything found in an email shows <b>whose mailbox</b> it came from: a small dot with a name, like <PersonChip p={SAM} /> or <PersonChip p={JORDAN} />. Each person’s entries also get a soft coloured edge on the left in their colour (for example blue for one, pink for the other), so you can tell them apart at a glance. It’s on purchases, receipts, bills, the Log, What was added, appointments, Vault documents and returns. Only the name shows, never the address.</P>
+        <P>With more than one Gmail connected, everything found in an email shows <b>whose mailbox</b> it came from: a small dot with a name, like <PersonChip p={SAM} /> or <PersonChip p={JORDAN} />. Each person’s entries also get a soft coloured edge on the left in their colour (for example blue for one, pink for the other), so you can tell them apart at a glance. It’s on <b>everything</b> found in an email: Home’s Coming up, heads-ups, bills (even old ones), purchases and receipts, the Log, What was added, appointments, contacts, Vault documents, returns, search results and Ask’s Open button; the details of a bill or appointment say “Found in Sam’s email”. Only the name shows, never the address (a heads-up says “from Sam’s email”), and the daily email to you starts those lines with “Sam:”. Things you typed in yourself or got from a bank file have no name.</P>
         <P>Pick the name and colour for each mailbox in <b>Settings → Google</b> (saved on the server, the same on every device). In Spending and the Log, <b>Person</b> shows only one person’s entries.</P>
+        <Example caption="Made-up Coming up and heads-up: the car service was found in Sam’s email.">
+          <div className="space-y-2">
+            <TimelineList moments={timeline({ items: [], papers: [], dates: [], purchases: [], appts: APPTS.filter((a) => a.source === 'email') }, 30)} max={2} />
+            <AlertList alerts={[{ id: 'pa1', kind: 'found', key: '', title: 'Added: Example Insurance $89.00 monthly — from Sam’s email', body: null, item_id: null, seen: false, created_at: '', mailbox: 'sam@example.com' }]} />
+          </div>
+        </Example>
         <Example caption="Made-up purchases: gas from Sam’s bank alert email, a cafe receipt from Jordan’s email.">
           <div className="space-y-2">
             <PersonFilter value="all" onChange={() => undefined} />

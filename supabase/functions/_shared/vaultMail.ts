@@ -2,7 +2,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Alert, Item, Settings } from './model.ts';
 import { iso } from './money.ts';
 import { getAttachment, isRateLimit, readEmail, searchIds, type Attachment, type Mail } from './google.ts';
-import { boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
+import { boxPerson, boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
 import { classifyAttachment, fromEmailNote, vaultKey, type Route } from './vaultText.ts';
 import { mimeOf, readBill, readVault, safeName, sha256 } from './vault.ts';
 import { applyExtracted } from './sync.ts';
@@ -47,7 +47,7 @@ export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Sett
       if (route === 'skip') { skipped++; continue; }
       if (reads >= s.vault.maxPerRun) { done = false; stopped = 'the rest next run'; break; }
       try {
-        const r = await oneAttachment(db, userId, s, at, m, a, route, (items as Item[]) ?? [], alerts);
+        const r = await oneAttachment(db, userId, s, at, m, a, route, (items as Item[]) ?? [], alerts, box);
         reads += r.reads;
         if (r.saved === 'vault') vault++; else if (r.saved === 'bill') bills++; else if (r.saved === 'receipt') receipts++; else skipped++;
       } catch (e) {
@@ -64,7 +64,7 @@ export async function vaultEmailStep(db: SupabaseClient, userId: string, s: Sett
   if (vault || bills || receipts || stopped) return `${ids.length} email(s) with files: ${vault} to Vault, ${bills} bill(s) to Bills, ${receipts} receipt(s) to Money → Spending, ${skipped} skipped for free${stopped ? ` (${stopped})` : ''}`;
 }
 
-async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at: string, m: Mail, a: Attachment, route: Route, items: Item[], alerts: NewAlert[]): Promise<{ saved?: 'vault' | 'bill' | 'receipt'; reads: number }> {
+async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at: string, m: Mail, a: Attachment, route: Route, items: Item[], alerts: NewAlert[], box: Box): Promise<{ saved?: 'vault' | 'bill' | 'receipt'; reads: number }> {
   const bytes = await getAttachment(at, m.id, a.attachmentId);
   const hash = await sha256(bytes);
   const mime = mimeOf(a.filename, a.mime);
@@ -95,7 +95,7 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
       const row = {
         user_id: userId, name: x.title || a.filename.replace(/\.[a-z0-9]+$/i, '').slice(0, 120) || 'Document', kind: x.idKind || 'other', folder: x.folder, holder: x.forWhom || null,
         number_end: x.numberEnd || null, doc_date: x.docDate || null, expires: x.dueDate || null, due_kind: x.dueKind, tags: x.tags, files: [path], file_hash: hash,
-        summary: x.summary || null, body: x.text || null, notes: note, source: 'email', source_key: sourceKey, ai_by: r.by,
+        summary: x.summary || null, body: x.text || null, notes: note, source: 'email', source_key: sourceKey, ai_by: r.by, mailbox: box.email?.toLowerCase() ?? null,
       };
       const { data: saved, error } = await db.from('papers').upsert(row, { onConflict: 'user_id,source_key', ignoreDuplicates: true }).select('id');
       if (error || !saved?.length) { await db.storage.from('docs').remove([path]); if (error) throw new Error(error.message); return { reads }; }
@@ -119,7 +119,7 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
   if (x.isBill && moneyRoute !== 'receipt') {
     const docId = await keepAsDoc();
     // Same key as the bill emails read in the morning ("mail:<company>"): one bill per company, not two.
-    const link = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, documentId: docId, ...(m.box ? { mailbox: m.box } : {}) }, items, alerts);
+    const link = await applyExtracted(db, userId, x, 'email', `mail:${merchantKey(x.merchant || x.name)}`, { subject: m.subject, from: m.from, documentId: docId, ...(m.box ? { mailbox: m.box } : {}), ...(box.email ? { box: box.email, who: boxPerson(box)?.name } : {}) }, items, alerts);
     if (link.itemId) await db.from('documents').update({ item_id: link.itemId }).eq('id', docId);
     return { saved: 'bill', reads };
   }
@@ -129,14 +129,14 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
   const details = detailsOf(x, b.by, m.date);
   const bought = details.date;
   let res;
-  try { res = await saveReceipt(db, userId, { business: store, amount: x.amount, date: bought, key: sourceKey, hash, path, note, details: { ...details, store } }); } catch (e) { await db.storage.from('docs').remove([path]); throw e; }
+  try { res = await saveReceipt(db, userId, { business: store, amount: x.amount, date: bought, key: sourceKey, hash, path, note, details: { ...details, store, ...(box.email ? { mailbox: box.email.toLowerCase() } : {}) } }); } catch (e) { await db.storage.from('docs').remove([path]); throw e; }
   if (res === 'known') { await db.storage.from('docs').remove([path]); return { reads }; }
   // 🧾 A store with a return window: also in Returns (the return-window tracker; the money is counted once, in Spending).
   const days = returnDaysFor(`${store} ${m.from}`);
   if (days) {
     const { data: prev } = await db.from('purchases').select('id, file').eq('user_id', userId).eq('key', `mail:${m.id}`).maybeSingle();
     if (prev) { if (!prev.file) await db.from('purchases').update({ file: path }).eq('id', prev.id); }
-    else await db.from('purchases').insert({ user_id: userId, key: `mail:${m.id}`, store, item: (x.name && x.name !== store ? x.name : null)?.slice(0, 200) ?? null, amount: x.amount, bought, return_by: addDays(bought, days), warranty_ends: null, status: 'keep', notes: `Receipt: ${note.replace(/^From email(?: \(([^)]*)\))?: /, (_m, b) => (b ? `from (${b}) ` : 'from '))}`.slice(0, 300), file: path });
+    else await db.from('purchases').insert({ user_id: userId, key: `mail:${m.id}`, store, item: (x.name && x.name !== store ? x.name : null)?.slice(0, 200) ?? null, amount: x.amount, bought, return_by: addDays(bought, days), warranty_ends: null, status: 'keep', mailbox: box.email?.toLowerCase() ?? null, notes: `Receipt: ${note.replace(/^From email(?: \(([^)]*)\))?: /, (_m, b) => (b ? `from (${b}) ` : 'from '))}`.slice(0, 300), file: path });
   }
   return { saved: 'receipt', reads };
 }

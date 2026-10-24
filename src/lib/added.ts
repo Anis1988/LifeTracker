@@ -26,7 +26,7 @@ export function addedFeed(d: AddedInput, days = 30, now = Date.now()): AddedEntr
     const i = d.items.find((x) => x.id === s.item_id);
     const at = s.updated_at ?? s.created_at;
     if (!i || !recent(at)) continue;
-    out.push({ key: `bill:${s.id}`, kind: 'bill', id: s.id, icon: catOf(i.category).icon, title: i.name, sub: `${money(Number(i.amount))} ${cycleWord(i.cycle)} · ${FROM[s.source] ?? 'found for you'}`, where: 'Money → Bills', at, src: s.source === 'email' ? { source: 'email', evidence: s.evidence } : undefined });
+    out.push({ key: `bill:${s.id}`, kind: 'bill', id: s.id, icon: catOf(i.category).icon, title: i.name, sub: `${money(Number(i.amount))} ${cycleWord(i.cycle)} · ${FROM[s.source] ?? 'found for you'}`, where: 'Money → Bills', at, src: s.source === 'email' ? (i.details?.mailbox ? i : { source: 'email', evidence: s.evidence }) : undefined });
   }
   for (const t of d.tx) {
     if (!t.id || !t.receipt_path || !t.note?.startsWith('From email')) continue;
@@ -41,7 +41,7 @@ export function addedFeed(d: AddedInput, days = 30, now = Date.now()): AddedEntr
   for (const c of d.contacts) {
     if (c.status !== 'active' || c.sources.includes('hand') || !recent(c.created_at)) continue;
     const k = contactKind(c.kind);
-    out.push({ key: `contact:${c.id}`, kind: 'contact', id: c.id, icon: k.icon, title: c.name, sub: `${k.label} · ${CONTACT_FROM[c.sources[0]] ?? 'found for you'}`, where: 'Contacts', at: c.created_at! });
+    out.push({ key: `contact:${c.id}`, kind: 'contact', id: c.id, icon: k.icon, title: c.name, sub: `${k.label} · ${CONTACT_FROM[c.sources[0]] ?? 'found for you'}`, where: 'Contacts', at: c.created_at!, src: c.mailbox ? c : undefined });
   }
   for (const a of d.appts) {
     if (a.source === 'hand' || a.status !== 'booked' || !recent(a.created_at)) continue;

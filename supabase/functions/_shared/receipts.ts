@@ -69,7 +69,7 @@ export async function saveReceipt(db: SupabaseClient, userId: string, r: Receipt
   return 'new';
 }
 
-export interface BankRow { user_id: string; external_id: string; account: string; posted: string; amount: number; description: string; merchant: string; source: 'bank' | 'alert' | 'csv'; note?: string | null }
+export interface BankRow { user_id: string; external_id: string; account: string; posted: string; amount: number; description: string; merchant: string; source: 'bank' | 'alert' | 'csv'; note?: string | null; details?: Record<string, unknown> | null }
 /**
  * Bank lines about to be stored (alert emails, CSV, SimpleFIN): one that is the same purchase as a receipt already in
  * Spending is merged into that line (it takes the bank's details and keeps the receipt). Returns the lines still to add.
