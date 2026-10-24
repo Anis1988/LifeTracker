@@ -2,7 +2,7 @@ import { hrefTo, type Tab } from './nav';
 import { appsUrl } from './links';
 
 /**
- * ☰ Menu: every tab and its parts, each with an icon, a name and one short line. The Menu page lists them (with ⭐ saved
+ * ☰ Menu: every tab and its parts, each with an icon, a name and one short line. The ☰ drawer lists them (with ⭐ saved
  * reports and each Settings section added there), and 💬 Ask's "open …" and the 🔎 search find them by name.
  */
 export interface MenuRow { id: string; icon: string; name: string; desc: string; href: () => string; words?: string; tab?: Tab; view?: string }
@@ -35,7 +35,7 @@ export const MENU: MenuGroup[] = [
     ],
   },
 ];
-/** Below the tabs: the Inbox, the Guide and My apps (🔎 Search and Sign out are buttons on the Menu page). */
+/** Below the tabs: the Inbox, the Guide and My apps (🔎 Search and Sign out are added in the ☰ drawer). */
 export const MENU_MORE: MenuRow[] = [
   { id: 'inbox', icon: '🔔', name: 'Inbox', desc: 'What was added by itself, each with Undo', href: () => '#/inbox', tab: 'inbox', words: 'added undo bell' },
   { id: 'guide', icon: '📖', name: 'Guide', desc: 'How LifeTracker works, in plain words', href: () => '#/guide', tab: 'guide', words: 'help' },

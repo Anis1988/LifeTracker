@@ -1,12 +1,12 @@
 import { useState } from 'react';
 
 /**
- * 🧭 Where things live: tabs Home · Money · 📊 Reports · Places · Me · ☰ Menu (phones: Home · Money · ＋ · Reports · Menu;
- * Places and Me are in the Menu there), each with its views behind one Seg.
+ * 🧭 Where things live: tabs Home · Money · 📊 Reports · Places · Me (phones: Home · Money · ＋ · Reports · Places at the
+ * bottom); ☰ at the top-left of every page opens the Menu drawer (#/menu opens it over Home). Each tab's views sit behind one Seg.
  * Addresses: "#/<tab>/<view>[/<section>][?…]" (e.g. "#/me/settings/nearby", "#/places/contacts?c=<id>", "#/reports?saved=<id>").
  * Each tab remembers its last view on this device (localStorage).
  */
-export type Tab = 'home' | 'money' | 'reports' | 'places' | 'me' | 'menu' | 'inbox' | 'guide';
+export type Tab = 'home' | 'money' | 'reports' | 'places' | 'me' | 'inbox' | 'guide';
 export const VIEWS = {
   money: ['bills', 'spending', 'returns', 'log'],
   places: ['contacts', 'nearby', 'list'],
@@ -14,7 +14,7 @@ export const VIEWS = {
 } as const;
 export type ViewTab = keyof typeof VIEWS;
 export type ViewOf<T extends ViewTab> = (typeof VIEWS)[T][number];
-const TABS: Tab[] = ['home', 'money', 'reports', 'places', 'me', 'menu', 'inbox', 'guide'];
+const TABS: Tab[] = ['home', 'money', 'reports', 'places', 'me', 'inbox', 'guide'];
 const hasViews = (t: string): t is ViewTab => t in VIEWS;
 
 export function lastView<T extends ViewTab>(tab: T): ViewOf<T> {
@@ -51,6 +51,13 @@ export function upgradeHash(h: string): string | null {
   if ((m = h.match(/^#\/bills(?=$|[/?])(.*)$/))) return `#/money/bills${m[1]}`;
   if ((m = h.match(/^#\/me(\?.*)?$/))) return `#/me/privacy${m[1] ?? ''}`;
   return null;
+}
+
+/** "#/menu" (the old Menu tab, or a link to it): open the ☰ drawer over Home. True when it was there (the address becomes #/home). */
+export function takeMenuHash(): boolean {
+  if (!/^#\/menu(?=$|[/?])/.test(location.hash)) return false;
+  history.replaceState(null, '', '#/home');
+  return true;
 }
 
 /** The address of a tab (its remembered view when none is given), plus "/section" or "?query". */

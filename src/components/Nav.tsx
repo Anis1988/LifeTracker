@@ -3,7 +3,7 @@ import { PlusIcon } from './QuickAdd';
 import type { Tab } from '../lib/nav';
 
 // The tabs (line icons, like the rest of the Liquid Glass look). Wide screens show them all in the header; phones get
-// Home · Money · ＋ · Reports · Menu at the bottom (Places and Me are in ☰ Menu there). 🔔 Inbox and 🔎 search sit in the header.
+// Home · Money · ＋ · Reports · Places at the bottom (Me is in the ☰ Menu drawer, top-left). 🔎 search and 🔔 Inbox top-right.
 const ICON = {
   home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
   money: 'M3 7h18v12H3zM3 11h18M7 15h3M16 7V5H5v2',
@@ -18,12 +18,11 @@ export const TABS = [
   { id: 'reports', label: 'Reports', icon: ICON.reports },
   { id: 'places', label: 'Places', icon: ICON.places },
   { id: 'me', label: 'Me', icon: ICON.me },
-  { id: 'menu', label: 'Menu', icon: ICON.menu },
 ] as const;
-/** The phone bar: 4 tabs and ＋ in the middle. */
-export const BAR_TABS = TABS.filter((t) => t.id !== 'places' && t.id !== 'me');
-/** Which bar button is lit: Places, Me and the Guide are reached from the Menu, so the Menu lights up for them. */
-const barOf = (t: Tab): Tab => (t === 'places' || t === 'me' || t === 'guide' ? 'menu' : t);
+/** The ☰ Menu button's lines. */
+export const MENU_ICON = ICON.menu;
+/** The phone bar: 4 tabs and ＋ in the middle (Me, Inbox and the Guide: no pill, they're reached from the top). */
+export const BAR_TABS = TABS.filter((t) => t.id !== 'me');
 export const Icon = ({ d, className = 'h-[22px] w-[22px]' }: { d: string; className?: string }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d={d} /></svg>
 );
@@ -32,7 +31,7 @@ export const Icon = ({ d, className = 'h-[22px] w-[22px]' }: { d: string; classN
 export function PhoneTabBar({ tab, onGo, onAdd, badge = () => 0, example }: { tab: Tab; onGo?: (t: Tab) => void; onAdd?: () => void; badge?: (t: Tab) => number; example?: boolean }) {
   // 5 slots: the 4 tabs and ＋ in the middle; the glass pill skips ＋.
   const slot = (i: number) => (i < 2 ? i : i + 1);
-  const lit = barOf(tab);
+  const lit = tab;
   const at = BAR_TABS.findIndex((t) => t.id === lit);
   return (
     <nav aria-label="Tabs" style={example ? undefined : { bottom: 'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }} className={`glass tabbar relative flex rounded-[30px] p-1.5 ${example ? '' : '!fixed inset-x-3 z-30 mx-auto max-w-md sm:hidden'}`}>
