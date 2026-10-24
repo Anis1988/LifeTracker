@@ -9,6 +9,8 @@ import { StoreProvider, useStore } from './lib/store';
 import { Aurora, Skeleton, Toasts, errText, toast } from './components/ui';
 import { Home } from './pages/Home';
 import { MoneyPage } from './pages/Money';
+import { Reports } from './pages/Reports';
+import { MenuPage } from './pages/Menu';
 import { Inbox } from './pages/Inbox';
 import { Guide } from './pages/Guide';
 import { pushWidget } from './lib/widget';
@@ -32,7 +34,7 @@ upgrade();
 try {
   if (!sessionStorage.getItem('lt.launched')) {
     sessionStorage.setItem('lt.launched', '1');
-    if (/^#\/(money|places|me|inbox|guide)(\/[a-z]+)?$/.test(location.hash)) history.replaceState(null, '', '#/home');
+    if (/^#\/(money|reports|places|me|menu|inbox|guide)(\/[a-z]+)?$/.test(location.hash)) history.replaceState(null, '', '#/home');
   }
 } catch { /* private mode: the address decides */ }
 
@@ -173,7 +175,7 @@ function Main() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Me: worrying pages, people-search listings and breaches still to handle.
   const meCount = st.findings.filter((f) => (f.kind === 'web' && f.status === 'new' && f.verdict === 'worrying') || (f.kind === 'broker' && f.status === 'listed') || (f.kind === 'breach' && f.status === 'new')).length;
-  const badge = (t: Tab): number => (t === 'me' ? meCount : 0);
+  const badge = (t: Tab): number => (t === 'me' || t === 'menu' ? meCount : 0);
   // 🔔 New in the Inbox: things added by themselves since the Inbox was last opened on this device.
   const fresh = tab === 'inbox' ? 0 : unseen(addedFeed(st));
   const roundBtn = 'btn relative h-11 w-11 shrink-0 !overflow-visible !p-0';
@@ -189,8 +191,8 @@ function Main() {
           </button>
           <nav className="glass ml-auto hidden gap-1 rounded-2xl p-1 sm:flex" aria-label="Tabs">
             {TABS.map((t) => (
-              <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} aria-label={t.label} title={t.label} className={`tap tabbtn flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-bold ${tab === t.id ? 'bg-white text-slate-900 shadow-[0_0_20px_-6px_#5eead4] dark:bg-white/[0.12] dark:text-white' : 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/[0.06]'}`}>
-                <Icon d={t.icon} className="h-[18px] w-[18px]" /><span className="hidden md:inline">{t.label}</span>{badge(t.id) ? <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold text-slate-900">{badge(t.id)}</span> : null}
+              <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined} aria-label={t.label} title={t.label} className={`tap tabbtn flex min-h-[40px] items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-sm font-bold lg:px-3 ${tab === t.id ? 'bg-white text-slate-900 shadow-[0_0_20px_-6px_#5eead4] dark:bg-white/[0.12] dark:text-white' : 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/[0.06]'}`}>
+                <Icon d={t.icon} className="h-[18px] w-[18px]" /><span className="hidden lg:inline">{t.label}</span>{badge(t.id) ? <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold text-slate-900">{badge(t.id)}</span> : null}
               </button>
             ))}
           </nav>
@@ -212,7 +214,7 @@ function Main() {
       <main key={`${tab}:${visit}`} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         <AppUpdateCheck />
         {st.loading ? <Skeleton />
-          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <MePage /> : tab === 'places' ? <Places /> : <Guide />}
+          : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <MePage /> : tab === 'places' ? <Places /> : tab === 'reports' ? <Reports /> : tab === 'menu' ? <MenuPage onSearch={() => setSearch(true)} meCount={meCount} /> : <Guide />}
       </main>
             <PhoneTabBar tab={tab} onGo={go} onAdd={() => setAdding(true)} badge={badge} />
       {search && <SearchSheet onClose={() => setSearch(false)} />}

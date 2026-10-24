@@ -12,6 +12,7 @@ import { SETTINGS_INDEX } from '../components/SettingsGrid';
 import { addedFeed } from './added';
 import type { MailSrc } from '../../supabase/functions/_shared/mailPeople.ts';
 import { hrefTo, slug } from './nav';
+import { MENU_PAGES } from './menu';
 
 /**
  * 🔎 One search over everything already on this phone (no AI, nothing sent): bills, spending (receipts and their lines),
@@ -20,7 +21,7 @@ import { hrefTo, slug } from './nav';
  * Settings and the Guide. Built once into a folded (lower-case, no accents) index when the search opens, then each
  * keystroke only scans that index.
  */
-export type HitKind = 'bill' | 'spend' | 'return' | 'log' | 'added' | 'contact' | 'nearby' | 'place' | 'doc' | 'appt' | 'privacy' | 'setting' | 'guide';
+export type HitKind = 'page' | 'bill' | 'spend' | 'return' | 'log' | 'added' | 'contact' | 'nearby' | 'place' | 'doc' | 'appt' | 'privacy' | 'setting' | 'guide';
 export interface Hit {
   kind: HitKind; id: string; icon: string; title: string; sub: string; href: string;
   snippet?: string; // a short piece of text around the match (when the title alone doesn't show why it matched)
@@ -38,6 +39,7 @@ export interface SearchData {
 }
 
 export const KINDS: { kind: HitKind; icon: string; label: string }[] = [
+  { kind: 'page', icon: '☰', label: 'Pages' },
   { kind: 'bill', icon: '📋', label: 'Bills' }, { kind: 'spend', icon: '💸', label: 'Spending' }, { kind: 'return', icon: '🧾', label: 'Returns' },
   { kind: 'log', icon: '📜', label: 'Money log' }, { kind: 'added', icon: '🆕', label: 'What was added' }, { kind: 'contact', icon: '📇', label: 'Contacts' },
   { kind: 'nearby', icon: '🔎', label: 'Nearby' }, { kind: 'place', icon: '📌', label: 'My list' }, { kind: 'doc', icon: '📁', label: 'Vault' },
@@ -52,7 +54,7 @@ export const HIT_LABELS = Object.fromEntries(KINDS.map((k) => [k.kind, `${k.icon
 export const GUIDE_TOPICS: { icon: string; title: string; words: string }[] = [
   { icon: '✨', title: 'What it does', words: 'automatic undo bills receipts documents' },
   { icon: '🏠', title: 'Home (calm, spending first)', words: 'home spending first ring top categories coming up what was added bottom calm opens' },
-  { icon: '🧭', title: 'Finding your way (tabs, search, ＋)', words: 'tabs search find magnifier add where did it go keyboard shortcut' },
+  { icon: '🧭', title: 'Finding your way (tabs, search, ＋)', words: 'tabs menu pages places me search find magnifier add where did it go keyboard shortcut sign out' },
   { icon: '🫧', title: 'How it looks and feels', words: 'look glass light dark reduce motion' },
   { icon: '⚙️', title: 'Settings', words: 'settings squares' },
   { icon: '💬', title: 'Ask LifeTracker', words: 'ask question chat open show where' },
@@ -288,6 +290,8 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
       href: x.id === 'guide' ? '#/guide' : x.id === 'apps' ? './apps.html' : hrefTo('me', 'settings', `/${x.id}`),
     }, live[x.id] ?? [], '', s?.me.phones ?? [], [x.words]));
   }
+  // ☰ The pages themselves (the Menu's rows): "reports", "my list", "privacy"…
+  for (const p of MENU_PAGES) e.push(entry({ kind: 'page', id: `page-${p.id}`, icon: p.icon, title: p.name, sub: p.desc, href: p.href() }, [], '', [], [p.words ?? '']));
   for (const g of GUIDE_TOPICS) {
     e.push(entry({ kind: 'guide', id: slug(g.title), icon: g.icon, title: g.title, sub: 'Guide', href: `#/guide?t=${slug(g.title)}` }, [], '', [], [g.words]));
   }
@@ -372,6 +376,10 @@ export function navTarget(d: SearchData, question: string, vaultOpen: boolean): 
   if (!m) return null;
   const what = m[1].replace(/^(?:my|the|our|a|an)\s+/i, '').replace(/\s+(?:card|contact|document|doc|file|bill|page)$/i, '').trim();
   if (what.length < 2) return null;
+  // A page by its name ("open reports", "go to my list", "show the vault tab") opens that page.
+  const one = (x: string) => x.toLowerCase().replace(/\s+(?:tab|screen)$/, '').replace(/s$/, '');
+  const page = MENU_PAGES.find((p) => one(p.name) === one(what));
+  if (page) return { kind: 'page', id: `page-${page.id}`, icon: page.icon, title: page.name, sub: page.desc, href: page.href() };
   // "how much…" style questions never start with these verbs, so anything here is a "show me" ask.
   const groups = searchAll(d, what, { vaultOpen, max: 1 });
   const order: HitKind[] = ['contact', 'doc', 'place', 'bill', 'appt'];

@@ -27,7 +27,7 @@ export const SETTINGS_INDEX = {
   alerts: { id: 'alerts', icon: '🔔', title: 'Heads-ups', words: 'heads-ups notifications alerts bills due autopay renewals contract warn days before' },
   ai: { id: 'ai', icon: '🤖', title: 'AI', words: 'ai that reads bills gemini groq openrouter claude paid free order daily limit model' },
   apps: { id: 'apps', icon: '📱', title: 'My apps', words: 'my apps other apps cost' },
-  guide: { id: 'guide', icon: '❓', title: 'Guide', words: 'guide help how does it work where did it go tabs' },
+  guide: { id: 'guide', icon: '❓', title: 'Guide', words: 'guide help how does it work where did it go tabs menu' },
   account: { id: 'account', icon: '⚙️', title: 'Account & data', words: 'account data export download sign out log out keys server last run email' },
 } satisfies Record<string, { id: string; icon: string; title: string; words: string }>;
 

@@ -108,8 +108,6 @@
     @apply bg-white dark:bg-white/[0.12]; box-shadow: inset 0 1px 0 var(--hi), 0 6px 16px -8px rgba(0, 0, 0, .45), 0 0 20px -8px var(--a); transition: transform .5s cubic-bezier(.34, 1.4, .64, 1); }
   .seg > button { @apply tap relative z-[1] min-h-[44px] flex-1 basis-0 whitespace-nowrap rounded-[16px] px-3 text-sm font-bold text-slate-500 dark:text-slate-400; }
   .seg > button[aria-selected="true"] { @apply text-slate-900 dark:text-white; }
-  /* Five choices on a phone (Money): a little tighter so every word fits at 390px. */
-  @media (max-width: 479px) { .seg.seg-tight > button { @apply px-0.5 text-[12.5px] tracking-[-0.01em]; } }
 
   /* Glass switch with a springy knob. */
   .switch { @apply relative h-8 w-[54px] shrink-0 rounded-full border p-0 disabled:opacity-40; background: var(--trk); border-color: var(--bd); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .12); transition: background .35s, box-shadow .35s; }
@@ -153,7 +151,7 @@
 
   .ring-arc { animation: draw 1.3s var(--soft) both; }
   .col-grow { transform-origin: bottom center; animation: growy .8s var(--soft) both; }
-.bar-grow { transform-origin: left center; animation: grow .9s var(--soft) both; }
+  .bar-grow { transform-origin: left center; animation: grow .9s var(--soft) both; }
   .pop-in { animation: popin .5s var(--spring) both; }
 
   /* 📌 My list: the "BEEN THERE ✓" stamp. Marking a place done slams it onto the card (big → squash → settle), the card

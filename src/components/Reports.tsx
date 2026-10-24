@@ -10,14 +10,17 @@ import { SpendLine } from './Receipts';
 import { SearchBox } from './Contacts';
 
 /**
- * 📊 Money → Reports, the pieces (the page is src/pages/Reports.tsx; the Guide shows them with made-up data):
+ * 📊 Reports, the pieces (the page is src/pages/Reports.tsx; the Guide shows them with made-up data):
  * the 💬 question box, the filter bar with ⭐ saved reports, and the report itself (total vs before, by category, over
  * time, top shops, who spent it, the purchases). Bars are one teal (amounts, not identities) with their values written
  * on them; people keep their own colours next to their names. Tapping a bar narrows the report to it.
  */
 
 const pct = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 100) : 0);
-const BAR = 'bg-teal-600 dark:bg-teal-300';
+// one teal for amounts (checked: lightness band + 3:1 against the light and the dark glass)
+const BAR = 'bg-teal-600 dark:bg-[#0fa89a]';
+const H2 = 'font-display text-[17px] font-semibold leading-snug text-slate-900 dark:text-slate-50';
+const TOP = 5; // long lists show their top 5 first, then "Show all"
 const sameFilter = (a: ReportFilter, b: ReportFilter) => JSON.stringify(a) === JSON.stringify(b);
 export const isDefault = (f: ReportFilter) => sameFilter({ ...NO_FILTER, ...f, vs: f.vs ?? null }, NO_FILTER);
 
@@ -48,20 +51,20 @@ export function ReportAnswer({ turn, answer, chips, onChip, onDrop, busy }: {
   if (!turn && !busy) return null;
   return (
     <div className="space-y-2" aria-live="polite">
-      {turn && <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-teal-300 to-violet-400 px-3.5 py-2 text-sm font-semibold text-[#04121a]">{turn.q}</p>}
+      {turn && <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-teal-300 to-violet-400 px-3.5 py-2 text-[15px] font-semibold text-[#04121a]">{turn.q}</p>}
       {busy ? <p className="text-sm text-slate-500 dark:text-slate-400"><span className="spinner" /> Working out what you mean…</p> : turn && (
-        <div className="rise max-w-[94%] rounded-2xl rounded-bl-md border border-slate-900/[0.07] bg-white/80 px-3.5 py-2.5 text-sm dark:border-white/10 dark:bg-white/[0.05]">
-          <p className="font-semibold leading-snug">{answer}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="label">Understood as</span>
+        <div className="rise max-w-[96%] rounded-2xl rounded-bl-md border border-slate-900/[0.07] bg-white/80 px-4 py-3 text-sm dark:border-white/10 dark:bg-white/[0.05]">
+          <p className="text-[17px] font-semibold leading-snug">{answer}</p>
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <span className="label w-full">Understood as</span>
             {chips.map((c) => (
-              <span key={c.key} className="inline-flex items-center rounded-full border border-teal-500/30 bg-teal-500/10 text-xs font-semibold text-teal-900 dark:border-teal-300/25 dark:bg-teal-300/10 dark:text-teal-100">
-                <button className="tap min-h-[32px] rounded-full pl-2.5 pr-1" onClick={() => onChip?.(c.key)} aria-label={`Change ${c.text}`}>{c.text}</button>
-                {c.key !== 'period' && <button className="tap flex h-8 w-7 items-center justify-center rounded-full text-teal-700/70 dark:text-teal-200/70" onClick={() => onDrop?.(c.key)} aria-label={`Remove ${c.text}`}>✕</button>}
+              <span key={c.key} className="inline-flex items-center rounded-full border border-teal-500/30 bg-teal-500/10 text-[13px] font-semibold text-teal-900 dark:border-teal-300/25 dark:bg-teal-300/10 dark:text-teal-100">
+                <button className="tap min-h-[44px] rounded-full pl-3 pr-1" onClick={() => onChip?.(c.key)} aria-label={`Change ${c.text}`}>{c.text}</button>
+                {c.key !== 'period' && <button className="tap flex h-11 w-9 items-center justify-center rounded-full text-teal-700 dark:text-teal-200" onClick={() => onDrop?.(c.key)} aria-label={`Remove ${c.text}`}>✕</button>}
               </span>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">{turn.by ? `Question read by ${turn.by} (names only, never your amounts) · the numbers are worked out on your phone` : 'Read on your phone · free, no AI'}</p>
+          <p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">{turn.by ? `Question read by ${turn.by} (names only, never your amounts) · the numbers are worked out on your phone` : 'Read on your phone · free, no AI'}</p>
         </div>
       )}
     </div>
@@ -80,15 +83,28 @@ function BarChip({ on, onClick, children, label }: { on: boolean; onClick?: () =
   );
 }
 
-export function FilterBar({ f, t, onOpen, onChange, onReset, saved, onSaved, onSave, example }: {
-  f: ReportFilter; t: string; onOpen?: (k: FilterKey) => void; onChange?: (f: ReportFilter) => void; onReset?: () => void;
-  saved: SavedReport[]; onSaved?: (s: SavedReport) => void; onSave?: () => void; example?: boolean;
+/**
+ * The filters. On a phone they fold into one line ("Filters: This month · All people · Edit"); Edit opens the chips.
+ * From `sm` up the chips always show.
+ */
+export function FilterBar({ f, t, people = [], onOpen, onChange, onReset, saved, onSaved, onSave, example, startOpen = false }: {
+  f: ReportFilter; t: string; people?: MailPerson[]; onOpen?: (k: FilterKey) => void; onChange?: (f: ReportFilter) => void; onReset?: () => void;
+  saved: SavedReport[]; onSaved?: (s: SavedReport) => void; onSave?: () => void; example?: boolean; startOpen?: boolean;
 }) {
   const ref = useStrip<HTMLDivElement>(JSON.stringify(f));
+  const [open, setOpen] = useState(startOpen);
   const range = rangeOf(f.period, t);
   const cur = saved.find((s) => sameFilter({ ...s.filter, vs: s.filter.vs ?? null }, { ...f, vs: f.vs ?? null }));
+  const who = f.person === 'all' ? 'All people' : people.find((p) => p.email === f.person)?.name ?? 'One person';
+  const summary = [cur ? `⭐ ${cur.name}` : null, range.label, f.cats.length ? catsText(f.cats) : null, f.shop ? `“${f.shop}”` : null, f.min != null ? `≥ ${money(f.min)}` : null, f.sources.length ? f.sources.map((x) => SOURCE_LABEL[x]).join(', ') : null, who].filter(Boolean).join(' · ');
   return (
-    <section className="space-y-1.5" aria-label="Report filters">
+    <section className="space-y-2" aria-label="Report filters">
+      <button type="button" tabIndex={example ? -1 : undefined} onClick={() => setOpen(!open)} aria-expanded={open}
+        className="glass tap flex min-h-[52px] w-full items-center gap-2 rounded-[20px] px-4 py-2 text-left sm:hidden">
+        <span className="min-w-0 flex-1 text-[15px] leading-snug"><span className="font-semibold">Filters:</span> <span className="text-slate-700 dark:text-slate-200">{summary}</span></span>
+        <span className="shrink-0 font-semibold text-teal-700 dark:text-teal-300">{open ? 'Done' : 'Edit'}</span>
+      </button>
+      <div className={`space-y-1.5 ${open ? 'rise' : 'hidden sm:block'}`}>
       <div ref={ref} className="strip -mx-4 gap-1.5 px-4 py-0.5">
         <BarChip on label={`Period: ${range.label}`} onClick={() => onOpen?.('period')}>📅 {range.label}</BarChip>
         <BarChip on={!!f.cats.length} label="Category" onClick={() => onOpen?.('cats')}>🏷️ {f.cats.length ? (catsText(f.cats) === 'Food' ? 'Food' : f.cats.length === 1 ? spendCat(f.cats[0]).label : `${f.cats.length} categories`) : 'All categories'}</BarChip>
@@ -104,6 +120,7 @@ export function FilterBar({ f, t, onOpen, onChange, onReset, saved, onSaved, onS
             className={`chip tap px-3 py-1.5 ${cur?.id === s.id ? 'border-violet-500/40 bg-violet-500/10 text-violet-900 dark:border-violet-300/30 dark:bg-violet-300/10 dark:text-violet-100' : 'border-slate-900/10 text-slate-600 dark:border-white/10 dark:text-slate-300'}`}>⭐ {s.name}</button>
         ))}
         {!cur && <button type="button" className="chip tap border-dashed border-violet-500/40 px-3 py-1.5 font-semibold text-violet-800 dark:border-violet-300/30 dark:text-violet-200" onClick={onSave}>⭐ Save this report</button>}
+      </div>
       </div>
     </section>
   );
@@ -211,7 +228,6 @@ export function ReportView({ r, f, rules, people, t, onPick, onOpen, urls, loadi
   onPick?: (p: Partial<ReportFilter>) => void; onOpen?: (x: SpendTx) => void; urls?: Record<string, string>; loading?: boolean; example?: boolean; many?: number; onMore?: () => void;
 }) {
   const ch = changeOf(r);
-  const months = r.buckets.length > 1 && r.step === 'month';
   if (!r.count && !loading) {
     return (
       <div className="card flex flex-col items-center gap-3 px-6 py-8 text-center">
@@ -222,39 +238,39 @@ export function ReportView({ r, f, rules, people, t, onPick, onOpen, urls, loadi
     );
   }
   return (
-    <div className="space-y-3">
-      <section className="card">
-        <p className="label">{r.range.label}{r.range.label !== r.range.short ? ` · ${r.range.short}` : ''}{f.cats.length ? ` · ${catsText(f.cats)}` : ''}{f.person !== 'all' ? ` · ${people.find((p) => p.email === f.person)?.name ?? ''}` : ''}</p>
-        {loading ? <div className="skel mt-2 h-9 w-40" /> : <Money n={r.total} className="block text-[36px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white" />}
+    <div className="space-y-4">
+      <section className="card !py-5">
+        <p className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">{r.range.label}{r.range.label !== r.range.short ? ` · ${r.range.short}` : ''}{f.cats.length ? ` · ${catsText(f.cats)}` : ''}{f.person !== 'all' ? ` · ${people.find((p) => p.email === f.person)?.name ?? ''}` : ''}</p>
+        {loading ? <div className="skel mt-2 h-11 w-44" /> : <Money n={r.total} className="mt-1 block text-[40px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white" />}
         {ch ? (
-          <p className="mt-0.5 text-sm font-semibold">
+          <p className="mt-1 text-[15px] font-semibold leading-snug">
             <span className={ch.dir === 'up' ? 'text-rose-700 dark:text-rose-300' : ch.dir === 'down' ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'}><span aria-hidden="true">{ch.dir === 'up' ? '▲ ' : ch.dir === 'down' ? '▼ ' : '＝ '}</span>{ch.text}</span>
             <span className="font-normal text-slate-500 dark:text-slate-400"> ({money(r.prevTotal)}, {r.prev.short})</span>
           </p>
-        ) : <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Nothing {r.prev.label} to compare with.</p>}
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{r.count} purchase{r.count === 1 ? '' : 's'} · {money(r.perPurchase)} each on average{r.buckets.length > 1 && r.step === 'month' ? ` · ${money(r.perMonth)} a month` : ''}{!f.cats.includes('transfers') ? ' · transfers not counted' : ''}</p>
+        ) : <p className="mt-1 text-[15px] text-slate-500 dark:text-slate-400">Nothing {r.prev.label} to compare with.</p>}
+        <p className="mt-2 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">{r.count} purchase{r.count === 1 ? '' : 's'} · {money(r.perPurchase)} each on average{r.buckets.length > 1 && r.step === 'month' ? ` · ${money(r.perMonth)} a month` : ''}{!f.cats.includes('transfers') ? ' · transfers not counted' : ''}</p>
       </section>
 
       {r.people.length > 1 && <PersonSplit r={r} onPick={example ? undefined : (person) => onPick?.({ person })} />}
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <HBars title="By category" rows={r.byCat.map((c) => ({ id: c.id, label: <><span aria-hidden="true">{spendCat(c.id).icon}</span> {spendCat(c.id).label}</>, name: spendCat(c.id).label, amount: c.amount, sub: `${c.count}` }))} total={r.total}
           on={f.cats.length === 1 ? f.cats[0] : null} onPick={example ? undefined : (id) => onPick?.({ cats: f.cats.length === 1 && f.cats[0] === id ? [] : [id] })} hint="Tap one to see only it" />
         <HBars title="Top shops" rows={r.shops.map((s) => ({ id: s.key, label: s.name, name: s.name, amount: s.amount, sub: `${s.count}` }))} total={r.total}
           on={f.shop || null} onPick={example ? undefined : (id) => { const s = r.shops.find((x) => x.key === id); onPick?.({ shop: f.shop === id ? '' : (s?.key ?? id) }); }} hint="Tap one to see only it" />
       </div>
 
-      {r.buckets.length > 1 && <TimeBars r={r} months={months} t={t} />}
+      {r.buckets.length > 1 && <TimeBars r={r} t={t} />}
 
-      <section className="card !px-3 !py-1" aria-label="Purchases in this report">
-        <p className="label px-1 pb-0.5 pt-2.5">{r.count} purchase{r.count === 1 ? '' : 's'}</p>
+      <section className="card !px-3 !pb-1 !pt-3.5" aria-label="Purchases in this report">
+        <h2 className={`${H2} px-1`}>Purchases <span className="num text-[15px] font-normal text-slate-500 dark:text-slate-400">{r.count}</span></h2>
         {groupByDay(r.list.slice(0, many)).map(([day, xs]) => (
           <div key={day}>
             <p className="label border-t border-slate-900/[0.06] pb-0.5 pt-2.5 dark:border-white/[0.06]">{dayText(day, t)}</p>
             <ul>{xs.map((x) => <SpendLine key={x.id ?? `${x.posted}${x.description}${x.amount}`} t={x} rules={rules} url={x.receipt_path ? urls?.[x.receipt_path] : undefined} example={example} onOpen={() => onOpen?.(x)} />)}</ul>
           </div>
         ))}
-        {r.list.length > many && onMore && <button className="tap min-h-[44px] w-full rounded-xl text-center text-xs font-semibold text-teal-700 dark:text-teal-300" onClick={onMore}>Show more ({r.list.length - many})</button>}
+        {r.list.length > many && onMore && <button className="tap min-h-[48px] w-full rounded-xl text-center text-[15px] font-semibold text-teal-700 dark:text-teal-300" onClick={onMore}>{many <= TOP ? `Show all ${r.list.length}` : `Show more (${r.list.length - many})`}</button>}
       </section>
     </div>
   );
@@ -267,23 +283,26 @@ function groupByDay(list: SpendTx[]): [string, SpendTx[]][] {
 
 /** Horizontal bars, biggest first: label, amount and share written on each (a table you can read without the bars). */
 function HBars({ title, rows, total, on, onPick, hint }: { title: string; rows: { id: string; label: ReactNode; name: string; amount: number; sub: string }[]; total: number; on: string | null; onPick?: (id: string) => void; hint?: string }) {
+  const [all, setAll] = useState(false);
   const max = Math.max(1, ...rows.map((x) => x.amount));
   if (!rows.length) return null;
+  const shown = all ? rows : rows.slice(0, TOP);
   return (
-    <section className="card !py-2.5">
-      <div className="flex items-baseline justify-between gap-2"><p className="label">{title}</p>{hint && onPick && <p className="text-[11px] text-slate-500 dark:text-slate-400">{hint}</p>}</div>
-      <ul className="mt-1">
-        {rows.map((x) => {
+    <section className="card !pb-2 !pt-3.5" aria-label={title}>
+      <h2 className={H2}>{title}</h2>
+      {hint && onPick && <p className="text-[13px] text-slate-500 dark:text-slate-400">{hint}</p>}
+      <ul className="mt-2 space-y-0.5">
+        {shown.map((x) => {
           const sel = on === x.id;
           return (
             <li key={x.id}>
               <button className={`tap -mx-2 block min-h-[44px] w-[calc(100%+1rem)] rounded-xl px-2 py-1 text-left ${sel ? 'bg-teal-500/10 ring-1 ring-teal-500/40 dark:bg-teal-300/10 dark:ring-teal-300/30' : ''}`} onClick={() => onPick?.(x.id)} disabled={!onPick} aria-pressed={sel}
                 aria-label={`${x.name}: ${money(x.amount)}, ${pct(x.amount, total)}% of the total, ${x.sub} purchases`}>
-                <span className="flex items-center justify-between gap-2 text-sm">
+                <span className="flex items-center justify-between gap-2 text-[15px]">
                   <span className="min-w-0 truncate font-semibold">{x.label}</span>
-                  <span className="shrink-0"><span className="num font-semibold text-slate-800 dark:text-slate-100">{money(x.amount)}</span> <span className="num text-xs text-slate-500 dark:text-slate-400">{pct(x.amount, total)}%</span></span>
+                  <span className="shrink-0"><span className="num font-semibold text-slate-900 dark:text-slate-50">{money(x.amount)}</span> <span className="num text-[13px] text-slate-600 dark:text-slate-300">{pct(x.amount, total)}%</span></span>
                 </span>
-                <span className="mt-1 block h-2 overflow-hidden rounded-full bg-slate-900/[0.06] dark:bg-white/[0.08]">
+                <span className="mt-1.5 block h-2.5 overflow-hidden rounded-full bg-slate-900/[0.06] dark:bg-white/[0.08]">
                   <span className={`bar-grow block h-full rounded-full ${BAR}`} style={{ width: `${Math.max(1.5, (x.amount / max) * 100)}%` }} />
                 </span>
               </button>
@@ -291,36 +310,45 @@ function HBars({ title, rows, total, on, onPick, hint }: { title: string; rows: 
           );
         })}
       </ul>
+      {rows.length > TOP && <button type="button" className="tap mt-1 min-h-[44px] w-full rounded-xl text-center text-[15px] font-semibold text-teal-700 dark:text-teal-300" aria-expanded={all} onClick={() => setAll(!all)}>{all ? 'Show top 5' : `Show all ${rows.length}`}</button>}
     </section>
   );
 }
 
-/** Over time: one column per day / week / month (tap or hover one for its amount; the biggest is labelled). */
-function TimeBars({ r, months, t }: { r: Report; months: boolean; t: string }) {
+/**
+ * Over time: one column per day / week / month. The biggest and the one you tap (or hover) carry their amount right on
+ * the column (all of them when there are 6 or fewer); dates under it at 12px.
+ */
+function TimeBars({ r, t }: { r: Report; t: string }) {
   const [sel, setSel] = useState<number | null>(null);
   const max = Math.max(1, ...r.buckets.map((b) => b.amount));
   const top = r.buckets.reduce((a, b, i) => (b.amount > r.buckets[a].amount ? i : a), 0);
   const n = r.buckets.length;
-  const every = Math.ceil(n / 7);
+  const every = Math.ceil(n / 6);
   const show = sel ?? top;
   const b = r.buckets[show];
-  const word = r.step === 'day' ? dayText(b.key, t) : r.step === 'week' ? `Week of ${dayText(b.key, t)}` : rangeOf({ kind: 'month', month: b.key }, t).label;
+  const word = (k: string) => (r.step === 'day' ? dayText(k, t) : r.step === 'week' ? `Week of ${dayText(k, t)}` : rangeOf({ kind: 'month', month: k }, t).label);
+  const short = (v: number) => (v >= 1000 ? `$${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : `$${Math.round(v)}`);
   return (
-    <section className="card !pb-3 !pt-2.5" aria-label={`Spending by ${r.step}`}>
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="label">By {r.step}</p>
-        <p className="text-xs" aria-live="polite"><span className="text-slate-500 dark:text-slate-400">{sel == null ? 'Biggest: ' : ''}{word} </span><span className="num font-semibold">{money(b.amount)}</span></p>
+    <section className="card !pb-3.5 !pt-3.5" aria-label={`Spending by ${r.step}`}>
+      <h2 className={H2}>By {r.step}</h2>
+      <p className="text-[14px]" aria-live="polite"><span className="text-slate-600 dark:text-slate-300">{sel == null ? 'Biggest: ' : ''}{word(b.key)} · </span><span className="num font-semibold">{money(b.amount)}</span></p>
+      <div className="mt-7 flex h-[150px] items-end gap-[2px] border-b border-slate-900/15 dark:border-white/15" role="list" onMouseLeave={() => setSel(null)}>
+        {r.buckets.map((x, i) => {
+          const h = x.amount > 0 ? Math.max(2, (x.amount / max) * 100) : 0;
+          const tag = x.amount > 0 && (n <= 6 || i === show || (sel == null && i === top));
+          const edge = n > 6 && i >= n - 2 ? 'right-0' : n > 6 && i <= 1 ? 'left-0' : 'left-1/2 -translate-x-1/2';
+          return (
+            <button key={x.key} role="listitem" type="button" className="group relative flex h-full min-w-0 flex-1 items-end" onClick={() => setSel(sel === i ? null : i)} onMouseEnter={() => setSel(i)}
+              aria-label={`${word(x.key)}: ${money(x.amount)}`}>
+              <span className={`col-grow block w-full rounded-t-[4px] ${BAR} ${i === show ? '' : 'opacity-50 group-hover:opacity-80'}`} style={{ height: `${h}%`, animationDelay: `${Math.min(i, 30) * 12}ms` }} />
+              {tag && <span className={`num pointer-events-none absolute whitespace-nowrap text-[12px] font-semibold text-slate-900 dark:text-slate-50 ${edge}`} style={{ bottom: `calc(${h}% + 4px)` }}>{short(x.amount)}</span>}
+            </button>
+          );
+        })}
       </div>
-      <div className="mt-3 flex h-[132px] items-end gap-[2px] border-b border-slate-900/10 dark:border-white/10" role="list" onMouseLeave={() => setSel(null)}>
-        {r.buckets.map((x, i) => (
-          <button key={x.key} role="listitem" type="button" className="group relative flex h-full min-w-0 flex-1 items-end" onClick={() => setSel(sel === i ? null : i)} onMouseEnter={() => setSel(i)}
-            aria-label={`${r.step === 'week' ? 'Week of ' : ''}${r.step === 'month' ? rangeOf({ kind: 'month', month: x.key }, t).label : dayText(x.key, t)}: ${money(x.amount)}`}>
-            <span className={`col-grow block w-full rounded-t-[4px] ${BAR} ${i === show ? '' : 'opacity-55 group-hover:opacity-80'}`} style={{ height: `${x.amount > 0 ? Math.max(2, (x.amount / max) * 100) : 0}%`, animationDelay: `${Math.min(i, 30) * 12}ms` }} />
-          </button>
-        ))}
-      </div>
-      <div className="mt-1 flex gap-[2px]" aria-hidden="true">
-        {r.buckets.map((x, i) => <span key={x.key} className="num min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[10px] text-slate-500 dark:text-slate-400">{(i % every === 0 || months) && (n <= 12 || i % every === 0) ? x.label : ''}</span>)}
+      <div className="mt-1.5 flex gap-[2px]" aria-hidden="true">
+        {r.buckets.map((x, i) => <span key={x.key} className="num min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[12px] text-slate-600 dark:text-slate-300">{i % every === 0 ? x.label : ''}</span>)}
       </div>
     </section>
   );
@@ -330,17 +358,17 @@ function TimeBars({ r, months, t }: { r: Report; months: boolean; t: string }) {
 function PersonSplit({ r, onPick }: { r: Report; onPick?: (email: string) => void }) {
   const total = r.people.reduce((a, p) => a + p.amount, 0) || 1;
   return (
-    <section className="card !py-2.5" aria-label="Who spent it">
-      <p className="label">Who spent it</p>
-      <div className="mt-2 flex h-3 gap-[2px] overflow-hidden rounded-full">
+    <section className="card !pb-2 !pt-3.5" aria-label="Who spent it">
+      <h2 className={H2}>Who spent it</h2>
+      <div className="mt-2.5 flex h-3.5 gap-[2px] overflow-hidden rounded-full">
         {r.people.filter((p) => p.amount > 0).map((p) => <span key={p.id} className={`bar-grow block h-full first:rounded-l-full last:rounded-r-full ${p.color ? SWATCH[p.color] : 'bg-slate-400 dark:bg-slate-500'}`} style={{ width: `${(p.amount / total) * 100}%` }} />)}
       </div>
       <ul className="mt-1.5 flex flex-wrap gap-x-1 gap-y-0.5">
         {r.people.map((p) => (
           <li key={p.id}>
-            <button type="button" className="tap flex min-h-[44px] items-center gap-1.5 rounded-xl px-2 text-sm" disabled={!onPick || p.id === 'none'} onClick={() => onPick?.(p.id)} aria-label={`${p.name}: ${money(p.amount)}, ${pct(p.amount, total)}%${p.id !== 'none' ? ': see only theirs' : ''}`}>
+            <button type="button" className="tap flex min-h-[44px] items-center gap-1.5 rounded-xl px-2 text-[15px]" disabled={!onPick || p.id === 'none'} onClick={() => onPick?.(p.id)} aria-label={`${p.name}: ${money(p.amount)}, ${pct(p.amount, total)}%${p.id !== 'none' ? ': see only theirs' : ''}`}>
               <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${p.color ? SWATCH[p.color] : 'bg-slate-400 dark:bg-slate-500'}`} />
-              <span className="font-semibold">{p.name}</span><span className="num">{money(p.amount)}</span><span className="num text-xs text-slate-500 dark:text-slate-400">{pct(p.amount, total)}%</span>
+              <span className="font-semibold">{p.name}</span><span className="num">{money(p.amount)}</span><span className="num text-[13px] text-slate-600 dark:text-slate-300">{pct(p.amount, total)}%</span>
             </button>
           </li>
         ))}

@@ -36,6 +36,7 @@ import { PAPER_DEFAULTS, withDefaults, type Alert, type Appointment, type Contac
 import { today } from '../../supabase/functions/_shared/money.ts';
 import { SettingsSearch, SettingsTiles } from '../components/SettingsGrid';
 import { PhoneTabBar } from '../components/Nav';
+import { MenuList } from '../components/Menu';
 import { SearchResults } from '../components/Search';
 import { QuickAddList } from '../components/QuickAdd';
 import { searchAll } from '../lib/search';
@@ -281,7 +282,7 @@ export function Guide() {
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
         <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour (or as often as you pick in 📬 Email checks) it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
-        <P>Four tabs at the bottom: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log · Reports), <b>Places</b> (Contacts · Nearby · My list) and <b>Me</b> (Vault · Privacy · Settings). The round <b>＋</b> in the middle adds anything. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>. The Guide and My apps are at the bottom of Me.</P>
+        <P>At the bottom of your phone: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log), the round <b>＋</b> that adds anything, <b>📊 Reports</b> (your spending, your way) and <b>☰ Menu</b>. The Menu lists every page: <b>Places</b> (Contacts · Nearby · My list), <b>Me</b> (Vault · Privacy · Settings), the Guide, My apps and Sign out. On a computer all the tabs sit at the top. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>.</P>
         <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and, if you want, in an email (✉️ Emails to me).</P>
       </Fold>
 
@@ -305,21 +306,25 @@ export function Guide() {
 
       <Fold icon="🧭" title="Finding your way (tabs, search, ＋)">
         <P>Each tab has a switch at the top for its parts (like <b>Bills | Spending | Returns</b>), and it remembers the part you used last on this phone. Tap the tab again any time; the phone’s back button closes an open panel first, then goes back to Home.</P>
-        <Example caption="Made-up tab bar: Places is open; ＋ sits in the middle.">
-          <PhoneTabBar tab="places" example />
+        <P>On a phone the bar at the bottom is <b>Home · Money · ＋ · Reports · Menu</b>. <b>☰ Menu</b> is the map of the whole app: every tab and its parts, one line each saying what’s there, your ⭐ saved reports under Reports, and every Settings square under Settings (tap the arrow to unfold them). Type in the box at the top to find a page by name (“vault”, “zip”, “budgets”). While you’re in Places, Me or the Guide, Menu stays lit so you know where you came from. Sign out is at the bottom (it asks first).</P>
+        <Example caption="Made-up tab bar: Reports is open; ＋ sits in the middle.">
+          <PhoneTabBar tab="reports" example />
+        </Example>
+        <Example caption="Made-up Menu with two saved reports.">
+          <MenuList saved={[{ id: 's1', name: 'Sam’s food', filter: FOOD_F }, { id: 's2', name: 'Groceries this year', filter: REPORT_F }]} meCount={2} example onSignOut={() => undefined} />
         </Example>
         <P><b>Where did it go?</b> Nothing was removed, things just moved:</P>
         <div className="card overflow-hidden !p-0">
           <table className="w-full text-left text-sm">
             <thead><tr className="label"><th className="px-3 py-2 font-normal">Before</th><th className="px-3 py-2 font-normal">Now</th></tr></thead>
             <tbody className="divide-y divide-slate-900/[0.06] dark:divide-white/[0.06]">
-              {[['Contacts tab', 'Places → 📇 Contacts'], ['Contacts → 📍 Nearby', 'Places → 🔎 Nearby'], ['Nearby → 📌 My list', 'Places → 📌 My list'], ['Vault tab', 'Me → 📁 Vault'], ['Me tab', 'Me → 🛡️ Privacy'], ['Documents that expire (Me)', 'Me → 📁 Vault (same documents)'], ['Settings tab', 'Me → ⚙️ Settings'], ['Guide and My apps (top)', 'Bottom of Me, and in Settings'], ['🆕 “added by itself” card', 'Home → What was added (the 🔔 bell still opens all)']].map(([a, b]) => (
+              {[['Money → 📊 Reports', '📊 Reports, its own tab at the bottom'], ['Places tab at the bottom', '☰ Menu → 📍 Places (a tab at the top on a computer)'], ['Me tab at the bottom', '☰ Menu → 👤 Me (a tab at the top on a computer)'], ['Contacts tab', 'Places → 📇 Contacts'], ['Contacts → 📍 Nearby', 'Places → 🔎 Nearby'], ['Nearby → 📌 My list', 'Places → 📌 My list'], ['Vault tab', 'Me → 📁 Vault'], ['Me tab', 'Me → 🛡️ Privacy'], ['Documents that expire (Me)', 'Me → 📁 Vault (same documents)'], ['Settings tab', 'Me → ⚙️ Settings'], ['Guide and My apps (top)', '☰ Menu, the bottom of Me, and Settings'], ['🆕 “added by itself” card', 'Home → What was added (the 🔔 bell still opens all)']].map(([a, b]) => (
                 <tr key={a}><td className="px-3 py-2.5 text-slate-500 dark:text-slate-400">{a}</td><td className="px-3 py-2.5 font-semibold">{b}</td></tr>
               ))}
             </tbody>
           </table>
         </div>
-        <P>Old links still work: “Settings → Nearby” and the like open the right square in Me → Settings.</P>
+        <P>Old links still work: “Settings → Nearby” and the like open the right square in Me → Settings, and old “Money → Reports” links open 📊 Reports.</P>
         <P><b>🔎 Search</b> (the magnifier at the top, on every page) finds a word anywhere in the app as you type: bills, purchases and the lines on their receipts, returns, the money log, what was added, contacts, Nearby’s weekend list, My list, your Vault documents (only while the Vault is open: a locked Vault shows one 🔒 line instead), appointments, Privacy (your name online, people-search sites, breaches, mailing lists, important dates, credit freezes), Settings and this Guide.</P>
         <P>Capitals and accents don’t matter (“cafe” finds “Café”). Type several words and only things with all of them show up. Numbers find amounts (“25” finds $25.00 and $25.49) and phone numbers by their digits. Best matches come first (in the name, then at the start of a word), then the newest. The words you typed are lit up, with a short line showing where they were found. Results come grouped by section with how many; tap a section chip at the top to see only that one. Tap a result and it opens right where it lives.</P>
         <P>Before you type: your recent searches (on this phone only) and a chip for each section, to look through just that one. On a computer, press <b>/</b> or <b>Ctrl K</b> anywhere to open it, ↑ ↓ to move and Enter to open. No AI and nothing sent anywhere.</P>
@@ -416,11 +421,12 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📊" title="Reports (your spending, your way)">
-        <P><b>Money → Reports</b> shows your spending the way you want it. Pick what to look at with the chips: <b>📅 period</b> (this month, last month, the last 3, 6 or 12 months, this year, a month, or your own dates), <b>🏷️ categories</b> (one or several; “Food” = groceries + eating out), <b>👥 person</b> (everyone, or just one person’s email), <b>🔎 shop or item</b> (“Amazon”, or “latte” from your receipts), <b>where it came from</b> (bank alert, receipt, CSV) and a <b>smallest amount</b>. They work together, and ↺ Reset clears them. This phone remembers your last choice.</P>
-        <P>The report: the <b>total</b> and how it compares with the same stretch just before (▲ more / ▼ less, in words), <b>who spent it</b> (each person in their colour), <b>by category</b>, <b>top shops</b>, a chart <b>by day, week or month</b>, and the purchases themselves (tap one to open it). Tap a category, a shop or a name to see only that.</P>
+        <P><b>📊 Reports</b> (its own tab, at the bottom on a phone) shows your spending the way you want it. Pick what to look at with the chips: <b>📅 period</b> (this month, last month, the last 3, 6 or 12 months, this year, a month, or your own dates), <b>🏷️ categories</b> (one or several; “Food” = groceries + eating out), <b>👥 person</b> (everyone, or just one person’s email), <b>🔎 shop or item</b> (“Amazon”, or “latte” from your receipts), <b>where it came from</b> (bank alert, receipt, CSV) and a <b>smallest amount</b>. They work together, and ↺ Reset clears them. This phone remembers your last choice.</P>
+        <P>On a phone the chips fold into one line, <b>Filters: This month · All people · Edit</b>: tap <b>Edit</b> to change them, <b>Done</b> to fold them again. On a computer they always show.</P>
+        <P>The report, one card at a time: the <b>total</b> in big numbers and how it compares with the same stretch just before (▲ more / ▼ less, in words), <b>who spent it</b> (each person in their colour), <b>by category</b>, <b>top shops</b>, a chart <b>by day, week or month</b>, and the purchases themselves (tap one to open it). Each chart has its amounts written on it. Long lists show their <b>top 5</b> first; <b>Show all</b> opens the rest. Tap a category, a shop or a name to see only that.</P>
         <P><b>All of it is worked out on your phone</b> from purchases already there: no AI, nothing sent. Picking just one person is only a filter, so it’s free too. Older months are loaded when you pick a longer period.</P>
         <Example caption="Made-up four weeks: Jordan (blue) and Sam (pink).">
-          <FilterBar f={REPORT_F} t={d(0)} saved={[{ id: 's1', name: 'Sam’s food', filter: FOOD_F }]} example />
+          <FilterBar f={REPORT_F} t={d(0)} people={[JORDAN, SAM]} saved={[{ id: 's1', name: 'Sam’s food', filter: FOOD_F }]} example />
           <ReportView r={REPORT_EX} f={REPORT_F} rules={REPORT_RULES} people={[JORDAN, SAM]} t={d(0)} many={3} example />
         </Example>
         <P><b>💬 Ask in your own words</b> at the top: “how much on food this month”, “Sam’s Amazon spending last 3 months”, “top shops in September”, “compare groceries this month vs last”, “purchases over $50 last week”. Your phone reads the question with free rules and shows the report for it with a one-line answer, plus <b>Understood as</b> chips: tap one to change it, ✕ to drop it. Only if it understands nothing at all, the question (with your category names, people’s names and shop names, never your amounts) goes to the free AI, Claude last, within the daily limits, and the same question is never paid for twice. Your last 10 questions stay on this phone.</P>
@@ -428,7 +434,7 @@ export function Guide() {
           <ReportAsk example />
           <ReportAnswer turn={{ q: 'How much did Sam spend on food lately?', a: '', at: '' }} answer={answerOf(FOOD_EX, FOOD_F, 'total', [JORDAN, SAM])} chips={filterChips(FOOD_F, [JORDAN, SAM], d(0))} />
         </Example>
-        <P><b>⭐ Save this report</b> keeps the filters under a name, as a chip you tap next time; saved reports are the same on all your devices (“This month” always means the current one).</P>
+        <P><b>⭐ Save this report</b> keeps the filters under a name, as a chip you tap next time (and a line in ☰ Menu under Reports); saved reports are the same on all your devices (“This month” always means the current one).</P>
       </Fold>
 
       <Fold icon="📜" title="Money log">
@@ -559,7 +565,7 @@ export function Guide() {
       </Fold>
 
       <Fold icon="📱" title="My apps (all your apps on one page)">
-        <P>Tap <b>📱 My apps</b> at the bottom of Me (or the My apps square in Me → Settings) to open a page with all your apps: Trend Videos, Trading, Scam Check, CalorieTracker, LifeTracker and CarLoaner. Each card shows a few words on how it’s doing, an <b>Open</b> button, and what its <b>paid AI</b> cost today, in the last 7 days and this month. The card at the top adds them all up.</P>
+        <P>Tap <b>📱 My apps</b> in ☰ Menu (or at the bottom of Me, or the My apps square in Me → Settings) to open a page with all your apps: Trend Videos, Trading, Scam Check, CalorieTracker, LifeTracker and CarLoaner. Each card shows a few words on how it’s doing, an <b>Open</b> button, and what its <b>paid AI</b> cost today, in the last 7 days and this month. The card at the top adds them all up.</P>
         <P>The first time, tap <b>🔑 Codes</b> and type each app’s access code (the one you already open it with), and CarLoaner’s address. They stay <b>only in that browser</b> and each code goes only to its own app. LifeTracker uses your sign-in. “Code needed” means a code is missing or wrong; “Couldn’t reach it” means the app didn’t answer. Tap ↻ for fresh numbers.</P>
         <P>Free AIs count as $0. “About” means an estimate: the app counts its AI calls and uses a rough price per call.</P>
         <Example caption="Made-up My apps page: the total, two apps that answered, one without its code and one that didn’t answer.">
