@@ -96,7 +96,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
     const before = chat ?? [];
     // "Open my lease", "show Example Dental", "where is my passport?": found on this phone, no AI needed.
     const hit = navTarget(dataOf(st), q, vaultOpen);
-    if (hit) { setChat([...before, { q, a: `Here it is: ${hit.title}${hit.sub ? ` (${hit.sub})` : ''}, in ${HIT_LABELS[hit.kind].replace(/^\S+\s/, '')}.`, by: 'this phone (no AI)', open: { label: `Open ${hit.title}`, href: hit.href, src: hit.src } }]); return; }
+    if (hit) { setChat([...before, { q, a: hit.kind === 'page' ? `Here it is: ${hit.icon} ${hit.title} (${hit.sub}).` : `Here it is: ${hit.title}${hit.sub ? ` (${hit.sub})` : ''}, in ${HIT_LABELS[hit.kind].replace(/^\S+\s/, '')}.`, by: 'this phone (no AI)', open: { label: `Open ${hit.title}`, href: hit.href, src: hit.src } }]); return; }
     setChat([...before]);
     setThinking(true);
     try {

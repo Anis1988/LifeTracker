@@ -470,7 +470,7 @@ export function Settings() {
     {status?.lastRun?.lastRun && <p className="text-xs text-slate-500 dark:text-slate-400">Last automatic run {new Date(status.lastRun.lastRun).toLocaleString()}: {[...(status.lastRun.steps ?? []), ...(status.lastRun.errors ?? []).map((e) => `⚠ ${e}`)].join(' · ') || 'nothing to do'}</p>}
     <div className="flex flex-wrap gap-2">
       <button className="btn" onClick={() => void exportAll()}>⬇ Download all my data</button>
-      <button className="btn" onClick={() => void supabase.auth.signOut()}>Sign out</button>
+      <button className="btn" onClick={() => { if (confirm('Sign out of LifeTracker on this device?')) void supabase.auth.signOut(); }}>Sign out</button>
     </div>
   </>);
   // Each section as a tile: a short live line, and the words inside it for the search.

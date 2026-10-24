@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadOlderTx, useStore } from '../lib/store';
 import { api } from '../lib/supabase';
 import { errText, toast } from '../components/ui';
+import { takeParam } from '../lib/nav';
 import { usePeople } from '../components/Person';
 import { ReceiptSheet, useThumbs } from '../components/Receipts';
 import { FilterBar, FilterSheet, REPORT_EXAMPLES, ReportAnswer, ReportAsk, ReportHistory, ReportView, SaveSheet, type FilterKey, type ReportTurn } from '../components/Reports';
@@ -10,7 +11,7 @@ import { categorize, spendCat, type SpendTx } from '../../supabase/functions/_sh
 import { today } from '../../supabase/functions/_shared/money.ts';
 
 /**
- * 📊 Money → Reports: everything worked out on this phone from the purchases already loaded (older months are read
+ * 📊 Reports (its own tab, #/reports; "#/reports?saved=<id>" opens a ⭐ saved one): everything worked out on this phone from the purchases already loaded (older months are read
  * when a longer period is picked, with your sign-in). The filter and the questions are remembered on this device;
  * ⭐ saved reports in Settings (all devices). Only a question the free reader can't understand goes to the AI, which
  * gets names only and sends back a filter.
@@ -49,7 +50,7 @@ export function Reports() {
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<FilterKey | 'save' | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  const [many, setMany] = useState(40);
+  const [many, setMany] = useState(5); // the purchases: top 5, then "Show all"
   // 📅 older months than the store keeps: read once per stretch, with your sign-in (Row Level Security)
   const [older, setOlder] = useState<{ from: string; rows: SpendTx[] }>({ from: addDays(t, -STORE_DAYS), rows: [] });
   const [loading, setLoading] = useState(false);
@@ -70,7 +71,13 @@ export function Reports() {
   }, [st.tx, older.rows]);
 
   useEffect(() => write(KF, f), [f]);
-  useEffect(() => setMany(40), [f]);
+  useEffect(() => setMany(5), [f]);
+  // "#/reports?saved=<id>" (☰ Menu) opens that ⭐ saved report.
+  useEffect(() => {
+    const id = takeParam('saved', '#/reports');
+    const x = id ? s.reports.saved.find((r) => r.id === id) : null;
+    if (x) { setF(tidy(x.filter)); setFocus('total'); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const r = useMemo(() => buildReport(all, f, { rules, people, today: t }), [all, f, rules, people, t]);
   const answer = useMemo(() => answerOf(r, f, focus, people), [r, f, focus, people]);
   // the latest answer follows the chips you change; the history keeps the newest wording
@@ -122,19 +129,22 @@ export function Reports() {
   };
 
   return (
-    <div className="stagger space-y-3">
-      <h1 className="text-[28px] font-semibold leading-tight">Reports</h1>
-      <section className="card space-y-2.5" aria-label="Ask about your spending">
+    <div className="stagger mx-auto max-w-3xl space-y-4">
+      <div>
+        <h1 className="text-[28px] font-semibold leading-tight">Reports</h1>
+        <p className="text-[15px] text-slate-600 dark:text-slate-300">Your spending, your way: ask, or change the filters.</p>
+      </div>
+      <section className="card space-y-3" aria-label="Ask about your spending">
         <ReportAsk onAsk={(q) => void ask(q)} busy={busy} />
         {!latest && !busy && <div className="strip -mx-4 gap-1.5 px-4">{REPORT_EXAMPLES.map((x) => <button key={x} className="chip tap border-teal-500/30 px-3 py-1.5 text-teal-800 dark:border-teal-300/30 dark:text-teal-200" onClick={() => void ask(x)}>{x}</button>)}</div>}
         <ReportAnswer turn={latest} answer={answer} busy={busy} chips={filterChips(f, people, t)} onChip={(k) => setSheet(k as FilterKey)} onDrop={drop} />
         <ReportHistory turns={turns.filter((x) => x.q !== latest?.q)} onAsk={(q) => void ask(q)} onClear={() => { setTurns([]); write(KC, []); }} />
       </section>
-      <FilterBar f={f} t={t} onOpen={setSheet} onChange={change} onReset={() => { setF(NO_FILTER); setFocus('total'); }} saved={s.reports.saved}
+      <FilterBar f={f} t={t} people={people} onOpen={setSheet} onChange={change} onReset={() => { setF(NO_FILTER); setFocus('total'); }} saved={s.reports.saved}
         onSaved={(x) => { setF(tidy(x.filter)); setFocus('total'); }} onSave={() => setSheet('save')} />
-      <ReportView r={r} f={f} rules={rules} people={people} t={t} loading={loading} urls={urls} many={many} onMore={() => setMany(many + 100)}
+      <ReportView r={r} f={f} rules={rules} people={people} t={t} loading={loading} urls={urls} many={many} onMore={() => setMany(many <= 5 ? 100 : many + 100)}
         onPick={(p) => setF((cur) => ({ ...cur, ...p }))} onOpen={(x) => x.id && setOpen(x.id)} />
-      <p className="text-xs text-slate-500 dark:text-slate-400">Worked out on your phone from your purchases (no AI). The same purchases, categories and people as Spending; transfers count only when you pick them.</p>
+      <p className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">Worked out on your phone from your purchases (no AI). The same purchases, categories and people as Spending; transfers count only when you pick them.</p>
       {sheet === 'save' ? (
         <SaveSheet f={f} people={people} t={t} saved={s.reports.saved} onClose={() => setSheet(null)}
           onSave={(name) => { saveReports([...s.reports.saved, { id: crypto.randomUUID?.() ?? String(Date.now()), name, filter: f }]); toast('ok', `Saved “${name}”: it’s a ⭐ chip on all your devices.`); setSheet(null); }}
