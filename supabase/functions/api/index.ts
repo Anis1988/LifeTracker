@@ -10,6 +10,7 @@ import { merchantKey } from '../_shared/recurring.ts';
 import { blockOne, sendBox, unsubscribeOne } from '../_shared/unsub.ts';
 import { EXTRA, allBoxes, mailBoxes, revoke, tokenOf } from '../_shared/mailbox.ts';
 import { ask } from '../_shared/ask.ts';
+import { reportFilter } from '../_shared/reportAi.ts';
 import { summary } from '../_shared/summary.ts';
 import { homeOf, nearbySearch, nearbyStep, thingsToDo, weekendFor } from '../_shared/nearbyFind.ts';
 import { fridayOf } from '../_shared/place.ts';
@@ -37,6 +38,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail', 'weekend']) }),
   z.object({ action: z.literal('phone-key') }),
   z.object({ action: z.literal('ask'), question: z.string().min(2).max(500), history: z.array(z.object({ q: z.string().max(500), a: z.string().max(2000) })).max(6).optional() }),
+  // 📊 Reports: a question the free reader on the phone didn't understand → a filter (names only, never amounts).
+  z.object({ action: z.literal('report-filter'), question: z.string().trim().min(2).max(300), people: z.array(z.string().max(16)).max(10), shops: z.array(z.string().max(60)).max(100) }),
   z.object({ action: z.literal('unsubscribe'), id: z.string().uuid() }),
   z.object({ action: z.literal('block'), id: z.string().uuid() }),
   z.object({ action: z.literal('vault-read'), path: z.string().min(10).max(300) }),
@@ -158,6 +161,8 @@ async function handle(req: Request): Promise<Response> {
         return json(await negotiate(db, user.id, await settingsOf(db, user.id), body.id, body.okSwitch, body.fresh));
       case 'ask':
         return json(await ask(db, user.id, await settingsOf(db, user.id), body.question, body.history ?? []));
+      case 'report-filter':
+        return json(await reportFilter(db, user.id, await settingsOf(db, user.id), body.question, body.people, body.shops));
       case 'unsubscribe':
       case 'block': {
         const { data: sender } = await db.from('senders').select('*').eq('id', body.id).eq('user_id', user.id).maybeSingle();

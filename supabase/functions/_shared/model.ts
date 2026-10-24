@@ -1,3 +1,4 @@
+import type { ReportFilter } from './report.ts';
 /**
  * Shared by the app (src/) and the server functions: the shape of the data, the categories, the settings and
  * their defaults. Plain TypeScript only (no Deno or browser APIs), so both sides import the same file.
@@ -353,7 +354,10 @@ export interface Settings {
    * in the app (Home, 🔔) whatever this says.
    */
   emails: { on: boolean; often: EmailOften; kinds: Record<EmailKind, boolean> };
+  /** 📊 Money → Reports: saved reports (⭐ chips), the same on every device. */
+  reports: { saved: SavedReport[] };
 }
+export interface SavedReport { id: string; name: string; filter: ReportFilter }
 export type EmailOften = 'daily' | 'weekly' | 'important' | 'never';
 export type EmailKind = 'added' | 'due' | 'price' | 'weekend' | 'week' | 'security';
 
@@ -389,6 +393,7 @@ export const DEFAULT_SETTINGS: Settings = {
   vault: { emails: true, maxPerRun: 6, people: [{ name: 'Me', kind: 'me' }], lock: { on: false, hash: '', salt: '', len: 0, minutes: 5, resetAsked: null } },
   mail: { every: 60 },
   emails: { on: true, often: 'daily', kinds: { added: false, due: true, price: true, weekend: true, week: true, security: true } },
+  reports: { saved: [] },
 };
 
 /** ✉️ Emails to me: saved choice, else from the older switches ("Email me new heads-ups", "My week" email). */
@@ -430,6 +435,7 @@ export function withDefaults(s: Partial<Settings> | null | undefined): Settings 
     place: { ...d.place, ...s?.place, zip: /^\d{5}$/.test(s?.place?.zip?.trim() ?? '') ? s!.place!.zip.trim() : d.place.zip },
     vault: { ...d.vault, ...s?.vault, people: s?.vault?.people?.length ? s.vault.people : d.vault.people, lock: { ...d.vault.lock, ...s?.vault?.lock } },
     emails: emailsOf(s),
+    reports: { saved: Array.isArray(s?.reports?.saved) ? s.reports.saved.filter((x) => x && typeof x.name === 'string' && x.filter?.period).slice(0, 20) : [] },
     mail: { every: typeof s?.mail?.every === 'number' && (MAIL_EVERY as readonly number[]).includes(s.mail.every) ? s.mail.every : d.mail.every },
   };
 }

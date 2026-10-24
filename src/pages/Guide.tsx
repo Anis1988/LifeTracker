@@ -10,6 +10,8 @@ import { personOf } from '../../supabase/functions/_shared/mailPeople.ts';
 import { PurchaseRow, SpendingView } from '../components/Spending';
 import { MismatchPanel, PhotoPick, ReceiptDetailsView, SpendLine } from '../components/Receipts';
 import { LogLines, type LogRow } from '../components/MoneyLog';
+import { FilterBar, ReportAnswer, ReportAsk, ReportView } from '../components/Reports';
+import { NO_FILTER, answerOf, buildReport, filterChips, type ReportFilter } from '../../supabase/functions/_shared/report.ts';
 import type { SpendTx } from '../../supabase/functions/_shared/spend.ts';
 import { DateRow } from '../components/Dates';
 import { timeline } from '../lib/timeline';
@@ -229,6 +231,20 @@ const GMAIL_EXTRAS: GoogleExtra[] = [
   { kind: 'google:3', email: 'old.shopping@example.com', on: false, gmail: true, mailbox: false, lastScan: hoursAgo(30), lastError: null, connectedAt: null },
 ];
 
+// 📊 made-up purchases for Reports: Jordan's (bank alerts = the main mailbox) and Sam's (receipts from Sam's email)
+const rp = (id: string, days: number, amount: number, description: string, sam = false): SpendTx => ({ id, posted: d(days), amount: -amount, description, merchant: description.toLowerCase(), source: sam ? 'receipt' : 'alert', account: 'Example Bank card', receipt_path: null, note: sam ? 'From email (sam@example.com): your receipt' : null, details: null });
+const REPORT_TX: SpendTx[] = [
+  rp('p1', -1, 64.37, 'Example Market'), rp('p2', -3, 23.45, 'Example Cafe', true), rp('p3', -4, 41.2, 'Example Gas'), rp('p4', -6, 88.1, 'Example Market', true),
+  rp('p5', -8, 15.5, 'Example Pizza'), rp('p6', -10, 52.75, 'Example Market'), rp('p7', -12, 31.9, 'Example Cafe', true), rp('p8', -13, 19.99, 'Example Books Online'),
+  rp('q1', -33, 120.4, 'Example Market'), rp('q2', -36, 64.0, 'Example Cafe', true), rp('q3', -40, 38.5, 'Example Gas'), rp('q4', -44, 95.3, 'Example Market', true),
+];
+const REPORT_RULES = { 'example market': 'groceries', 'example cafe': 'dining', 'example pizza': 'dining', 'example gas': 'gas', 'example books online': 'shopping' };
+const REPORT_CTX = { rules: REPORT_RULES, people: [JORDAN, SAM], today: d(0) };
+const REPORT_F: ReportFilter = { ...NO_FILTER, period: { kind: 'custom', from: d(-27), to: d(0) } };
+const FOOD_F: ReportFilter = { ...REPORT_F, cats: ['groceries', 'dining'], person: SAM.email };
+const REPORT_EX = buildReport(REPORT_TX, REPORT_F, REPORT_CTX);
+const FOOD_EX = buildReport(REPORT_TX, FOOD_F, REPORT_CTX);
+
 const Example = ({ children, caption }: { children: ReactNode; caption: string }) => (
   <figure className="space-y-1.5">
     <div className="pointer-events-none relative select-none space-y-2 rounded-[24px] border border-dashed border-teal-600/25 bg-white/30 p-2.5 pt-7 dark:border-teal-300/20 dark:bg-white/[0.02]" aria-hidden="true">
@@ -265,7 +281,7 @@ export function Guide() {
       <Fold icon="✨" title="What it does" open>
         <P>LifeTracker keeps every regular payment in one place: subscriptions, mortgage or rent, insurance, utilities, phone and internet, loans, memberships. It shows what they cost each month and year, what’s due next, and warns you before a renewal, a free trial ending, or a price going up.</P>
         <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour (or as often as you pick in 📬 Email checks) it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
-        <P>Four tabs at the bottom: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log), <b>Places</b> (Contacts · Nearby · My list) and <b>Me</b> (Vault · Privacy · Settings). The round <b>＋</b> in the middle adds anything. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>. The Guide and My apps are at the bottom of Me.</P>
+        <P>Four tabs at the bottom: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log · Reports), <b>Places</b> (Contacts · Nearby · My list) and <b>Me</b> (Vault · Privacy · Settings). The round <b>＋</b> in the middle adds anything. At the top: <b>🔎 search</b> and the <b>🔔 Inbox</b>. The Guide and My apps are at the bottom of Me.</P>
         <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and, if you want, in an email (✉️ Emails to me).</P>
       </Fold>
 
@@ -397,6 +413,22 @@ export function Guide() {
           <div className="card"><ReceiptDetailsView t={RECEIPTS[0]} rules={{}} example actions={{ edit: () => undefined, del: () => undefined }} /></div>
         </Example>
         <P><b>How often</b>: your Gmail is checked <b>every hour</b> by itself (change it in Settings → 📬 Email checks) for receipts, bank alerts, bills, orders and documents (free checks first, so most hours cost nothing). Settings → Spending & returns shows when it last checked.</P>
+      </Fold>
+
+      <Fold icon="📊" title="Reports (your spending, your way)">
+        <P><b>Money → Reports</b> shows your spending the way you want it. Pick what to look at with the chips: <b>📅 period</b> (this month, last month, the last 3, 6 or 12 months, this year, a month, or your own dates), <b>🏷️ categories</b> (one or several; “Food” = groceries + eating out), <b>👥 person</b> (everyone, or just one person’s email), <b>🔎 shop or item</b> (“Amazon”, or “latte” from your receipts), <b>where it came from</b> (bank alert, receipt, CSV) and a <b>smallest amount</b>. They work together, and ↺ Reset clears them. This phone remembers your last choice.</P>
+        <P>The report: the <b>total</b> and how it compares with the same stretch just before (▲ more / ▼ less, in words), <b>who spent it</b> (each person in their colour), <b>by category</b>, <b>top shops</b>, a chart <b>by day, week or month</b>, and the purchases themselves (tap one to open it). Tap a category, a shop or a name to see only that.</P>
+        <P><b>All of it is worked out on your phone</b> from purchases already there: no AI, nothing sent. Picking just one person is only a filter, so it’s free too. Older months are loaded when you pick a longer period.</P>
+        <Example caption="Made-up four weeks: Jordan (blue) and Sam (pink).">
+          <FilterBar f={REPORT_F} t={d(0)} saved={[{ id: 's1', name: 'Sam’s food', filter: FOOD_F }]} example />
+          <ReportView r={REPORT_EX} f={REPORT_F} rules={REPORT_RULES} people={[JORDAN, SAM]} t={d(0)} many={3} example />
+        </Example>
+        <P><b>💬 Ask in your own words</b> at the top: “how much on food this month”, “Sam’s Amazon spending last 3 months”, “top shops in September”, “compare groceries this month vs last”, “purchases over $50 last week”. Your phone reads the question with free rules and shows the report for it with a one-line answer, plus <b>Understood as</b> chips: tap one to change it, ✕ to drop it. Only if it understands nothing at all, the question (with your category names, people’s names and shop names, never your amounts) goes to the free AI, Claude last, within the daily limits, and the same question is never paid for twice. Your last 10 questions stay on this phone.</P>
+        <Example caption="Made-up question, read on the phone (free).">
+          <ReportAsk example />
+          <ReportAnswer turn={{ q: 'How much did Sam spend on food lately?', a: '', at: '' }} answer={answerOf(FOOD_EX, FOOD_F, 'total', [JORDAN, SAM])} chips={filterChips(FOOD_F, [JORDAN, SAM], d(0))} />
+        </Example>
+        <P><b>⭐ Save this report</b> keeps the filters under a name, as a chip you tap next time; saved reports are the same on all your devices (“This month” always means the current one).</P>
       </Fold>
 
       <Fold icon="📜" title="Money log">
