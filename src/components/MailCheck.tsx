@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
-import { Seg } from './ui';
+import { Seg, toast } from './ui';
+import { api } from '../lib/supabase';
 import { settingsHref } from './SettingsGrid';
-import { MAIL_EVERY, nextMailCheck, type MailCheck } from '../../supabase/functions/_shared/model.ts';
+import { MAIL_EVERY, MAIL_NOW_GAP, nextMailCheck, type MailCheck } from '../../supabase/functions/_shared/model.ts';
 
 /** 📬 Email checks: the choices (minutes; 0 = Off, daily run only). */
 const LABELS: Record<number, string> = { 15: '15m', 30: '30m', 60: '1h', 120: '2h', 240: '4h', 0: 'Off' };
@@ -46,13 +47,66 @@ export function MailPill({ every, check, now = Date.now(), href, label = true }:
     : <span className="flex min-w-0 max-w-full">{body}</span>;
 }
 
+/** Is Gmail connected (main account or an extra one switched on)? */
+function useGmailOn() {
+  const g = useStore().status;
+  return !!g && (!!(g.google.connected && g.google.gmail) || !!g.googleExtras?.some((x) => x.on && x.gmail));
+}
+
+/** The 📬 Check email now button (also drawn in the Guide, without onTap). */
+export function MailNowButton({ busy, wait, onTap }: { busy: boolean; wait: number; onTap?: () => void }) {
+  return (
+    <button type="button" className="btn min-h-[44px] w-full max-w-xs justify-center" disabled={busy || wait > 0} aria-busy={busy} onClick={onTap}>
+      {busy ? <><span className="spinner" /> Checking…</> : wait > 0 ? <>📬 Checked · again in <span className="num">{wait}s</span></> : '📬 Check email now'}
+    </button>
+  );
+}
+
+// One shared "last tap" for every tab (the button is drawn again on each tab), so switching tabs can't skip the wait.
+let lastTap = 0;
+let running = false;
+
+/** At the bottom of every tab: read Gmail now (the same look as the quarter-hour check, every mailbox). */
+export function MailNowRow() {
+  const st = useStore();
+  const on = useGmailOn();
+  const [busy, setBusy] = useState(running);
+  const [now, setNow] = useState(() => Date.now());
+  const wait = Math.ceil(Math.max(0, lastTap + MAIL_NOW_GAP - now) / 1000);
+  useEffect(() => {
+    if (!busy && wait <= 0) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [busy, wait]);
+  if (!on) return null;
+  const run = async () => {
+    if (running) return;
+    running = true; setBusy(true);
+    try {
+      const r = await api<{ ok: boolean; wait?: boolean; text?: string; check?: MailCheck | null }>('run', { part: 'email-now' });
+      if (r.wait) toast('info', `📬 ${r.text ?? 'Just checked a moment ago'}`);
+      else toast(r.check?.state === 'err' ? 'err' : 'ok', `📬 ${r.check?.text ?? 'Checked'}`);
+      await Promise.all([st.reload().catch(() => undefined), st.reloadStatus()]);
+    } catch (e) {
+      toast('err', `📬 ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      running = false; lastTap = Date.now(); setNow(Date.now()); setBusy(false);
+    }
+  };
+  return (
+    <div className="flex justify-center pt-2">
+      <MailNowButton busy={busy} wait={wait} onTap={() => void run()} />
+    </div>
+  );
+}
+
 /** Under the header on every tab: shown once Gmail is connected; refreshes itself just after each check. */
 export function MailCheckBar() {
   const st = useStore();
   const [now, setNow] = useState(() => Date.now());
   const every = st.settings.mail.every;
   const g = st.status;
-  const on = !!g && (!!(g.google.connected && g.google.gmail) || !!g.googleExtras?.some((x) => x.on && x.gmail));
+  const on = useGmailOn();
   const { reloadStatus } = st;
   // A tick each minute keeps "next" right; 2 min after a check slot passes, the new "last" is fetched.
   const [waitFor, setWaitFor] = useState(() => nextMailCheck(every, Date.now()));

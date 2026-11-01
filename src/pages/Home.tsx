@@ -10,7 +10,7 @@ import { WeekCard } from '../components/Me';
 import { ApptDetails } from '../components/Appointments';
 import { AskBar, AskChat, SpendCard, TimelineList, askError, type Turn } from '../components/Dash';
 import { Chevron, Sheet, errText, toast } from '../components/ui';
-import { MailCheckBar } from '../components/MailCheck';
+import { MailCheckBar, MailNowRow } from '../components/MailCheck';
 import { NearbyLink, WeekendCard, WeekendLists, useSpotToggles } from '../components/Nearby';
 import { isWeekendNow, zipOf } from '../../supabase/functions/_shared/place.ts';
 import { api } from '../lib/supabase';
@@ -155,6 +155,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
         <WeekCard lines={lines} onOpen={() => goTo('me', 'privacy')} />
         {feed.length > 0 && <AddedCard list={feed} week={weekAdded} busy={added.busy} onUndo={(e) => void added.undo(e)} onOpen={added.open} onAll={() => go('inbox')} />}
         <AlertList alerts={st.alerts} items={st.items} onSeen={(id) => void st.seeAlert(id)} />
+        <MailNowRow />
         <div className="space-y-1 pb-2 opacity-80">
           <MailCheckBar />
           <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">🔄 Automatic check {ago(st.status?.lastRun?.lastRun)}{st.status?.lastRun?.errors?.length ? ` · ⚠ ${st.status.lastRun.errors[0]}` : ''}</p>
