@@ -3,13 +3,15 @@ import { getAttachment, isRateLimit, readEmail, type Mail } from './google.ts';
 import { allBoxes, boxTag, tokenOf, type Box } from './mailbox.ts';
 import { connection, saveConnection } from './server.ts';
 import { iso } from './money.ts';
-import { barcodeImgOf, barcodeNumberOf, cleanBarcode, formatOf, type Barcode } from './barcode.ts';
+import { barcodeImgOf, barcodeNumberOf, barsOf, cleanBarcode, formatOf, htmlText, type Barcode } from './barcode.ts';
 import type { ReceiptDetails } from './receiptText.ts';
 
 /**
  * 🔲 Receipt barcodes from emails (server side, free, no AI): the barcode picture in the email's HTML is copied into
- * the private `docs` bucket (`<uid>/receipts/barcode-<msg id>.<ext>`: https only, public addresses only, images only,
- * 500 KB at most) and the number printed with it is read with free patterns (`barcode.ts`).
+ * the private `docs` bucket (`<uid>/receipts/barcode-<msg id>.<ext>`: https only (http tried as https), public
+ * addresses only, every redirect checked again, images only, 500 KB at most; CID attachments and data: pictures too).
+ * The value: from the barcode maker's address (TJX), else bars drawn in HTML/SVG, else the number printed with it
+ * (free patterns on the HTML's words, `barcode.ts`).
  */
 const MAX = 500 * 1024;
 const TYPES: Record<string, string> = { 'image/png': 'png', 'image/gif': 'gif', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/bmp': 'bmp' };
@@ -18,7 +20,7 @@ const PRIVATE = /^(localhost|.*\.(local|internal|localdomain|lan|home|corp)|0\.|
 /** A picture from the web, read safely: https, a public host (each redirect checked again), an image type, ≤ 500 KB. */
 export async function fetchImage(url: string): Promise<{ bytes: Uint8Array; mime: string }> {
   let u = url;
-  for (let hop = 0; hop < 4; hop++) {
+  for (let hop = 0; hop < 6; hop++) {
     const p = new URL(u);
     if (p.protocol !== 'https:' || PRIVATE.test(p.hostname) || /^\d+$/.test(p.hostname)) throw new Error('not a public https picture');
     const res = await fetch(p, { redirect: 'manual', headers: { Accept: 'image/*' }, signal: AbortSignal.timeout(12_000) });
@@ -50,18 +52,26 @@ const sniff = (b: Uint8Array, given: string) => (b[0] === 0x89 && b[1] === 0x50 
 /** The barcode of one receipt email (or null): its picture kept in this person's folder, and the number with it. */
 export async function barcodeForMail(db: SupabaseClient, userId: string, at: string, m: Mail): Promise<Barcode | null> {
   const img = barcodeImgOf(m.html);
-  const value = barcodeNumberOf(m.text, img?.after) ?? '';
+  const bars = img ? null : barsOf(m.html);
+  // the HTML's own words too: the plain part may be a "can't show HTML" stub
+  const text = m.html ? `${m.text}\n${htmlText(m.html.slice(0, 300_000))}` : m.text;
+  const value = img?.value ?? bars?.value ?? barcodeNumberOf(text, img?.after ?? bars?.after) ?? '';
   let image: string | undefined;
   if (img) {
     try {
       let file: { bytes: Uint8Array; mime: string };
-      if (/^cid:/i.test(img.src)) {
+      const data = img.src.match(/^data:(image\/[\w.+-]+);base64,([\s\S]+)$/i);
+      if (data) {
+        const b64 = data[2].replace(/\s+/g, '');
+        if (b64.length * 0.75 > MAX) throw new Error('picture too big');
+        file = { bytes: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), mime: data[1].toLowerCase() };
+      } else if (/^cid:/i.test(img.src)) {
         const cid = img.src.slice(4).replace(/^<|>$/g, '');
         const a = (m.attachments ?? []).find((x) => x.cid === cid);
         if (!a || a.size > MAX) throw new Error('no picture');
         const bytes = await getAttachment(at, m.id, a.attachmentId);
         file = { bytes, mime: a.mime };
-      } else file = await fetchImage(img.src);
+      } else file = await fetchImage(img.src.replace(/^http:/i, 'https:'));
       const mime = sniff(file.bytes, file.mime);
       if (!mime || file.bytes.length > MAX) throw new Error('not a picture');
       const path = `${userId}/receipts/barcode-${m.id.replace(/[^\w-]/g, '')}.${TYPES[mime]}`;
@@ -69,8 +79,8 @@ export async function barcodeForMail(db: SupabaseClient, userId: string, at: str
       if (!up.error) image = path;
     } catch { /* the number alone is still kept */ }
   }
-  if (img?.qr && image) return cleanBarcode({ value: '', format: 'qr', image, from: 'email' });
-  return cleanBarcode({ value, format: value ? formatOf(value) : 'unknown', image, from: 'email' });
+  if (img?.qr && !img.value && image) return cleanBarcode({ value: '', format: 'qr', image, from: 'email' });
+  return cleanBarcode({ value, format: img?.value ? img.format ?? formatOf(value) : bars?.value ? 'code128' : value ? formatOf(value) : 'unknown', image, from: 'email' });
 }
 
 /** The mailbox a receipt email came from: `gmail:<id>|<address>`, else details.mailbox, else the main one. */
@@ -91,8 +101,14 @@ export async function barcodeFromEmail(db: SupabaseClient, userId: string, t: Ro
   if (!msg) return null;
   const box = boxOfReceipt(boxes ?? await allBoxes(db, userId), t.receipt_path, t.details?.mailbox);
   if (!box) throw new Error('The mailbox of this receipt is not connected any more.');
-  const at = await tokenOf(box);
-  const m = await readEmail(at, msg, boxTag(box));
+  let at: string, m: Mail;
+  try {
+    at = await tokenOf(box);
+    m = await readEmail(at, msg, boxTag(box));
+  } catch (e) {
+    const why = e instanceof Error ? e.message.replace(/^Google:\s*/, '') : String(e);
+    throw new Error(/not found|HTTP 404/i.test(why) ? 'This receipt email is no longer in Gmail (deleted?).' : `Couldn't reach Gmail: ${why.slice(0, 120)}`);
+  }
   return barcodeForMail(db, userId, at, m);
 }
 export const withBarcode = (t: Row, b: Barcode | null): ReceiptDetails => ({ ...(t.details ?? baseDetails(t)), barcode: b });

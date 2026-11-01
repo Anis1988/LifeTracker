@@ -333,7 +333,7 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     // 🔲 From the phone (decoded from the receipt picture) or from the receipt's email again: free, never the AI.
     let b: Barcode | null = a.barcode ? cleanBarcode({ ...a.barcode, from: 'photo' }) : null;
     if (!b && messageOf(t.receipt_key)) b = await barcodeFromEmail(db, userId, t);
-    if (!b) return { status: 'none', text: messageOf(t.receipt_key) ? 'No barcode found in the receipt email.' : 'No barcode found on the receipt picture. Try ✨ Re-read, or attach a clearer photo.' };
+    if (!b) return { status: 'none', text: messageOf(t.receipt_key) ? 'No barcode in this receipt email (read again just now): show the receipt from the email at the till instead.' : 'No barcode found on the receipt picture. Try ✨ Re-read, or attach a clearer photo.' };
     const prev = t.details?.barcode?.image;
     const tx = await save({ details: withBarcode(t, b) });
     if (prev && prev !== b.image) await dropFile(db, userId, prev);
