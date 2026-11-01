@@ -1,3 +1,4 @@
+import { barcodeOfStored } from '../lib/barcode';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, supabase } from '../lib/supabase';
@@ -186,7 +187,7 @@ function VaultList() {
             onExisting={(p) => { setEdit(null); setTimeout(() => setOpenId(p.id), 50); }}
             onDelete={edit.id ? () => st.deletePaper(edit as Paper) : undefined}
             onDone={() => setEdit(null)} read={(path) => api<VaultReadResult>('vault-read', { path })}
-            onReceipt={async (path) => { const r = await api<{ text: string }>('receipt-add', { path }); toast('ok', `🧾 A receipt: ${r.text}`); await st.reload(); }} />
+            onReceipt={async (path) => { const barcode = await barcodeOfStored(path); const r = await api<{ text: string }>('receipt-add', { path, barcode }); toast('ok', `🧾 A receipt: ${r.text}`); await st.reload(); }} />
         </Sheet>
       )}
     </div>

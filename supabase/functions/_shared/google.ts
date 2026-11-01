@@ -195,9 +195,9 @@ export async function syncCalendar(at: string, calendarId: string, items: Item[]
 
 // ---------- ✉️ Gmail (read-only) ----------
 const GM = 'https://gmail.googleapis.com/gmail/v1/users/me';
-export interface Mail { id: string; from: string; subject: string; date: string; text: string; at: number; listUnsub?: string; attachments?: Attachment[]; box?: string } // date = UTC day; at = when it arrived (ms); listUnsub = a mailing list; box = the extra mailbox it came from (none = the main one)
+export interface Mail { id: string; from: string; subject: string; date: string; text: string; at: number; listUnsub?: string; attachments?: Attachment[]; box?: string; html?: string } // html = the raw HTML part (capped), for 🔲 the receipt barcode; date = UTC day; at = when it arrived (ms); listUnsub = a mailing list; box = the extra mailbox it came from (none = the main one)
 /** 📎 A file attached to an email (only its name, type and size: the file itself is fetched with getAttachment). */
-export interface Attachment { filename: string; mime: string; size: number; attachmentId: string; inline: boolean }
+export interface Attachment { filename: string; mime: string; size: number; attachmentId: string; inline: boolean; cid?: string } // cid = Content-ID (a picture shown inside the email as <img src="cid:…">)
 
 /** Receipt / bill / renewal emails (and anything sent to you+lifetracker@…) from the last `days` days. */
 export async function findBillEmails(at: string, days: number, plusTag: string, max = 40): Promise<string[]> {
@@ -213,7 +213,7 @@ function attachmentsOf(p: Part): Attachment[] {
   const walk = (x: Part) => {
     if (x.filename && x.body?.attachmentId) {
       const h = (n: string) => x.headers?.find((y) => y.name.toLowerCase() === n)?.value ?? '';
-      out.push({ filename: x.filename.slice(0, 200), mime: (x.mimeType ?? '').toLowerCase(), size: x.body.size ?? 0, attachmentId: x.body.attachmentId, inline: /^inline/i.test(h('content-disposition')) || (!!h('content-id') && !/^attachment/i.test(h('content-disposition'))) });
+      out.push({ filename: x.filename.slice(0, 200), mime: (x.mimeType ?? '').toLowerCase(), size: x.body.size ?? 0, attachmentId: x.body.attachmentId, inline: /^inline/i.test(h('content-disposition')) || (!!h('content-id') && !/^attachment/i.test(h('content-disposition'))), ...(h('content-id') ? { cid: h('content-id').replace(/^<|>$/g, '').slice(0, 200) } : {}) });
     }
     x.parts?.forEach(walk);
   };
@@ -256,7 +256,7 @@ export async function readEmail(at: string, id: string, box?: string): Promise<M
   tally.get(at)?.add(id);
   const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
   const t = textOf(m.payload);
-  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: bodyText(t).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload), ...(box ? { box } : {}) };
+  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: bodyText(t).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload), ...(t.html ? { html: t.html.slice(0, 300_000) } : {}), ...(box ? { box } : {}) };
 }
 
 /** 📎 One attachment's bytes (read-only). */

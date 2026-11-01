@@ -35,6 +35,7 @@ export const ExtractedSchema = z.object({
   date: day.describe('the date printed on it (the purchase date of a receipt, the invoice date), or empty'),
   tax: z.number().nullable().describe('receipts: the tax amount; otherwise null'),
   items: z.array(z.object({ name: z.string(), qty: z.number().nullable(), price: z.number().nullable().describe('the line total') })).describe('receipts: the lines bought (up to 40), short names; otherwise empty'),
+  barcode: z.string().describe('receipts: the number printed under or next to the barcode / QR code (receipt, transaction or TC# number), digits and letters only; otherwise empty'),
 });
 
 /** What to ask: the answer's shape (zod), the instructions, and how to introduce the text. */

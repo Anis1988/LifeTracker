@@ -8,6 +8,8 @@ import { EmailControls } from '../components/Emails';
 import { PeopleCtx, PersonChip, PersonFilter } from '../components/Person';
 import { personOf } from '../../supabase/functions/_shared/mailPeople.ts';
 import { PurchaseRow, SpendingView } from '../components/Spending';
+import { BarcodeArt, BarcodeGlyph } from '../components/Barcode';
+import { groupDigits, type Barcode } from '../../supabase/functions/_shared/barcode.ts';
 import { MismatchPanel, PhotoPick, ReceiptDetailsView, SpendLine } from '../components/Receipts';
 import { LogLines, type LogRow } from '../components/MoneyLog';
 import { FilterBar, ReportAnswer, ReportAsk, ReportView } from '../components/Reports';
@@ -154,10 +156,11 @@ const SCRIPT = {
 const RULES = { 'example market': 'groceries', 'example gas': 'gas', 'example cafe': 'dining', 'example pharmacy': 'health' };
 const REPORT = spendReport(TX, RULES, ym(0), 31);
 // 🧾 made-up receipts in Spending
+const EX_BARCODE: Barcode = { value: '20481739506172839405', format: 'code128', from: 'email' }; // 🔲 a made-up receipt number
 const MARKET = ['Bananas', 'Whole milk, 1 gal', 'Sourdough bread', 'Eggs, dozen', 'Baby spinach', 'Cheddar cheese', 'Chicken thighs', 'Rice, 2 lb', 'Olive oil', 'Apples, 3 lb', 'Greek yogurt', 'Coffee beans'];
 const RECEIPTS: SpendTx[] = [
   { id: 'r1', posted: d(-2), amount: -23.45, description: 'Example Cafe', merchant: 'example cafe', source: 'alert', account: 'Example Bank card', receipt_path: 'example.jpg', note: 'From email: Your receipt from Example Cafe — Example Cafe, ' + d(-2),
-    details: { store: 'Example Cafe', date: d(-2), total: 23.45, tax: 1.75, card: '4821', read: 'free', items: [{ name: 'Oat latte', qty: 2, price: 11.0 }, { name: 'Blueberry muffin', qty: 1, price: 3.95 }, { name: 'Tip', qty: null, price: 6.75 }] } },
+    details: { store: 'Example Cafe', date: d(-2), total: 23.45, tax: 1.75, card: '4821', read: 'free', items: [{ name: 'Oat latte', qty: 2, price: 11.0 }, { name: 'Blueberry muffin', qty: 1, price: 3.95 }, { name: 'Tip', qty: null, price: 6.75 }], barcode: EX_BARCODE } },
   { id: 'r3', posted: d(-4), amount: -64.37, description: 'Example Market', merchant: 'example market', source: 'receipt', account: 'Receipt', receipt_path: 'example-2.jpg', note: 'Added by hand on ' + d(-4),
     details: { store: 'Example Market', date: d(-4), total: 64.37, tax: 2.15, card: '4821', read: 'ai', by: 'Gemini Flash (free)', items: MARKET.map((name, k) => ({ name, qty: k % 4 === 1 ? 2 : 1, price: [0.89, 7.58, 5.49, 4.29, 3.99, 6.49, 9.12, 3.29, 8.99, 4.99, 5.79, 11.49][k] })) } },
   { id: 'r2', posted: d(-6), amount: -86.12, description: 'Example Hardware', merchant: 'example hardware', source: 'receipt', account: 'Receipt', receipt_path: 'example.pdf', note: 'From email: Your Example Hardware receipt — Example Hardware, ' + d(-6),
@@ -424,6 +427,15 @@ export function Guide() {
         <P>The receipt’s picture: tap it for full screen (tap again to zoom) with ⬇ Download, ↗ Share and 🗑 Delete; a receipt that is an email opens the email.</P>
         <Example caption="Made-up receipt sheet: what was read from it.">
           <div className="card"><ReceiptDetailsView t={RECEIPTS[0]} rules={{}} example actions={{ edit: () => undefined, del: () => undefined }} /></div>
+        </Example>
+        <P><b>🔲 Barcode</b> (lost the paper receipt? scan the one in the app): every receipt keeps its barcode. From an email, the barcode picture and the number printed under it (“TC#”, “REC#”, “Receipt #”, “Transaction #”…) are copied for free. From a photo or PDF, your phone reads the barcode itself; if it can’t, the number under it comes with the normal reading of the receipt (no extra AI). On an older receipt, tap <b>🔲 Find barcode</b> on it (free); older email receipts also get theirs a few at a time each night. A line with a barcode has a small <span className="inline-flex align-middle"><BarcodeGlyph /></span> button.</P>
+        <P>Tap the barcode for <b>full screen</b>: big, black on white (also in dark mode), the number in large print, and the screen stays on. Turn your screen brightness up and hold the phone flat under the scanner; if it won’t scan, the cashier can type the number. Search finds a receipt by its number too.</P>
+        <Example caption="Made-up receipt barcode, as shown full screen (the number is made up).">
+          <div className="rounded-2xl border border-slate-900/10 bg-white p-4 text-slate-900">
+            <BarcodeArt b={EX_BARCODE} />
+            <p className="num mt-2 break-all text-center font-mono text-xl font-semibold tracking-[0.08em]">{groupDigits(EX_BARCODE.value)}</p>
+            <p className="mt-1 text-center text-xs text-slate-600">☀️ Turn up your screen brightness, then hold the phone flat under the scanner.</p>
+          </div>
         </Example>
         <P><b>How often</b>: your Gmail is checked <b>every hour</b> by itself (change it in Settings → 📬 Email checks) for receipts, bank alerts, bills, orders and documents (free checks first, so most hours cost nothing). Settings → Spending & returns shows when it last checked.</P>
       </Fold>
