@@ -20,12 +20,15 @@ import { mimeOf, readVault } from '../_shared/vault.ts';
 import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow, type ReceiptOp } from '../_shared/receipts.ts';
 import { PERSON_COLORS } from '../_shared/mailPeople.ts';
 import { mailNowWait, type Item, type MailCheck, type Sender } from '../_shared/model.ts';
+import { BARCODE_FORMATS, type BarcodeFormat } from '../_shared/barcode.ts';
 
 /**
  * The app's server (POST /functions/v1/api {action, ...}), signed-in users only. Everything you can see or change
  * directly (bills, suggestions, documents, alerts, settings) goes straight to the database with Row Level Security;
  * this is only for what needs secrets: the bank, Google, the AI and the automatic run.
  */
+// 🔲 A barcode decoded on the phone (sent with a receipt photo, or for "Find barcode").
+const Barcode = z.object({ value: z.string().max(300), format: z.enum(BARCODE_FORMATS as [BarcodeFormat, ...BarcodeFormat[]]) }).nullable().optional();
 const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status') }),
   z.object({ action: z.literal('bank-connect'), setupToken: z.string().min(20).max(2000) }),
@@ -49,8 +52,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('summary') }),
   z.object({ action: z.literal('nearby'), op: z.enum(['home', 'search', 'todo', 'weekend']), zip: z.string().regex(/^\d{5}$/).optional(), q: z.string().max(80).optional(), kind: z.enum(['food', 'fun', 'events', 'trips']).optional(), step: z.enum(['map', 'routes', 'web']).optional() }),
   z.object({ action: z.literal('negotiate'), id: z.string().uuid(), okSwitch: z.boolean(), fresh: z.boolean().optional() }),
-  z.object({ action: z.literal('receipt-add'), path: z.string().min(10).max(300) }),
-  z.object({ action: z.literal('receipt'), op: z.enum(['edit', 'reread', 'delete', 'attach', 'detach', 'keep', 'line']), id: z.string().uuid(), entry: z.boolean().optional(), path: z.string().min(10).max(300).optional(), line: z.object({ description: z.string().trim().min(1).max(200), posted: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number().min(0.01).max(1e6), note: z.string().max(300).nullable() }).optional(), details: z.object({ store: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), total: z.number().min(0).max(1e6), tax: z.number().min(0).max(1e6).nullable(), card: z.string().regex(/^\d{4}$/).nullable(), items: z.array(z.object({ name: z.string().max(60), qty: z.number().min(0).max(1e4).nullable(), price: z.number().min(-1e6).max(1e6).nullable() })).max(40) }).optional() }),
+  z.object({ action: z.literal('receipt-add'), path: z.string().min(10).max(300), barcode: Barcode }),
+  z.object({ action: z.literal('receipt'), op: z.enum(['edit', 'reread', 'delete', 'attach', 'detach', 'keep', 'line', 'barcode']), id: z.string().uuid(), entry: z.boolean().optional(), barcode: Barcode, path: z.string().min(10).max(300).optional(), line: z.object({ description: z.string().trim().min(1).max(200), posted: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number().min(0.01).max(1e6), note: z.string().max(300).nullable() }).optional(), details: z.object({ store: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), total: z.number().min(0).max(1e6), tax: z.number().min(0).max(1e6).nullable(), card: z.string().regex(/^\d{4}$/).nullable(), items: z.array(z.object({ name: z.string().max(60), qty: z.number().min(0).max(1e4).nullable(), price: z.number().min(-1e6).max(1e6).nullable() })).max(40) }).optional() }),
   z.object({ action: z.literal('spend-cat'), id: z.string().uuid(), cat: z.enum(SPEND_CATS.map((c) => c.id) as [string, ...string[]]) }),
   z.object({ action: z.literal('money-log'), op: z.enum(['backfill', 'bill-undo']), month: z.string().regex(/^\d{4}-\d{2}$/).optional(), id: z.string().uuid().optional() }),
   z.object({ action: z.literal('import-csv'), rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), description: z.string().max(200), account: z.string().max(80).optional() })).min(1).max(5000) }),
@@ -231,14 +234,14 @@ async function handle(req: Request): Promise<Response> {
         if (!(body.path.startsWith(`${user.id}/money/`) || body.path.startsWith(`${user.id}/vault/`)) || body.path.includes('..')) throw new HttpError('Not found.', 404);
         const { data: file, error } = await db.storage.from('docs').download(body.path);
         if (error || !file) throw new HttpError('The file is missing.', 404);
-        const r = await receiptFromFile(db, user.id, await settingsOf(db, user.id), body.path, new Uint8Array(await file.arrayBuffer()), mimeOf(body.path, file.type));
+        const r = await receiptFromFile(db, user.id, await settingsOf(db, user.id), body.path, new Uint8Array(await file.arrayBuffer()), mimeOf(body.path, file.type), body.barcode ? { ...body.barcode, from: 'photo' } : null);
         if (r.status === 'known') await db.storage.from('docs').remove([body.path]); // already there: not kept twice
         return json({ ...r, text: savedText(r.status, r.business, r.amount) });
       }
       case 'receipt': {
         if ((body.op === 'edit' && !body.details) || (body.op === 'attach' && !body.path) || (body.op === 'line' && !body.line)) throw new HttpError('Invalid request.', 400);
         const op: ReceiptOp = body.op === 'edit' ? { op: 'edit', id: body.id, details: body.details! } : body.op === 'reread' ? { op: 'reread', id: body.id }
-          : body.op === 'attach' ? { op: 'attach', id: body.id, path: body.path! } : body.op === 'detach' ? { op: 'detach', id: body.id } : body.op === 'keep' ? { op: 'keep', id: body.id }
+          : body.op === 'attach' ? { op: 'attach', id: body.id, path: body.path!, barcode: body.barcode ? { ...body.barcode, from: 'photo' } : null } : body.op === 'barcode' ? { op: 'barcode', id: body.id, barcode: body.barcode ? { ...body.barcode, from: 'photo' } : null } : body.op === 'detach' ? { op: 'detach', id: body.id } : body.op === 'keep' ? { op: 'keep', id: body.id }
           : body.op === 'line' ? { op: 'line', id: body.id, line: body.line! } : { op: 'delete', id: body.id, entry: !!body.entry };
         return json(await receiptAction(db, user.id, await settingsOf(db, user.id), op));
       }

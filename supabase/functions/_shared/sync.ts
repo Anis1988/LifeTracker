@@ -19,6 +19,7 @@ import { docIcon } from './vaultText.ts';
 import { vaultEmailStep } from './vaultMail.ts';
 import { purchaseAlerts, purchaseStep } from './purchases.ts';
 import { mergeBankRows, moveOldReceipts, receiptEmailStep, type BankRow } from './receipts.ts';
+import { barcodeBackfillStep } from './receiptBarcode.ts';
 import { addedLines, logMoney, pruneLog } from './moneyLog.ts';
 import { spendCat, spendReport, type SpendTx } from './spend.ts';
 import { dateKind, mailDue, nextMailCheck, type MailCheck } from './model.ts';
@@ -109,6 +110,8 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
   // 🧾 Plain receipt emails → Spending (free patterns first).
   if (want('bills') || mail) await each('Receipts', (b) => receiptEmailStep(db, userId, s, until + 10_000, b, mails));
   if (want('bills') || mail) await saveConnection(db, userId, 'receipts', null, { mailChecked: new Date().toISOString() }).catch(() => undefined);
+  // 🔲 Daily: older email receipts (90 days) get their barcode from their email, a few a day (free, no AI).
+  if (want('bills')) await step('Receipt barcodes', () => barcodeBackfillStep(db, userId, boxes, until + 10_000));
   // 📇 Contacts: straight into Contacts (owner's choice). The hourly appointment look only folds in what it already read.
   if (want('contacts') || mails.length) await step('Contacts', () => contactStep(db, userId, s, until + 10_000, { mails, search: want('contacts'), email, boxes }));
   if (want('bills') || want('purchases')) await step('Coming up', () => lifeStep(db, userId, s, alerts));

@@ -11,6 +11,8 @@ import { classifyAttachment, fromEmailNote, vaultKey } from './vaultText.ts';
 import { RECEIPT_QUERY, bestMatch, emailKind, fitTo, parseReceipt, type ReceiptDetails } from './receiptText.ts';
 import { cached, mimeOf, readBill, remember, sha256 } from './vault.ts';
 import { addedLines, logMoney, rulesOf, shopOf, type LogLine } from './moneyLog.ts';
+import { cleanBarcode, formatOf, type Barcode } from './barcode.ts';
+import { barcodeForMail, barcodeFromEmail, messageOf, withBarcode } from './receiptBarcode.ts';
 
 /**
  * 🧾 Receipts → Money → Spending (owner's request). A receipt becomes a spending line in `transactions`, counted once:
@@ -24,12 +26,17 @@ const addDays = (d: string, n: number) => iso(new Date(Date.parse(`${d.slice(0, 
 
 export interface ReceiptIn { business: string; amount: number; date: string; key: string; hash?: string | null; path?: string | null; note: string; details?: ReceiptDetails | null }
 
-/** What the AI read on a receipt file (the bill read, which also gives the date, tax, card and lines). */
+/** 🔲 The number the AI read under a receipt's barcode (no extra AI call: part of the same read). */
+const aiBarcode = (x: Extracted): Barcode | null => { const v = (x.barcode ?? '').replace(/[\s-]+/g, ''); return v ? cleanBarcode({ value: v, format: formatOf(v), from: 'ai' }) : null; };
+/** What the AI read on a receipt file (the bill read, which also gives the date, tax, card, lines and barcode number). */
 export const detailsOf = (x: Extracted, by: string | null, fallbackDate: string): ReceiptDetails => ({
   store: (x.merchant || x.name || '').trim().slice(0, 120), date: x.date && /^\d{4}-\d{2}-\d{2}$/.test(x.date) ? x.date : fallbackDate,
   total: Number(x.amount ?? 0), tax: x.tax ?? null, card: /^\d{4}$/.test(x.last4 ?? '') ? x.last4 : null,
   items: (x.items ?? []).filter((i) => i.name?.trim()).slice(0, 40).map((i) => ({ name: i.name.trim().slice(0, 60), qty: i.qty ?? null, price: i.price ?? null })), read: 'ai', by,
+  ...(aiBarcode(x) ? { barcode: aiBarcode(x) } : {}),
 });
+/** The barcode decoded on the phone wins over the number the AI read. */
+const withPhone = (d: ReceiptDetails, phone?: Barcode | null): ReceiptDetails => (phone ? { ...d, barcode: { ...phone, from: 'photo' } } : d);
 export type Saved = 'new' | 'attached' | 'known';
 
 /** Already kept: this receipt's key, or the same file (by hash) on any line. */
@@ -161,7 +168,10 @@ export async function receiptEmailStep(db: SupabaseClient, userId: string, s: Se
     }
     mails.push(m); // 📇 also looked at for contacts (no second read)
     const { business, amount, ...details } = r;
-    const res = await saveReceipt(db, userId, { business, amount, date: details.date, key: `mail:${id}:body`, path: `gmail:${id}${tag ? `|${tag}` : ''}`, note: fromEmailNote(m), details: { ...details, ...(box.email ? { mailbox: box.email } : {}) } });
+    // 🔲 The receipt's barcode (picture + number) from the email itself: free, no AI.
+    const barcode = await barcodeForMail(db, userId, at, m).catch(() => null);
+    const res = await saveReceipt(db, userId, { business, amount, date: details.date, key: `mail:${id}:body`, path: `gmail:${id}${tag ? `|${tag}` : ''}`, note: fromEmailNote(m), details: { ...details, ...(box.email ? { mailbox: box.email } : {}), ...(barcode ? { barcode } : {}) } });
+    if (res === 'known' && barcode?.image) await db.storage.from('docs').remove([barcode.image]);
     if (res === 'new') added++; else if (res === 'attached') attached++;
     seen.add(id);
   }
@@ -196,12 +206,12 @@ export async function moveOldReceipts(db: SupabaseClient, userId: string): Promi
 }
 
 /** 🧾 A receipt added by hand (Spending → 📷 Add a receipt, or a Vault scan that is a receipt): read once (cached by hash). */
-export async function receiptFromFile(db: SupabaseClient, userId: string, s: Settings, path: string, bytes: Uint8Array, mime: string): Promise<{ status: Saved; business: string; amount: number; date: string; id?: string }> {
+export async function receiptFromFile(db: SupabaseClient, userId: string, s: Settings, path: string, bytes: Uint8Array, mime: string, phone?: Barcode | null): Promise<{ status: Saved; business: string; amount: number; date: string; id?: string }> {
   const hash = await sha256(bytes);
   const key = `hand:${hash.slice(0, 16)}`;
   if (await receiptKnown(db, userId, [key], hash)) return { status: 'known', business: '', amount: 0, date: '' };
   const b = await readBill(db, userId, s, { mime, bytes }, hash);
-  const d = detailsOf(b.data, b.by, iso(new Date()));
+  const d = withPhone(detailsOf(b.data, b.by, iso(new Date())), phone);
   if (!(d.total > 0)) throw new Error('No total found on this receipt. Try a clearer photo.');
   const business = d.store || 'Receipt';
   const status = await saveReceipt(db, userId, { business, amount: d.total, date: d.date, key, hash, path, note: `Added by hand on ${iso(new Date())}`, details: { ...d, store: business } });
@@ -217,7 +227,9 @@ export async function receiptFromFile(db: SupabaseClient, userId: string, s: Set
  */
 export type LineEdit = { description: string; posted: string; amount: number; note: string | null };
 export type ReceiptOp = { op: 'edit'; id: string; details: Omit<ReceiptDetails, 'read' | 'by' | 'mismatch'> } | { op: 'reread'; id: string } | { op: 'delete'; id: string; entry: boolean }
-  | { op: 'attach'; id: string; path: string } | { op: 'detach'; id: string } | { op: 'keep'; id: string } | { op: 'line'; id: string; line: LineEdit };
+  | { op: 'attach'; id: string; path: string; barcode?: Barcode | null } | { op: 'detach'; id: string } | { op: 'keep'; id: string } | { op: 'line'; id: string; line: LineEdit }
+  /** 🔲 Find / refresh the barcode: `barcode` = decoded on the phone from the receipt picture, else read again from its email (free). */
+  | { op: 'barcode'; id: string; barcode?: Barcode | null };
 type Tx = { id: string; source: string | null; amount: number; posted: string; description: string | null; merchant: string | null; note: string | null; account: string | null; item_id: string | null; receipt_path: string | null; receipt_key: string | null; receipt_hash: string | null; details: ReceiptDetails | null };
 const fileOf = (userId: string, p: string | null | undefined): p is string => typeof p === 'string' && p.startsWith(`${userId}/`) && !p.includes('..');
 /** A stored receipt file goes, unless Returns still shows it. */
@@ -277,7 +289,9 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     if (error || !f) throw new Error('The file is missing.');
     const bytes = new Uint8Array(await f.arrayBuffer());
     const b = await readBill(db, userId, s, { mime: mimeOf(t.receipt_path!, f.type), bytes }, t.receipt_hash ?? await sha256(bytes), true);
-    const tx = await save(readPatch(t, detailsOf(b.data, b.by, t.posted)));
+    const old = t.details?.barcode;
+    const d = detailsOf(b.data, b.by, t.posted);
+    const tx = await save(readPatch(t, old && old.from !== 'ai' ? { ...d, barcode: old } : { ...d, barcode: d.barcode ?? old ?? null }));
     await note('receipt', `receipt read again by ${b.by} · ${(tx.details as ReceiptDetails | null)?.items.length ?? 0} item(s)`);
     return { tx, by: b.by };
   }
@@ -299,7 +313,7 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     // Read once (the free AIs first, Claude last, daily limits; cached by the file's SHA-256, never paid twice).
     // If it can't be read now, the picture stays on the line and ✨ Re-read tries again.
     let d: ReceiptDetails | null = null, problem = '';
-    try { const b = await readBill(db, userId, s, { mime: mimeOf(p, f.type), bytes }, hash); d = detailsOf(b.data, b.by, t.posted); } catch (e) { problem = e instanceof Error ? e.message.slice(0, 160) : String(e); }
+    try { const b = await readBill(db, userId, s, { mime: mimeOf(p, f.type), bytes }, hash); d = withPhone(detailsOf(b.data, b.by, t.posted), a.barcode); } catch (e) { problem = e instanceof Error ? e.message.slice(0, 160) : String(e); }
     const patch: Record<string, unknown> = { receipt_path: p, receipt_hash: hash, receipt_key: `hand:${hash.slice(0, 16)}`, ...(d ? readPatch(t, d) : { details: null }) };
     let tx;
     try { tx = await save(patch); } catch (e) {
@@ -307,7 +321,7 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
       if (/duplicate|unique/i.test(String(e))) return { status: 'elsewhere', text: 'This receipt is already in Spending: not added twice.' };
       throw e;
     }
-    if (t.receipt_path !== p) await dropFile(db, userId, t.receipt_path); // replaced: the old file goes
+    if (t.receipt_path !== p) { await dropFile(db, userId, t.receipt_path); if (t.details?.barcode?.image) await dropFile(db, userId, t.details.barcode.image); } // replaced: the old file goes
     const det = tx.details as ReceiptDetails | null;
     const n = det?.items.length ?? 0;
     await note('receipt', `receipt ${t.receipt_path ? 'replaced' : 'attached'}${det ? ` · ${n} item${n === 1 ? '' : 's'} · ${det.mismatch ? `totals differ (${money(det.mismatch.receipt)} ≠ ${money(det.mismatch.bank)})` : 'total matches'}` : ' · not read yet'}`);
@@ -315,10 +329,22 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
     if (det.mismatch) return { tx, status: 'mismatch', text: `Receipt total ${money(det.mismatch.receipt)} ≠ bank ${money(det.mismatch.bank)}.` };
     return { tx, status: 'matched', text: `Receipt added: ${det.items.length} item${det.items.length === 1 ? '' : 's'} broken down.` };
   }
+  if (a.op === 'barcode') {
+    // 🔲 From the phone (decoded from the receipt picture) or from the receipt's email again: free, never the AI.
+    let b: Barcode | null = a.barcode ? cleanBarcode({ ...a.barcode, from: 'photo' }) : null;
+    if (!b && messageOf(t.receipt_key)) b = await barcodeFromEmail(db, userId, t);
+    if (!b) return { status: 'none', text: messageOf(t.receipt_key) ? 'No barcode found in the receipt email.' : 'No barcode found on the receipt picture. Try ✨ Re-read, or attach a clearer photo.' };
+    const prev = t.details?.barcode?.image;
+    const tx = await save({ details: withBarcode(t, b) });
+    if (prev && prev !== b.image) await dropFile(db, userId, prev);
+    await note('receipt', `🔲 barcode ${t.details?.barcode ? 'refreshed' : 'found'}${b.value ? ` (${b.value.slice(0, 40)})` : ' (picture)'}`);
+    return { tx, status: 'found', text: b.value ? `Barcode found: ${b.value.slice(0, 40)}.` : 'Barcode picture found.' };
+  }
   if (a.op === 'detach') {
     // ✕ Remove the receipt: the file and what was read go; the bank line stays as it was.
     if (t.source === 'receipt') throw new Error('This purchase is only from its receipt: delete it instead.');
     await dropFile(db, userId, t.receipt_path);
+    await dropFile(db, userId, t.details?.barcode?.image);
     // A receipt you added by hand can be added again; one from an email keeps its key (never added again by itself).
     const hand = !t.receipt_key || t.receipt_key.startsWith('hand:');
     const tx = await save({ receipt_path: null, details: null, ...(hand ? { receipt_key: null, receipt_hash: null } : {}) });
@@ -327,6 +353,7 @@ export async function receiptAction(db: SupabaseClient, userId: string, s: Setti
   }
   // 🗑 delete: the stored file (unless Returns still shows it) and the receipt link; the spending line too when asked.
   await dropFile(db, userId, t.receipt_path);
+  await dropFile(db, userId, t.details?.barcode?.image);
   if (a.entry) {
     await db.from('transactions').delete().eq('id', t.id).eq('user_id', userId);
     await note('change', `deleted${t.receipt_path ? ' (with its receipt)' : ''}`);

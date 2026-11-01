@@ -1,5 +1,6 @@
 import { merchantKey } from './recurring.ts';
 import { classifyAttachment, type Route } from './vaultText.ts';
+import type { Barcode } from './barcode.ts';
 
 /**
  * 🧾 Receipts → Spending, shared by the app and the server (plain TypeScript, no AI):
@@ -91,7 +92,9 @@ export interface ReceiptDetails { store: string; date: string; total: number; ta
   /** A receipt added to a bank purchase whose total isn't the bank's amount: kept = "use its items anyway" was picked. */
   mismatch?: { receipt: number; bank: number; kept: boolean } | null;
   /** 👥 The mailbox it came from (address; shown only as the person's name). */
-  mailbox?: string }
+  mailbox?: string;
+  /** 🔲 The receipt's barcode (to scan the one in the app when the paper is lost). */
+  barcode?: Barcode | null }
 
 const TIP = /\b(tip|gratuity)\b/i;
 /**
@@ -160,7 +163,7 @@ export function matchSpend(t: { posted: string; amount: number; description: str
   const d = t.details;
   const amt = Math.abs(Number(t.amount));
   const month = new Date(`${t.posted.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
-  const hay = [t.description, t.merchant, t.note, t.account, catLabel, t.posted, month, amt.toFixed(2), String(amt), d?.store, d?.card, ...(d?.items ?? []).map((i) => i.name)]
+  const hay = [t.description, t.merchant, t.note, t.account, catLabel, t.posted, month, amt.toFixed(2), String(amt), d?.store, d?.card, d?.barcode?.value, ...(d?.items ?? []).map((i) => i.name)]
     .filter(Boolean).join(' \n ').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
   return words.every((w) => hay.includes(w.replace(/^\$/, '')));
 }

@@ -1,3 +1,4 @@
+import { barcodeForMail } from './receiptBarcode.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Alert, Item, Settings } from './model.ts';
 import { iso } from './money.ts';
@@ -126,11 +127,13 @@ async function oneAttachment(db: SupabaseClient, userId: string, s: Settings, at
   const store = (x.merchant || x.name || m.from.replace(/<[^>]*>/g, '').replace(/"/g, '')).trim().slice(0, 120) || 'Receipt';
   // No total on it: kept in Inbox → Documents (with the email in its note) rather than lost.
   if (!x.amount || !(x.amount > 0)) { await keepAsDoc(); return { saved: 'bill', reads }; }
-  const details = detailsOf(x, b.by, m.date);
+  // 🔲 The barcode: from the email itself (picture + number, free), else the number the AI read on the file.
+  const fromMail = await barcodeForMail(db, userId, at, m).catch(() => null);
+  const details = { ...detailsOf(x, b.by, m.date), ...(fromMail ? { barcode: fromMail } : {}) };
   const bought = details.date;
   let res;
   try { res = await saveReceipt(db, userId, { business: store, amount: x.amount, date: bought, key: sourceKey, hash, path, note, details: { ...details, store, ...(box.email ? { mailbox: box.email.toLowerCase() } : {}) } }); } catch (e) { await db.storage.from('docs').remove([path]); throw e; }
-  if (res === 'known') { await db.storage.from('docs').remove([path]); return { reads }; }
+  if (res === 'known') { await db.storage.from('docs').remove([path, ...(fromMail?.image ? [fromMail.image] : [])]); return { reads }; }
   // 🧾 A store with a return window: also in Returns (the return-window tracker; the money is counted once, in Spending).
   const days = returnDaysFor(`${store} ${m.from}`);
   if (days) {

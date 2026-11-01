@@ -7,6 +7,8 @@ import { downloadFile, fileKind, fileName, openFile, safeName, shareFiles, shrin
 import { api, supabase } from '../lib/supabase';
 import { Money, Sheet, errText, shortDate, toast } from './ui';
 import { FoundIn, PersonChip, personEdge, usePersonFor } from './Person';
+import { BarcodeGlyph, BarcodeSection, BarcodeViewer } from './Barcode';
+import { barcodeOfStored, decodeBarcode, type Decoded } from '../lib/barcode';
 
 /**
  * 🧾 Money → Spending: ONE list of the month's purchases (`SpendLine`: shop, category chip, amount, source, a small
@@ -95,6 +97,7 @@ export function SpendLine({ t, url, rules, onOpen, onView, example, startOpen }:
   const shop = (t.source === 'receipt' ? d?.store || t.description : t.description || d?.store) || 'Purchase';
   const has = !!t.receipt_path || (example && !!d);
   const who = usePersonFor(t); // 👥 whose mailbox it came from
+  const [code, setCode] = useState(false);
   return (
     <li className={`border-t border-slate-900/[0.06] first:border-0 dark:border-white/[0.06] ${personEdge(who)}`}>
       <div className="flex items-center gap-2.5 py-1.5">
@@ -111,6 +114,11 @@ export function SpendLine({ t, url, rules, onOpen, onView, example, startOpen }:
           </span>
           <Money n={-Number(t.amount)} className="shrink-0 text-sm font-semibold" />
         </button>
+        {d?.barcode && (
+          <button className="tap btn-ghost h-11 w-9 shrink-0 !rounded-full !p-0" tabIndex={example ? -1 : undefined} onClick={() => !example && setCode(true)} aria-label={`Show the barcode of the ${shop} receipt full screen`}>
+            <BarcodeGlyph className="h-5 w-5" />
+          </button>
+        )}
         {items.length > 0 && !mm && (
           <button className="tap btn-ghost h-11 w-11 shrink-0 !rounded-full !p-0" tabIndex={example ? -1 : undefined} onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} the ${items.length} items`}>
             <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
@@ -131,6 +139,7 @@ export function SpendLine({ t, url, rules, onOpen, onView, example, startOpen }:
           {d?.tax != null && <li className="flex justify-between gap-3 border-t border-slate-900/[0.08] pt-1 text-xs text-slate-500 dark:border-white/[0.08] dark:text-slate-400"><span>Tax</span><span className="num">{money(d.tax)}</span></li>}
         </ul>
       )}
+      {code && d?.barcode && <BarcodeViewer b={d.barcode} title={shop} onClose={() => setCode(false)} />}
     </li>
   );
 }
@@ -142,7 +151,7 @@ const Fact = ({ label, children }: { label: string; children: React.ReactNode })
 /** The receipt sheet's contents: picture, details read from it, the lines bought, where it came from, the buttons. */
 export function ReceiptDetailsView({ t, url, rules, onMove, onView, actions, example }: {
   t: SpendTx; url?: string; rules: Record<string, string>; onMove?: (cat: string) => void; onView?: () => void; example?: boolean;
-  actions?: { download?: () => void; share?: () => void; edit?: () => void; line?: () => void; reread?: () => void; del?: () => void; detach?: () => void; attach?: React.ReactNode; busy?: string };
+  actions?: { download?: () => void; share?: () => void; edit?: () => void; line?: () => void; reread?: () => void; del?: () => void; detach?: () => void; attach?: React.ReactNode; barcode?: () => void; busy?: string };
 }) {
   const d = t.details;
   const cat = categorize(t, rules);
@@ -178,6 +187,7 @@ export function ReceiptDetailsView({ t, url, rules, onMove, onView, actions, exa
         {d?.card && <Fact label="Card"><span className="num">…{d.card}</span></Fact>}
         <Fact label="Counted from">{SOURCE[t.source ?? 'bank'] ?? t.source}{t.source !== 'receipt' && t.receipt_path ? ' + 🧾 receipt' : ''}{t.account && t.source !== 'receipt' ? <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">{t.account}</span> : null}</Fact>
       </div>
+      <BarcodeSection b={d?.barcode} title={(t.source === 'receipt' ? d?.store || t.description : t.description || d?.store) || 'Receipt'} hasReceipt={!!t.receipt_path && !example} example={example} busy={b === 'barcode'} onFind={actions?.barcode} />
       {items.length > 0 && (
         <div className="panel">
           <p className="label mb-1">What you bought</p>
@@ -328,6 +338,9 @@ export function LineEdit({ t, onSave, onCancel }: { t: SpendTx; onSave: (l: { de
   );
 }
 
+/** 🔲 The barcode on a photo, read on this device before it's shrunk (full size reads best). Never throws. */
+const barcodeOfFile = (f: File): Promise<Decoded | null> => (f.type.startsWith('image/') ? decodeBarcode(f) : Promise.resolve(null));
+
 /** A photo or PDF, shrunk on this device and put in this person's own folder. */
 async function uploadReceipt(f: File, folder: string): Promise<string> {
   if (f.size > 40 * 1024 * 1024) throw new Error('This file is too big (40 MB at most).');
@@ -365,8 +378,9 @@ export function AttachReceipt({ t, userId, onBusy, onDone, className = '' }: { t
     setBusy(true); onBusy(true);
     let path = '';
     try {
+      const barcode = await barcodeOfFile(f);
       path = await uploadReceipt(f, `${userId}/receipts`);
-      const r = await api<{ status: string; text: string }>('receipt', { op: 'attach', id: t.id, path });
+      const r = await api<{ status: string; text: string }>('receipt', { op: 'attach', id: t.id, path, barcode });
       path = ''; // kept (or removed by the server when it was already there)
       await onDone(r);
     } catch (e) {
@@ -420,6 +434,13 @@ export function ReceiptSheet({ t, url, rules, userId, onMove, onClose, onChanged
     onClose();
   });
   const detach = () => void run('detach', async () => { await api('receipt', { op: 'detach', id: t.id }); toast('ok', 'Receipt removed: the purchase stays as your bank sent it.'); await onChanged(); });
+  // 🔲 The barcode: read on this phone from the receipt picture first (free); else the server looks in its email again (free).
+  const findBarcode = () => void run('barcode', async () => {
+    const found = isFile(t.receipt_path) ? await barcodeOfStored(t.receipt_path) : null;
+    const r = await api<{ status: string; text: string }>('receipt', { op: 'barcode', id: t.id, barcode: found });
+    toast(r.status === 'found' ? 'ok' : 'info', r.text);
+    await onChanged();
+  });
   const keep = () => void run('keep', async () => { await api('receipt', { op: 'keep', id: t.id }); toast('ok', 'Its items are kept. Spending still counts the bank’s amount.'); await onChanged(); });
   const attach = t.id ? (
     <AttachReceipt t={t} userId={userId} onBusy={setReading}
@@ -451,6 +472,7 @@ export function ReceiptSheet({ t, url, rules, userId, onMove, onClose, onChanged
               edit: t.receipt_path ? () => setMode('edit') : undefined,
               reread: () => void run('reread', async () => { const r = await api<{ by: string }>('receipt', { op: 'reread', id: t.id }); toast('ok', `Read again by ${r.by}.`); await onChanged(); }),
               detach: bank && t.receipt_path ? detach : undefined,
+              barcode: t.id && t.receipt_path ? findBarcode : undefined,
               del: () => setMode('delete'),
             }} />
           </div>
@@ -487,8 +509,9 @@ export function AddReceipt({ userId, onAdded, className = '' }: { userId: string
     setBusy(true);
     let path = '';
     try {
+      const barcode = await barcodeOfFile(f);
       path = await uploadReceipt(f, `${userId}/money`);
-      const r = await api<{ status: string; text: string; id?: string }>('receipt-add', { path });
+      const r = await api<{ status: string; text: string; id?: string }>('receipt-add', { path, barcode });
       toast('ok', r.text);
       await onAdded(r.status === 'known' ? undefined : r.id);
     } catch (e) {

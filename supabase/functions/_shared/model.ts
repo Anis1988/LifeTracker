@@ -279,6 +279,7 @@ export interface Extracted {
   date?: string | null; // the date printed on it (a receipt's purchase date); missing in older reads
   tax?: number | null; // receipts
   items?: { name: string; qty: number | null; price: number | null }[]; // receipts: the lines bought
+  barcode?: string; // 🔲 receipts: the number printed under the barcode ('' or missing = none)
 }
 
 // ---------- AI (Settings → AI): free ones first, Claude (paid) only when they run out or fail ----------

@@ -58,7 +58,7 @@ export const GUIDE_TOPICS: { icon: string; title: string; words: string }[] = [
   { icon: '🫧', title: 'How it looks and feels', words: 'look glass light dark reduce motion' },
   { icon: '⚙️', title: 'Settings', words: 'settings squares' },
   { icon: '💬', title: 'Ask LifeTracker', words: 'ask question chat open show where' },
-  { icon: '💸', title: 'Spending and budgets', words: 'spending budget category receipt photo items card' },
+  { icon: '💸', title: 'Spending and budgets', words: 'spending budget category receipt photo items card barcode lost paper scan till number' },
   { icon: '📊', title: 'Reports (your spending, your way)', words: 'reports report chart charts filter period category person shop question saved compare top average' },
   { icon: '📜', title: 'Money log', words: 'log history lines' },
   { icon: '🧾', title: 'Returns and warranties', words: 'returns warranty order return window' },
@@ -181,7 +181,7 @@ export function buildIndex(d: SearchData, o: { vaultOpen: boolean }): SearchInde
       href: hrefTo('money', 'spending', `?tx=${t.id}`), src: t,
     }, [
       t.description !== title && t.description, t.merchant !== title && t.merchant, t.note, cat.label, t.account,
-      det?.card && `card ···${det.card}`, ...(det?.items ?? []).map((x) => `${x.name}${x.price != null ? ` ${money(x.price)}` : ''}`), ...amountWords(t.amount),
+      det?.card && `card ···${det.card}`, det?.barcode?.value && `barcode receipt number ${det.barcode.value}`, ...(det?.items ?? []).map((x) => `${x.name}${x.price != null ? ` ${money(x.price)}` : ''}`), ...amountWords(t.amount),
     ], t.posted, [], [t.posted, monthName(t.posted), t.source]));
   }
   for (const p of d.purchases ?? []) {
