@@ -234,6 +234,17 @@ function textOf(p: Part): { plain: string; html: string } {
 const stripHtml = (h: string) => h.replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#36;|&dollar;/g, '$').replace(/&[a-z]+;/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
 
+/** The email's words: its plain-text part, unless that is only a "your email app can't show HTML" stub
+ *  (HomeGoods/TJX e-receipts and many stores): then the HTML part, which holds the real receipt. */
+const STUB = /(doesn.t|does not|might not|may not|can.t|cannot) (support|display|show) html|view (this|the) (e-?mail|message) in (a|your) (web )?browser|open (this e-?mail|it) in (a|another) (web )?browser/i;
+function bodyText(t: { plain: string; html: string }): string {
+  const plain = t.plain.trim();
+  if (!t.html) return plain;
+  const html = stripHtml(t.html);
+  if (!plain || (STUB.test(plain) && html.length > plain.length) || (plain.length < 600 && html.length > plain.length * 4)) return html;
+  return plain;
+}
+
 /** 📬 Emails read during one run, per Google access token (for "3 new" in the email-check status). */
 const tally = new Map<string, Set<string>>();
 export const countReads = (at: string, into: Set<string>) => void tally.set(at, into);
@@ -245,7 +256,7 @@ export async function readEmail(at: string, id: string, box?: string): Promise<M
   tally.get(at)?.add(id);
   const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? '';
   const t = textOf(m.payload);
-  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: (t.plain.trim() || stripHtml(t.html)).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload), ...(box ? { box } : {}) };
+  return { id, at: Number(m.internalDate), from: h('from'), subject: h('subject'), date: new Date(Number(m.internalDate)).toISOString().slice(0, 10), text: bodyText(t).slice(0, 20_000), listUnsub: h('list-unsubscribe'), attachments: attachmentsOf(m.payload), ...(box ? { box } : {}) };
 }
 
 /** 📎 One attachment's bytes (read-only). */

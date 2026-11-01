@@ -14,7 +14,7 @@ export interface MailLike { subject: string; from: string; text: string; date: s
 export type EmailKind = 'receipt' | 'order' | 'bill' | null;
 
 /** Gmail search for receipt emails (subject or body words, or a file named receipt / invoice). Free. */
-export const RECEIPT_QUERY = '-category:promotions -category:social -in:sent -in:chats -in:drafts (subject:(receipt OR "payment received" OR "payment confirmation" OR "thank you for your purchase" OR "thanks for your purchase" OR "your purchase" OR "you paid" OR "payment successful") OR "your receipt" OR "order total" OR "thank you for your purchase" OR "thanks for your purchase" OR "amount paid" OR "total charged" OR filename:receipt OR filename:invoice)';
+export const RECEIPT_QUERY = '-category:promotions -category:social -in:sent -in:chats -in:drafts (subject:(receipt OR e-receipt OR ereceipt OR "payment received" OR "payment confirmation" OR "thank you for your purchase" OR "thanks for your purchase" OR "your purchase" OR "you paid" OR "payment successful") OR "your receipt" OR "order total" OR "thank you for your purchase" OR "thanks for your purchase" OR "amount paid" OR "total charged" OR filename:receipt OR filename:invoice)';
 
 const MARKETING = /(newsletter|% off|\bsale\b|\bdeals?\b|promo|webinar|digest|weekly update|new arrivals|last chance|don'?t miss|special offer|black friday|cyber monday|recommended for you|you might like|coupon)/i;
 const SHIPPING = /(has shipped|have shipped|on its way|out for delivery|was delivered|been delivered|tracking number|arriving (today|tomorrow)|delivery update)/i;
