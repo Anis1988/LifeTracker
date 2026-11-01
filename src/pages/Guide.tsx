@@ -40,7 +40,7 @@ import { SearchResults } from '../components/Search';
 import { QuickAddList } from '../components/QuickAdd';
 import { searchAll } from '../lib/search';
 import { AddedCard } from './Home';
-import { MailEveryPicker, MailPill } from '../components/MailCheck';
+import { MailEveryPicker, MailNowButton, MailPill } from '../components/MailCheck';
 
 /* made-up examples, only for this guide */
 const d = (days: number) => new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
@@ -222,6 +222,11 @@ function MailCheckDemo() {
       <MailPill every={every} now={clock(10, 38)} check={{ at: new Date(clock(10, 15)).toISOString(), state: 'slow', text: 'stopped: Gmail asked to slow down', every, next: null }} />
       <MailPill every={0} now={clock(10, 38)} />
       <MailEveryPicker every={every} onChange={setEvery} />
+      <div className="flex flex-col items-center gap-2">
+        <MailNowButton busy={false} wait={0} />
+        <MailNowButton busy wait={0} />
+        <MailNowButton busy={false} wait={42} />
+      </div>
     </div>
   );
 }
@@ -718,7 +723,8 @@ export function Guide() {
       <Fold icon="📬" title="Email checks (how often)">
         <P>Your Gmail is read by itself <b>every hour</b> unless you change it: Settings → <b>📬 Email checks</b>. Pick <b>15m, 30m, 1h, 2h or 4h</b> (minutes or hours), or <b>Off</b> (only in the morning run). Checks always happen on the quarter hour: :00, :15, :30, :45. Each check reads only emails it hasn’t seen yet (bank alerts, PayPal, Auto Pay, bills, receipts, orders, documents, appointments, in every Google account you added). Gmail allows far more than this, and the AI daily limits stay the same, so checking more often doesn’t cost more.</P>
         <P>Once Gmail is connected, a small line at the top of <b>every tab</b> shows how often, the last check and what it found, and the next one, in your own time. Tap it to change the setting. ✓ = all fine, ⏸ = Gmail asked to slow down (the rest comes next check), ⚠ = a problem.</P>
-        <Example caption="Made-up example: the line at the top (a normal check, a paused one, and Off) and the picker. Try the picker: it only changes this example.">
+        <P><b>Can’t wait?</b> At the bottom of every tab there is a <b>📬 Check email now</b> button. It does the same look as the regular check, in every Google account you added, straight away. It says “Checking…” while it works, then tells you what it found (like “3 new” or “nothing new”) and the line at the top updates. To be kind to Gmail it can be tapped once a minute; the regular checks keep their times and the AI daily limits stay the same.</P>
+        <Example caption="Made-up example: the line at the top (a normal check, a paused one, and Off), the picker, and the Check email now button (ready, checking, and waiting a minute). Try the picker: it only changes this example.">
           <MailCheckDemo />
         </Example>
       </Fold>

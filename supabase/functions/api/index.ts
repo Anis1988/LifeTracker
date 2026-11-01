@@ -19,7 +19,7 @@ import { negotiate } from '../_shared/negotiate.ts';
 import { mimeOf, readVault } from '../_shared/vault.ts';
 import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow, type ReceiptOp } from '../_shared/receipts.ts';
 import { PERSON_COLORS } from '../_shared/mailPeople.ts';
-import type { Item, Sender } from '../_shared/model.ts';
+import { mailNowWait, type Item, type MailCheck, type Sender } from '../_shared/model.ts';
 
 /**
  * The app's server (POST /functions/v1/api {action, ...}), signed-in users only. Everything you can see or change
@@ -35,7 +35,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('google-extra'), kind: z.string().regex(/^google:\d{1,3}$/), on: z.boolean() }),
   // 👥 A mailbox's name + colour on entries that came from it ("● Roza").
   z.object({ action: z.literal('mail-person'), kind: z.union([z.literal('google'), z.string().regex(/^google:\d{1,3}$/)]), name: z.string().trim().min(1).max(16), color: z.enum(PERSON_COLORS) }),
-  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail', 'weekend']) }),
+  // part 'email-now' = 📬 Check email now: the quarter-hour email look (appts + mail, every mailbox), by hand.
+  z.object({ action: z.literal('run'), part: z.enum(['online', 'breaches', 'lists', 'week', 'purchases', 'appts', 'calendar', 'contacts', 'vault', 'mail', 'weekend', 'email-now']) }),
   z.object({ action: z.literal('phone-key') }),
   z.object({ action: z.literal('ask'), question: z.string().min(2).max(500), history: z.array(z.object({ q: z.string().max(500), a: z.string().max(2000) })).max(6).optional() }),
   // 📊 Reports: a question the free reader on the phone didn't understand → a filter (names only, never amounts).
@@ -133,6 +134,15 @@ async function handle(req: Request): Promise<Response> {
         return json({ ok: true, log });
       }
       case 'run': {
+        if (body.part === 'email-now') {
+          // 📬 Check email now (any tab): ignores the Email checks slot; never within a minute of the last check.
+          const rec = await connection(db, user.id, 'receipts');
+          if (mailNowWait(rec?.meta.mailCheck as MailCheck | undefined, rec?.meta.mailNowAt as string | undefined, Date.now()) > 0) return json({ ok: false, wait: true, text: 'Just checked a moment ago' });
+          await saveConnection(db, user.id, 'receipts', null, { mailNowAt: new Date().toISOString() });
+          const log = await syncUser(db, user.id, user.email, { only: ['appts', 'mail'], force: true, manual: true });
+          const after = await connection(db, user.id, 'receipts');
+          return json({ ok: true, log, check: after?.meta.mailCheck ?? null });
+        }
         // One part now ("Check now", "Scan my mailing lists", "Send my week now").
         const log = await syncUser(db, user.id, user.email, { only: [body.part], force: true });
         return json({ ok: true, log });

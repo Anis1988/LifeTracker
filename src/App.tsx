@@ -16,7 +16,7 @@ import { PlusIcon, QuickAddSheet } from './components/QuickAdd';
 import { Icon, MENU_ICON, PhoneTabBar, TABS } from './components/Nav';
 import { goTo, parseHash, takeMenuHash, upgradeHash, type Tab } from './lib/nav';
 import { addedFeed, unseen } from './lib/added';
-import { MailCheckBar } from './components/MailCheck';
+import { MailCheckBar, MailNowRow } from './components/MailCheck';
 import { PeopleProvider } from './components/Person';
 
 const tabOf = (): Tab => parseHash().tab;
@@ -187,6 +187,8 @@ function Main() {
       <main key={`${tab}:${visit}`} className="mx-auto max-w-5xl px-4 pb-6 pt-5">
         {st.loading ? <Skeleton />
           : tab === 'home' ? <Home go={go} /> : tab === 'money' ? <MoneyPage /> : tab === 'inbox' ? <Inbox /> : tab === 'me' ? <MePage /> : tab === 'places' ? <Places /> : tab === 'reports' ? <Reports /> : <Guide />}
+        {/* 📬 Check email now: at the bottom of every tab (Home has it with its own status line). */}
+        {!st.loading && tab !== 'home' && <MailNowRow />}
       </main>
             <PhoneTabBar tab={tab} onGo={go} onAdd={() => setAdding(true)} badge={badge} />
       {menu && <MenuDrawer saved={st.settings.reports.saved} meCount={meCount} onClose={() => setMenu(false)} onSearch={() => setSearch(true)} onSignOut={signOut} />}

@@ -462,5 +462,11 @@ export function nextMailCheck(every: number, after: number): number | null {
 }
 /** "every 15 min", "every hour", "every 2 hours", "once a day (morning run)". */
 export const mailEveryWords = (every: number) => !every ? 'once a day (morning run)' : every < 60 ? `every ${every} min` : every === 60 ? 'every hour' : `every ${every / 60} hours`;
-/** What the last email check found (kept in the "receipts" connection's meta as `mailCheck`). */
-export interface MailCheck { at: string; state: 'ok' | 'slow' | 'err'; text: string; every: number; next: string | null }
+/** What the last email check found (kept in the "receipts" connection's meta as `mailCheck`). done = when it finished; manual = "📬 Check email now". */
+export interface MailCheck { at: string; state: 'ok' | 'slow' | 'err'; text: string; every: number; next: string | null; done?: string; manual?: boolean }
+/** 📬 Check email now: not again within a minute of the last check (by hand or on the quarter hour). */
+export const MAIL_NOW_GAP = 60_000;
+export function mailNowWait(check: MailCheck | null | undefined, startedAt: string | null | undefined, now: number): number {
+  const last = Math.max(Date.parse(check?.done ?? check?.at ?? '') || 0, Date.parse(startedAt ?? '') || 0);
+  return Math.max(0, last + MAIL_NOW_GAP - now);
+}

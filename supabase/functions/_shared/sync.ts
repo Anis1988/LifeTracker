@@ -53,7 +53,7 @@ const MAIL_STEPS = /^(Appointments|Bank alerts|Gmail|Returns & warranties|Vault|
  * slot = the quarter-hour email look (cron, rounded call time): it reads Gmail only when that slot is due for this
  * person's 📬 Email checks setting (`mail.every`; Off = only the daily run).
  */
-export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean; slot?: number } = {}): Promise<RunLog> {
+export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean; slot?: number; manual?: boolean } = {}): Promise<RunLog> {
   const s = await settingsOf(db, userId);
   const log: RunLog = { steps: [], errors: [], newAlerts: 0 };
   if (opts.slot != null && !mailDue(s.mail.every, opts.slot)) return log;
@@ -139,6 +139,7 @@ export async function syncUser(db: SupabaseClient, userId: string, email?: strin
       at: new Date(at).toISOString(), every: s.mail.every, next: next ? new Date(next).toISOString() : null,
       state: slow ? 'slow' : errs.length ? 'err' : 'ok',
       text: slow || (errs.length ? `problem: ${errs[0].replace(/^[^:]+:\s*/, '')}`.slice(0, 90) : read.size ? `${read.size} new` : 'nothing new'),
+      done: new Date().toISOString(), ...(opts.manual ? { manual: true } : {}),
     };
     await saveConnection(db, userId, 'receipts', null, { mailCheck: check }).catch(() => undefined);
   }
