@@ -14,6 +14,7 @@ import type { GoogleExtra } from '../components/GoogleAccounts';
 
 /** What the server reports (bank, Google, AI use today, last automatic run, which keys are set). */
 export interface Status {
+  paused?: boolean; // ⏸ the big red button (see components/PauseAll.tsx)
   bank: { connected: boolean; lastSync?: string | null; accounts?: { name: string; balance: number; currency: string }[]; errors?: string[] };
   google: { connected: boolean; email?: string | null; calendar?: boolean; gmail?: boolean; lastGmail?: string | null; alertsScanned?: string | null; alertsRead?: number; alertBanks?: string[]; mailbox?: boolean; lastScan?: string | null; person?: { name?: string; color?: string } | null };
   googleExtras?: GoogleExtra[]; // ✉️ extra Gmail accounts watched too

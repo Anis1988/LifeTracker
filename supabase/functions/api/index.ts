@@ -21,6 +21,7 @@ import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow,
 import { PERSON_COLORS } from '../_shared/mailPeople.ts';
 import { mailNowWait, type Item, type MailCheck, type Sender } from '../_shared/model.ts';
 import { BARCODE_FORMATS, type BarcodeFormat } from '../_shared/barcode.ts';
+import { isPaused, PAUSED_TEXT, setPaused } from '../_shared/pause.ts';
 
 /**
  * The app's server (POST /functions/v1/api {action, ...}), signed-in users only. Everything you can see or change
@@ -31,6 +32,8 @@ import { BARCODE_FORMATS, type BarcodeFormat } from '../_shared/barcode.ts';
 const Barcode = z.object({ value: z.string().max(300), format: z.enum(BARCODE_FORMATS as [BarcodeFormat, ...BarcodeFormat[]]) }).nullable().optional();
 const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status') }),
+  // ⏸ Pause everything / Resume (the big red button at the top).
+  z.object({ action: z.literal('pause'), on: z.boolean() }),
   z.object({ action: z.literal('bank-connect'), setupToken: z.string().min(20).max(2000) }),
   z.object({ action: z.literal('disconnect'), kind: z.union([z.enum(['simplefin', 'google']), z.string().regex(/^google:\d{1,3}$/)]) }),
   // extra: "＋ Add another Google account" ('new') or more permission for one already added ('google:<n>'): Gmail only.
@@ -59,6 +62,19 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('import-csv'), rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), description: z.string().max(200), account: z.string().max(80).optional() })).min(1).max(5000) }),
 ]);
 
+/** ⏸ Actions that do outside work (AI, email, Gmail, Calendar, bank, web lookups): refused while paused. */
+function PAUSE_BLOCKS(b: z.infer<typeof Body>): boolean {
+  switch (b.action) {
+    case 'bank-connect': case 'sync': case 'run': case 'nearby': case 'negotiate': case 'ask': case 'report-filter':
+    case 'unsubscribe': case 'block': case 'vault-read': case 'read-doc': case 'receipt-add':
+      return true;
+    case 'receipt':
+      return ['reread', 'attach', 'barcode'].includes(b.op);
+    default:
+      return false;
+  }
+}
+
 Deno.serve(async (req) => withCors(await handle(req), req));
 
 async function handle(req: Request): Promise<Response> {
@@ -67,11 +83,19 @@ async function handle(req: Request): Promise<Response> {
     const user = await userOf(req);
     const body = Body.parse(await req.json());
     const db = admin();
+    // ⏸ While paused, only looking, Settings-like changes and your own edits work: anything that would use the AI,
+    // email, Gmail, Google Calendar, the bank or an outside site is refused (the AI is also refused in take_ai()).
+    if (PAUSE_BLOCKS(body) && await isPaused(db, user.id)) throw new HttpError(PAUSED_TEXT, 423);
     switch (body.action) {
+      case 'pause': {
+        const p = await setPaused(db, user.id, body.on);
+        return json({ ok: true, ...p });
+      }
       case 'status': {
         const [bank, google, status, me, mail, phone, contacts, vault, receipts, boxes, emails] = await Promise.all([connection(db, user.id, 'simplefin'), connection(db, user.id, 'google'), connection(db, user.id, 'status'), connection(db, user.id, 'me'), connection(db, user.id, 'mail'), connection(db, user.id, 'phone'), connection(db, user.id, 'contacts'), connection(db, user.id, 'vault'), connection(db, user.id, 'receipts'), allBoxes(db, user.id), connection(db, user.id, 'emails')]);
         const { data: usage } = await db.from('ai_usage').select('provider, n').eq('user_id', user.id).eq('day', new Date().toISOString().slice(0, 10));
         return json({
+          paused: await isPaused(db, user.id),
           bank: bank ? { connected: true, lastSync: bank.meta.lastSync ?? null, accounts: bank.meta.accounts ?? [], errors: bank.meta.errors ?? [] } : { connected: false },
           google: google ? { connected: true, email: google.meta.email ?? null, calendar: has(google.meta.scope as string, 'calendar'), gmail: has(google.meta.scope as string, 'gmail'), lastGmail: google.meta.gmailScanned ?? null, alertsScanned: google.meta.alertsScanned ?? null, alertsRead: google.meta.alertsRead ?? 0, alertBanks: google.meta.alertBanks ?? [], mailbox: has(google.meta.scope as string, 'mailbox'), lastScan: google.meta.lastScan ?? null, person: google.meta.person ?? null } : { connected: false },
           // ✉️ Extra Gmail accounts (no secrets: only what Settings shows).

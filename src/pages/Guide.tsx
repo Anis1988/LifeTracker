@@ -38,6 +38,7 @@ import { today } from '../../supabase/functions/_shared/money.ts';
 import { SettingsSearch, SettingsTiles } from '../components/SettingsGrid';
 import { PhoneTabBar } from '../components/Nav';
 import { MenuList } from '../components/Menu';
+import { PauseButton, PausedBanner, type Pause } from '../components/PauseAll';
 import { SearchResults } from '../components/Search';
 import { QuickAddList } from '../components/QuickAdd';
 import { searchAll } from '../lib/search';
@@ -262,6 +263,10 @@ const Example = ({ children, caption }: { children: ReactNode; caption: string }
     <figcaption className="px-1 text-xs text-slate-500 dark:text-slate-400">{caption}</figcaption>
   </figure>
 );
+/* made-up pause states, only for this guide (the buttons do nothing here) */
+const PAUSE_OFF: Pause = { p: { paused: false, at: null }, busy: false, flip: async () => undefined };
+const PAUSE_ON: Pause = { p: { paused: true, at: '2026-11-15T21:20:00Z' }, busy: false, flip: async () => undefined };
+
 const P = ({ children }: { children: ReactNode }) => <p className="text-[15px] leading-relaxed text-slate-700 dark:text-slate-300">{children}</p>;
 
 /** Made-up search for "example 25": the matched words lit, a receipt line found by an item on it, and the locked-Vault row. */
@@ -291,6 +296,22 @@ export function Guide() {
         <P>It works <b>by itself</b> (your choice: fully automatic, no OK needed): every hour (or as often as you pick in 📬 Email checks) it reads your bank’s purchase-alert emails, receipts, bills and documents in Gmail, and whatever you scan or upload, and <b>adds what it finds straight away</b>: bills go into your bills, receipts into Spending, documents into your Vault, appointments into your calendar, the places you deal with into Contacts. Each time you get a heads-up, and <b>What was added</b> on Home (and the <b>🔔 Inbox</b> bell at the top) lists what was added lately, each with <b>↶ Undo</b> (it’s taken away and won’t come back). It never pays, cancels or moves money: it has no way to. Deleting something of yours still asks first.</P>
         <P>At the bottom of your phone: <b>Home</b> (calm: your spending first), <b>Money</b> (Bills · Spending · Returns · Log), the round <b>＋</b> that adds anything, <b>📊 Reports</b> (your spending, your way) and <b>Places</b> (Contacts · Nearby · My list). At the top: <b>☰ Menu</b> on the left (every page, including <b>Me</b>: Vault · Privacy · Settings, the Guide, My apps and Sign out), then <b>🔎 search</b> and the <b>🔔 Inbox</b> on the right. On a computer all the tabs also sit at the top.</P>
         <P><b>Me → 🛡️ Privacy</b> is about you: where your name shows up online, people-search sites that list you, data breaches, the mailing lists you never read, important dates and your credit freeze. Documents that expire (passport, licence…) are in <b>Me → 📁 Vault</b>. <b>My week</b> sums it all up on Home and, if you want, in an email (✉️ Emails to me).</P>
+      </Fold>
+
+      <Fold icon="⏸" title="Pause all (the big red button)">
+        <P>The red <b>⏸ Pause all</b> button at the top of every page (just <b>Pause</b> on a phone) stops LifeTracker at once, until you press <b>▶ Resume</b>. One tap, no question asked. Use it when something looks wrong, or to be sure nothing costs money while you’re away.</P>
+        <Example caption="Made-up: the button at the top, before and after you tap it (they do nothing here).">
+          <div className="flex flex-wrap items-center gap-3">
+            <PauseButton state={PAUSE_OFF} />
+            <span className="text-sm text-slate-500 dark:text-slate-400">→</span>
+            <PauseButton state={PAUSE_ON} />
+          </div>
+        </Example>
+        <Example caption="Made-up: while paused, this red bar stays under the top bar on every page.">
+          <div className="overflow-hidden rounded-2xl"><PausedBanner state={PAUSE_ON} /></div>
+        </Example>
+        <P><b>While paused:</b> no AI at all (free or paid: Ask, reading bills, receipts, documents, Reports questions, lower-price scripts), no emails to you, no 📬 email checks, no bank, Gmail or calendar updates, no unsubscribing, no Nearby searches, no daily or hourly runs, and texts from the Android app wait on the phone. Buttons that would do any of that say “LifeTracker is paused”.</P>
+        <P><b>Still works:</b> looking at everything, searching, editing or deleting your own things, Undo, Settings and CSV bank imports. <b>Resume</b> turns everything back on; the next run picks up from where it stopped (new emails are still read then).</P>
       </Fold>
 
       <Fold icon="🏠" title="Home (calm, spending first)">

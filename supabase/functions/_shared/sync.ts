@@ -31,6 +31,7 @@ import { driveText, fridayOf, milesText, type Spot } from './place.ts';
 import type { Mail } from './google.ts';
 import type { Appointment } from './model.ts';
 import { emailText, pickAlerts, planEmail } from './emails.ts';
+import { isPaused } from './pause.ts';
 
 /**
  * 🔄 One automatic run for one person (every morning, or "Sync now"):
@@ -38,7 +39,7 @@ import { emailText, pickAlerts, planEmail } from './emails.ts';
  * Each step is independent: one failing never stops the others. Free steps first; the AI only reads emails
  * that already look like bills (free check), within the daily limits.
  */
-export interface RunLog { steps: string[]; errors: string[]; newAlerts: number }
+export interface RunLog { steps: string[]; errors: string[]; newAlerts: number; paused?: boolean }
 
 type NewAlert = Omit<Alert, 'id' | 'seen' | 'created_at'> & { user_id: string };
 
@@ -55,6 +56,8 @@ const MAIL_STEPS = /^(Appointments|Bank alerts|Gmail|Returns & warranties|Vault|
  * person's 📬 Email checks setting (`mail.every`; Off = only the daily run).
  */
 export async function syncUser(db: SupabaseClient, userId: string, email?: string, opts: { full?: boolean; only?: Part[]; force?: boolean; slot?: number; manual?: boolean } = {}): Promise<RunLog> {
+  // ⏸ Paused (big red button): nothing at all runs, by timer or by button.
+  if (await isPaused(db, userId)) return { steps: [], errors: [], newAlerts: 0, paused: true };
   const s = await settingsOf(db, userId);
   const log: RunLog = { steps: [], errors: [], newAlerts: 0 };
   if (opts.slot != null && !mailDue(s.mail.every, opts.slot)) return log;
@@ -606,6 +609,7 @@ async function emailStep(db: SupabaseClient, userId: string, email: string, s: S
 }
 
 async function sendEmail(to: string, subject: string, body: string): Promise<string> {
+  // (syncUser already stops while paused; sendEmail is only called from it.)
   const key = env('RESEND_API_KEY');
   if (!key) return 'skipped (no RESEND_API_KEY)';
   const site = env('SITE_URL');
