@@ -40,10 +40,12 @@ jobs:
         # unless told --remote (the linked project).
         run: |
           supabase link --project-ref "$PROJECT_REF"
-          supabase db push --remote --password "$SUPABASE_DB_PASSWORD"
+          supabase migration list --remote --password "$SUPABASE_DB_PASSWORD" || true
+          supabase db push --remote --yes --password "$SUPABASE_DB_PASSWORD"
       - name: Server functions
         if: steps.ready.outputs.go == 'yes'
-        run: supabase functions deploy --project-ref "$PROJECT_REF"
+        # --yes: the new CLI asks before deploying and a GitHub run can't answer.
+        run: supabase functions deploy --remote="$PROJECT_REF" --yes
 
   site:
     runs-on: ubuntu-latest
