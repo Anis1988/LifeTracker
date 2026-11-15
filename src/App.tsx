@@ -24,6 +24,7 @@ import { goTo, parseHash, takeMenuHash, upgradeHash, type Tab } from './lib/nav'
 import { addedFeed, unseen } from './lib/added';
 import { MailCheckBar, MailNowRow } from './components/MailCheck';
 import { PeopleProvider } from './components/Person';
+import { PauseButton, PausedBanner, usePause } from './components/PauseAll';
 
 const tabOf = (): Tab => parseHash().tab;
 // Old addresses (#/contacts, #/vault, #/me, #/settings/…) move to their new place before anything opens.
@@ -186,6 +187,7 @@ function Main() {
   // 🔔 New in the Inbox: things added by themselves since the Inbox was last opened on this device.
   const fresh = tab === 'inbox' ? 0 : unseen(addedFeed(st));
   const roundBtn = 'btn relative h-11 w-11 shrink-0 !overflow-visible !p-0';
+  const pause = usePause();
   const lit = '!border-teal-500 text-teal-700 shadow-[0_0_18px_-4px_#5eead4] dark:!border-teal-300 dark:text-teal-200';
   return (
     <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom,0px))] sm:pb-10">
@@ -210,8 +212,10 @@ function Main() {
           </nav>
           {/* ＋ Add anything (big screens; phones have it in the middle of the tab bar). */}
           <button onClick={() => setAdding(true)} aria-label="Add" title="Add" aria-haspopup="dialog" className="btn-primary ml-1 hidden h-11 w-11 shrink-0 !rounded-2xl !p-0 sm:inline-flex"><PlusIcon className="h-5 w-5" /></button>
+          {/* ⏸ Pause everything (big red button): no AI, emails or automatic runs until Resume. */}
+          <PauseButton state={pause} className="ml-auto sm:ml-1" />
           {/* 🔎 Search everything on this phone. */}
-          <button onClick={() => setSearch(true)} aria-label="Search everything" title="Search (/ or Ctrl K)" aria-haspopup="dialog" className={`${roundBtn} ml-auto text-teal-700 shadow-[0_0_18px_-8px_#5eead4] dark:text-teal-200 sm:ml-1`}>
+          <button onClick={() => setSearch(true)} aria-label="Search everything" title="Search (/ or Ctrl K)" aria-haspopup="dialog" className={`${roundBtn} ${pause.p ? 'ml-1' : 'ml-auto sm:ml-1'} text-teal-700 shadow-[0_0_18px_-8px_#5eead4] dark:text-teal-200`}>
             <Icon d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" className="h-[22px] w-[22px]" />
           </button>
           {/* 🔔 Inbox: what was added by itself lately (bills, receipts, documents, contacts, appointments), each with an Undo. */}
@@ -220,6 +224,7 @@ function Main() {
             {fresh ? <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-amber-400 px-1 text-center text-[10px] font-bold leading-[18px] text-slate-900 shadow-[0_0_12px_-2px_rgba(251,191,36,0.9)] ring-2 ring-white/80 dark:ring-[#0b1020]/80">{fresh}</span> : null}
           </button>
         </div>
+        <PausedBanner state={pause} />
       </header>
       {/* 📬 Email checks: how often, last and next (every tab; hidden until Gmail is connected). */}
       {tab !== 'home' && <MailCheckBar />}

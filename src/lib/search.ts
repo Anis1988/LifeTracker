@@ -53,6 +53,7 @@ export const HIT_LABELS = Object.fromEntries(KINDS.map((k) => [k.kind, `${k.icon
 /** The Guide's topics (title = the Guide's section, words = what it talks about). Opens that section: #/guide?t=<slug>. */
 export const GUIDE_TOPICS: { icon: string; title: string; words: string }[] = [
   { icon: '✨', title: 'What it does', words: 'automatic undo bills receipts documents' },
+  { icon: '⏸', title: 'Pause all (the big red button)', words: 'pause stop kill switch red button resume freeze halt ai cost emails' },
   { icon: '🏠', title: 'Home (calm, spending first)', words: 'home spending first ring top categories coming up what was added bottom calm opens' },
   { icon: '🧭', title: 'Finding your way (tabs, search, ＋)', words: 'tabs menu pages places me search find magnifier add where did it go keyboard shortcut sign out' },
   { icon: '🫧', title: 'How it looks and feels', words: 'look glass light dark reduce motion' },

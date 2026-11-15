@@ -1,6 +1,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { PROVIDERS, providerOf, type Item, type Provider, type Settings } from './model.ts';
 import { daysBetween, nextDue, todayIn } from './money.ts';
+import { isPaused } from './pause.ts';
 
 /**
  * 📱 "My apps" page (apps.html): LifeTracker's own card. Same shape as the other apps' GET /api/summary:
@@ -40,6 +41,7 @@ export async function summary(db: SupabaseClient, userId: string, s: Settings): 
   ]);
 
   const lines: SummaryLine[] = [];
+  if (await isPaused(db, userId)) lines.push({ icon: '⏸', text: 'PAUSED: no AI, emails or automatic runs', tone: 'warn' });
   // Next bill due.
   const next = ((items.data as Item[]) ?? []).map((i) => ({ i, d: nextDue(i) })).filter((x): x is { i: Item; d: string } => !!x.d && x.d >= t).sort((a, b) => a.d.localeCompare(b.d))[0];
   if (next) {

@@ -3,6 +3,7 @@ import { admin, allowed, connection, cors, json, saveConnection, settingsOf, sig
 import { applyAppt, dayIn, readAppt, tzOf } from '../_shared/appointments.ts';
 import { calendarStep } from '../_shared/sync.ts';
 import { looksLikeAppointment, whenText } from '../_shared/apptText.ts';
+import { isPaused, PAUSED_TEXT } from '../_shared/pause.ts';
 
 /**
  * 💬 Appointment texts from the Android app (Google Messages can't be read from outside the phone). The phone only
@@ -28,6 +29,8 @@ async function handle(req: Request): Promise<Response> {
     if (!phone || phone.meta.nonce !== nonce || sig !== (await sign(`phone:${userId}:${nonce}`))) return json({ error: 'This phone isn’t linked any more: open LifeTracker → Settings → Appointments and turn texts on again.' }, 401);
     const { data: u } = await db.auth.admin.getUserById(userId);
     if (!u.user || !allowed(u.user.email)) return json({ error: 'Not allowed.' }, 403);
+    // ⏸ Paused: nothing read (the phone keeps the texts and tries again later).
+    if (await isPaused(db, userId)) return json({ error: PAUSED_TEXT, paused: true }, 423);
     const s = await settingsOf(db, userId);
     if (!s.appts.on) return json({ results: [], off: true });
 
