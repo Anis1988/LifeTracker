@@ -312,6 +312,7 @@ export function Guide() {
         </Example>
         <P><b>While paused:</b> no AI at all (free or paid: Ask, reading bills, receipts, documents, Reports questions, lower-price scripts), no emails to you, no 📬 email checks, no bank, Gmail or calendar updates, no unsubscribing, no Nearby searches, no daily or hourly runs, and texts from the Android app wait on the phone. Buttons that would do any of that say “LifeTracker is paused”.</P>
         <P><b>Still works:</b> looking at everything, searching, editing or deleting your own things, Undo, Settings and CSV bank imports. <b>Resume</b> turns everything back on; the next run picks up from where it stopped (new emails are still read then).</P>
+        <P><b>🎛️ From Master</b> (your dashboard of all your apps): pausing LifeTracker in Master does the same as the red button, and buttons say “This app is paused from Master”; Master’s “AI off everywhere” stops only the AI (Nearby then shows map results only). The red bar here doesn’t show it: resume it in Master, and it counts here within a minute.</P>
       </Fold>
 
       <Fold icon="🏠" title="Home (calm, spending first)">
