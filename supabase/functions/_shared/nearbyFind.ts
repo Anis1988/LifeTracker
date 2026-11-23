@@ -3,6 +3,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import type { Settings } from './model.ts';
 import { env, HttpError } from './server.ts';
 import { geminiGrounded } from './me.ts';
+import { MASTER_AI_TEXT, masterSwitch } from './masterSwitch.ts';
 import { hostOf } from './people.ts';
 import { todayIn } from './money.ts';
 import { driveEstimate, milesBetween, sundayOf, zipOf, type Home, type NearbyResult, type Spot, type SpotKind, type TodoKind, type Weekend } from './place.ts';
@@ -265,6 +266,7 @@ async function routes(h: Home, spots: Spot[]): Promise<void> {
 
 // ---------- web search: the free Gemini with Google Search first, Claude (paid) with web search last ----------
 async function searchWeb(db: SupabaseClient, userId: string, s: Settings, text: string): Promise<{ out: string; hosts: Set<string>; by: string } | { note: string }> {
+  if ((await masterSwitch()).ai) return { note: MASTER_AI_TEXT }; // 🎛️ AI switched off from Master: OpenStreetMap results only
   const tried: string[] = [];
   const g = s.ai.slots.gemini;
   if (g.on && env('GEMINI_API_KEY')) {

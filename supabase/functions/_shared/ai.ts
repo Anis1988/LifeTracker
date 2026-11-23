@@ -4,7 +4,8 @@ import { z } from 'npm:zod@4.1.12';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { CATEGORIES, CYCLES, providerOf, type Extracted, type Provider, type Settings } from './model.ts';
 import { env } from './server.ts';
-import { isPaused, PAUSED_TEXT } from './pause.ts';
+import { isPaused, pausedText } from './pause.ts';
+import { MASTER_AI_TEXT, masterSwitch } from './masterSwitch.ts';
 
 /**
  * 🤖 Reading bills, policies, statements and emails. The rule (owner's choice): the FREE AIs first, in the order
@@ -127,7 +128,8 @@ export async function readWithAi(db: SupabaseClient, userId: string, s: Settings
 
 /** Free AIs first (Settings order), Claude last; skips any that is off, not set up, over its limit, or can't read the file. */
 export async function askAi<T extends z.ZodTypeAny>(db: SupabaseClient, userId: string, s: Settings, input: AiInput, spec: AiSpec<T>): Promise<AiResult<z.infer<T>>> {
-  if (await isPaused(db, userId)) throw new Error(PAUSED_TEXT); // ⏸ (take_ai() also says no while paused)
+  if (await isPaused(db, userId)) throw new Error(await pausedText(db, userId)); // ⏸ (take_ai() also says no while paused)
+  if ((await masterSwitch()).ai) throw new Error(MASTER_AI_TEXT); // 🎛️ AI switched off from Master
   const order: Provider[] = [...s.ai.order.filter((p) => p !== 'claude'), 'claude'];
   const tried: string[] = [];
   for (const p of order) {

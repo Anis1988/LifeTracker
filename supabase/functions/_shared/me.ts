@@ -6,6 +6,7 @@ import { BREACH_QUERY, BROKERS, brokerOf, hostOf, parseBreach } from './people.t
 import { isRateLimit, readEmail, searchIds } from './google.ts';
 import { connection, env, saveConnection } from './server.ts';
 import { boxTag, saveState, stateOf, tokenOf, type Box } from './mailbox.ts';
+import { masterSwitch } from './masterSwitch.ts';
 
 /**
  * 🕵️ "Me online": where your name shows up. The free Gemini searches Google for the details in Settings → About me,
@@ -117,6 +118,7 @@ export async function onlineStep(db: SupabaseClient, userId: string, s: Settings
   if (!force && last && Date.now() - Date.parse(last) < (s.online.everyDays - 0.5) * 86400_000) return;
   const slot = s.ai.slots.gemini;
   if (!slot.on || !env('GEMINI_API_KEY')) return 'needs the free Gemini (GEMINI_API_KEY, Settings → AI)';
+  if ((await masterSwitch()).ai) return 'the AI is paused from Master'; // 🎛️ tried again next time
 
   const who = describe(s);
   const hits: Hit[] = [];

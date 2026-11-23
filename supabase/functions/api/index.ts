@@ -21,7 +21,7 @@ import { mergeBankRows, receiptAction, receiptFromFile, savedText, type BankRow,
 import { PERSON_COLORS } from '../_shared/mailPeople.ts';
 import { mailNowWait, type Item, type MailCheck, type Sender } from '../_shared/model.ts';
 import { BARCODE_FORMATS, type BarcodeFormat } from '../_shared/barcode.ts';
-import { isPaused, PAUSED_TEXT, setPaused } from '../_shared/pause.ts';
+import { isPaused, pausedText, setPaused } from '../_shared/pause.ts';
 
 /**
  * The app's server (POST /functions/v1/api {action, ...}), signed-in users only. Everything you can see or change
@@ -85,7 +85,7 @@ async function handle(req: Request): Promise<Response> {
     const db = admin();
     // ⏸ While paused, only looking, Settings-like changes and your own edits work: anything that would use the AI,
     // email, Gmail, Google Calendar, the bank or an outside site is refused (the AI is also refused in take_ai()).
-    if (PAUSE_BLOCKS(body) && await isPaused(db, user.id)) throw new HttpError(PAUSED_TEXT, 423);
+    if (PAUSE_BLOCKS(body) && await isPaused(db, user.id)) throw new HttpError(await pausedText(db, user.id), 423);
     switch (body.action) {
       case 'pause': {
         const p = await setPaused(db, user.id, body.on);
